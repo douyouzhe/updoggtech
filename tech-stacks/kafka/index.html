@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A deep dive into Apache Kafka — pub/sub model, producers, consumers, partitions, replicas, acks, exactly-once delivery, and ZooKeeper.">
+<title>Kafka — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -139,202 +139,163 @@
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
       <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <span style="color:var(--text)">kafka</span>
     </div>
     <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <h1 class="article-title">Apache Kafka</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Mar 31, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>14 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>Kafka is an open-source <strong>distributed event streaming platform</strong> adopted by thousands of companies for high-performance data pipelines, streaming analytics, data integration, and mission-critical applications. At its core it is a <strong>publish/subscribe</strong> system: producers write messages to topics, and consumers read from the topics they care about. It extends far beyond traditional message queues like ActiveMQ or RabbitMQ.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Kafka is a durable, partitioned, replicated commit log. Producers append records to partitions, consumers pull at their own pace, and replication + acks give you tunable durability — from fire-and-forget to exactly-once.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Major Use Cases</h2>
+    <ul>
+      <li><strong>Peak traffic buffering</strong> — absorb bursts during high-demand windows (lunch rush for food delivery, flash sales for e-commerce) so downstream services aren't overwhelmed.</li>
+      <li><strong>Service decoupling</strong> — separate data sources from consumers; Kafka MirrorMaker moves data across data lakes and availability zones.</li>
+      <li><strong>Asynchronous communication</strong> — offload non-essential work off the request path to improve user-facing latency.</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
+    <h2>Pub/Sub Model</h2>
+    <p>Different categories of messages flow into distinct <strong>topics</strong> from various producers. Unlike traditional queues, messages <strong>persist after consumption</strong> — Kafka manages the lifecycle independently of any single consumer, so multiple consumers can read the same topic at different offsets.</p>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h2>Producer Architecture</h2>
+    <p>The producer calls <code>.send()</code> with a <code>ProducerRecord</code> (a message wrapper). The flow:</p>
+    <ul>
+      <li>A <strong>serializer</strong> converts the message to a byte stream (custom serializers, Protobuf, or Avro via the Schema Registry).</li>
+      <li>The <strong>partitioner</strong> decides the destination partition, enabling distributed storage and parallel processing across the cluster.</li>
+      <li>Records queue in the <strong>RecordAccumulator</strong> (in-memory) before being sent. Two knobs control timing: <code>BATCH_SIZE_CONFIG</code> (queue threshold) and <code>LINGER_MS_CONFIG</code> (max wait).</li>
+      <li>The <strong>Sender</strong> creates a network client and awaits the <code>acks</code> confirmation.</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h2>Consumer Model</h2>
+    <p>Kafka uses a <strong>pull</strong> model — consumers request data on their own schedule, giving more decoupling than push. Many independent consumers can read the same topic, but consumers <strong>within a single consumer group cannot share a partition</strong>: the group behaves as one logical subscriber, and each partition is owned by exactly one member.</p>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
+    <h2>Partitions &amp; Replicas</h2>
+    <p>Parallelism comes from splitting a topic into <strong>partitions</strong> spread across servers. The <code>DefaultPartitioner</code> uses <code>hash(key) % num_partitions</code>; custom implementations override <code>partition()</code>.</p>
+    <p>Each partition is an <strong>append-only log</strong> segmented at 1 GB, with a sparse index record every 4 KB for fast lookups. Retention (<code>log.retention.hours/minutes/ms</code>, default 7 days) deletes or compacts old data based on <code>log.cleanup.policy</code>. Replication guards against single-point failures via a leader/follower scheme.</p>
 
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
+    <h2>System Reliability</h2>
+    <h3>acks</h3>
+    <p>This producer-side setting controls how many brokers must receive a record before the write is considered successful — the core durability/throughput tradeoff:</p>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Setting</th><th>Behavior</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>acks=0</td><td>Success the moment the record is sent — no broker response awaited. Fastest, least durable.</td></tr>
+        <tr><td>acks=1</td><td>Success once the <strong>leader</strong> receives the record.</td></tr>
+        <tr><td>acks=all (-1)</td><td>Success only after all in-sync replicas (ISR) acknowledge. If ISRs drop offline, streaming blocks. <code>min.insync.replicas=n</code> guarantees a minimum number of copies.</td></tr>
       </tbody>
     </table>
+    <div class="callout">
+      <div class="callout-label">reliable transmission</div>
+      <p>For durable delivery: <code>acks=-1</code>, <code>num_partitions &gt; 1</code>, and <code>min.insync.replicas &gt; 1</code>.</p>
+    </div>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h3>Retries &amp; Delivery Semantics</h3>
+    <p><code>RETRIES_CONFIG</code> defaults to <code>MAX_INT</code> for Kafka ≥ 2.1. Retries risk duplication unless managed:</p>
+    <ul>
+      <li><strong>At-Least-Once</strong> — <code>acks=-1</code>; messages never lost but may duplicate.</li>
+      <li><strong>At-Most-Once</strong> — <code>acks=0</code>; no duplicates but messages may be lost.</li>
+      <li><strong>Exactly-Once</strong> — At-Least-Once + idempotence. Each producer gets a unique Producer Id (PID) with a monotonically increasing sequence number per message. Brokers track the largest <code>&lt;PID, sequence&gt;</code> per partition and reject duplicates (<code>enable.idempotence=true</code>). The <code>TransactionManager</code> adds database-like <code>beginTransaction()</code>/<code>commitTransaction()</code> wrapping <code>.send()</code>.</li>
+    </ul>
 
+    <h3>Replicas</h3>
+    <p>Multiple followers sync from the leader. Producers only write to the leader; followers fetch from it. The <strong>ISR</strong> lists in-sync followers; a follower lagging beyond <code>replica.lag.time.max.ms</code> moves to the <strong>OSR</strong>. ISR + OSR = Assigned Replicas (AR). On leader failure, a new leader is elected from the ISR. Each replica tracks its <strong>LEO</strong> (Log End Offset) to measure sync progress.</p>
+
+    <h2>High-Speed Read/Write</h2>
+    <ul>
+      <li><strong>Cluster computing</strong> — parallel processing for both producers and consumers.</li>
+      <li><strong>Sparse indexing</strong> — <code>.index</code> files accelerate reads.</li>
+      <li><strong>Append-only logs</strong> — sequential writes only, far faster than random access.</li>
+      <li><strong>Page Cache</strong> — the OS caches file metadata/indices in RAM while data lives on disk; Kafka leans on this layered approach instead of a custom cache.</li>
+      <li><strong>Zero-copy</strong> — data transfers directly from the read buffer to the socket buffer, skipping user/kernel context switches. (This advantage disappears under SSL, since brokers must decrypt then re-encrypt.)</li>
+    </ul>
+
+    <h2>ZooKeeper</h2>
+    <p>A coordination service for distributed systems. With Kafka it tracks cluster node status and topic/message metadata. Five primary functions:</p>
+    <ul>
+      <li><strong>Controller election</strong> — picks the first AR broker also in the ISR (<code>/kafka/controller</code>).</li>
+      <li><strong>Cluster membership</strong> — lists alive brokers (<code>/kafka/brokers/ids</code>).</li>
+      <li><strong>Topic configuration</strong> — stores full topic details (<code>/kafka/brokers/topics/{topic}/partitions/{id}/state</code>).</li>
+      <li><strong>Access Control Lists</strong>.</li>
+      <li><strong>Quotas</strong> — monitors per-client read/write allowances.</li>
+    </ul>
+
+    <h2>CLI Examples</h2>
+    <p>Create a topic with 2 partitions and replication factor 3:</p>
     <div class="code-block">
       <div class="code-block-header">
         <div class="code-block-header-left">
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">bash</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+      <pre><code><span class="cm"># test.config → bootstrap.servers=localhost:9092</span>
+kafka-topics \
+  --bootstrap-server localhost:9092 \
+  --command-config ./test.config \
+  --topic test1 \
+  --create \
+  --replication-factor <span class="num">3</span> \
+  --partitions <span class="num">2</span></code></pre>
+    </div>
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+    <p>Produce keyed messages, then consume from the beginning:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># producer</span>
+kafka-console-producer \
+  --topic test1 \
+  --broker-list localhost:9092 \
+  --property parse.key=true \
+  --property key.separator=:
+<span class="cm"># > key:{"val":0}</span>
+
+<span class="cm"># consumer</span>
+kafka-console-consumer \
+  --topic test1 \
+  --bootstrap-server localhost:9092 \
+  --property print.key=true \
+  --from-beginning</code></pre>
     </div>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Think of Kafka as a replicated log, not a queue. Partitions give you horizontal scale and ordering-per-key; consumer groups give you parallel reads; and <code>acks</code> + ISR + idempotence let you dial durability from fire-and-forget all the way to exactly-once.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
-        <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
-      </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
+      <a href="/tech-stacks/" class="article-nav-card">
+        <div class="article-nav-label">← back to</div>
         <div class="article-nav-title">Tech Stacks</div>
+      </a>
+      <a href="/tech-stacks/kubernetes/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Kubernetes (k8s)</div>
       </a>
     </div>
   </div>

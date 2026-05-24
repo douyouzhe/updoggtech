@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
+<title>Reliable, Scalable &amp; Maintainable — updoggtech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-1</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.1</span>
+    <h1 class="article-title">Reliable, Scalable &amp; Maintainable</h1>
+    <div class="article-meta">
+      <span>Apr 01, 2023</span>
+      <span class="separator">·</span>
+      <span>10 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 1 sets the vocabulary for the entire book. Kleppmann argues that modern applications are <strong>data-intensive</strong> rather than compute-intensive — the real challenges are the volume, complexity, and speed of data. Three properties define a good data system: it must be reliable, scalable, and maintainable. This chapter unpacks each one with concrete examples.</p>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Reliability = tolerate faults without failing. Scalability = maintain performance as load grows. Maintainability = keep the system easy to operate and evolve. These three properties are the lens through which the rest of DDIA is written.</p>
+    </div>
+
+    <h2>Reliability</h2>
+    <p>A reliable system continues to work correctly even when things go wrong. Kleppmann draws a sharp distinction between a <strong>fault</strong> and a <strong>failure</strong>: a fault is when one component deviates from its spec; a failure is when the system as a whole stops providing the required service. The goal of fault-tolerant systems is to prevent faults from escalating into failures.</p>
+
+    <h3>Hardware Faults</h3>
+    <p>Hard disks crash, RAM develops bad bits, power grids flicker, and someone unplugs the wrong cable. Until recently the standard response was redundancy — RAID, dual power supplies, hot-swap CPUs. As data volumes grow, applications increasingly run on many machines, making <strong>multi-machine redundancy</strong> plus <strong>rolling upgrades</strong> the modern answer. Cloud platforms deliberately do not guarantee single-machine reliability; you are expected to tolerate node loss in software.</p>
+
+    <h3>Software Faults (Systematic Faults)</h3>
+    <p>Software bugs are more dangerous than hardware faults because they are correlated: a bug in one node's binary is likely present on every other node too. Examples include a runaway process that exhausts CPU or memory, a service that becomes slow and causes cascading timeouts, or a bug triggered by a specific unusual input. Mitigations include careful thinking about assumptions and interactions at design time, thorough testing, process isolation, crash-and-restart policies, and monitoring.</p>
+
+    <h3>Human Errors</h3>
+    <p>Studies of large-scale outages find that operator mistakes are the leading cause. Good systems design for human fallibility: well-designed abstractions that make wrong things hard to do, sandbox environments for experimentation, thorough automated testing at every level, easy and fast rollback, detailed monitoring (metrics and logs), and good operational tooling.</p>
+
+    <h2>Scalability</h2>
+    <p>Scalability is not a one-dimensional label. The question is always: "If the system grows in <em>this particular way</em>, how do we cope?" You must first describe your load precisely, then measure performance under that load, and finally decide how to handle growth.</p>
+
+    <h3>Describing Load: Load Parameters</h3>
+    <p>Load parameters are numbers that describe the load on your system. The right choice depends on architecture. Examples: requests per second for a web server, read/write ratio for a database, number of simultaneously active users for a chat system, cache hit rate.</p>
+    <p>Kleppmann uses <strong>Twitter's home timeline</strong> as the canonical fan-out example. Twitter has two approaches:</p>
+    <ul>
+      <li><strong>Pull on read</strong> — when a user requests their timeline, look up all people they follow, fetch recent tweets for each, and merge. Simple writes, expensive reads at O(followed accounts) per request.</li>
+      <li><strong>Fan-out on write</strong> — when a tweet is posted, immediately push it into the home timeline cache of every follower. Reads are cheap (just read the pre-computed list); writes are expensive for high-follower accounts.</li>
+    </ul>
+    <p>Twitter ultimately uses a hybrid: fan-out on write for most users, pull on read for celebrities with millions of followers. The critical load parameter is <strong>followers per user (distribution)</strong>, not just average tweet rate.</p>
+
+    <h3>Describing Performance: Percentiles</h3>
+    <p>Once you have load parameters, you measure what happens when load increases. Two approaches: fix load, see how performance degrades; or fix performance target, see how much resource you need to add.</p>
+    <p><strong>Throughput</strong> (records per second) matters for batch systems. <strong>Response time</strong> matters for online services. Mean response time is almost always the wrong metric — use percentiles:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Percentile</th><th>Meaning</th><th>Use</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">p50 (median)</td><td>Half of requests are faster than this</td><td>Typical user experience</td></tr>
+        <tr><td class="col-a">p95</td><td>95 of 100 requests are faster</td><td>Common SLO target</td></tr>
+        <tr><td class="col-a">p99</td><td>99 of 100 requests are faster</td><td>Important for high-value users</td></tr>
+        <tr><td class="col-a">p999</td><td>999 of 1000 requests are faster</td><td>Amazon uses this internally</td></tr>
+      </tbody>
+    </table>
+
+    <p>High percentile latencies (tail latency) matter because customers with the slowest experience are often those with the most data — i.e., your most engaged users. Service level objectives (SLOs) and service level agreements (SLAs) are typically defined using percentiles.</p>
+    <p><strong>Head-of-line blocking</strong>: even if only a small fraction of requests are slow, a single slow server call can hold up all subsequent requests on the same connection, inflating end-to-end latency. Measuring response time on the client side (not just the server) captures this effect.</p>
+
+    <h3>Approaches to Coping with Load</h3>
+    <p><strong>Scaling up</strong> (vertical scaling) — move to a more powerful machine. Simple, but hits limits and cost curves quickly. <strong>Scaling out</strong> (horizontal scaling, shared-nothing) — distribute load across more machines. More complex, but commodity hardware is cheap and the ceiling is much higher. Elastic systems can add machines automatically when load spikes; manually scaled systems are simpler to operate but require human judgment.</p>
+
+    <h2>Maintainability</h2>
+    <p>The majority of the cost of software is not in its initial development but in ongoing maintenance: fixing bugs, adapting to new platforms, repaying technical debt, and adding new features. Good design makes this cheaper. Kleppmann identifies three design principles for maintainability.</p>
+
+    <h3>Operability</h3>
+    <p>Make it easy for operations teams to keep the system running smoothly. Good systems provide visibility into their own runtime behavior (metrics, logs, tracing), allow standard tooling to interface with them, avoid depending on individual machines (enable rolling restarts), have good default behavior but allow overrides, exhibit predictable behavior, and come with good documentation.</p>
+
+    <h3>Simplicity</h3>
+    <p>Managing complexity is the biggest challenge in software. Complexity slows down every engineer who works on the system and increases the risk of introducing bugs. Kleppmann distinguishes accidental complexity (introduced by the implementation, not inherent to the problem) from essential complexity. Good abstractions hide implementation detail and allow one clean concept to be reused many places — SQL hiding B-trees and log files is his primary example.</p>
+
+    <h3>Evolvability (Extensibility)</h3>
+    <p>Requirements change — you will need to add new fields, adapt business logic, and handle unanticipated use cases. Agile practices (TDD, refactoring) help at the small scale. At the larger architectural scale the question is how to make change easy: this is the subject of later chapters on schema evolution, encoding formats, and stream processing.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Use load parameters (not vague terms like "lots of traffic") to describe your system's behavior. Measure tail latency (p95/p99), not averages. Design for the fault types most likely in your context — hardware failure is independent, software bugs are correlated. And invest in operability and simplicity from day one; the cost of poor maintainability compounds over time.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/" class="article-nav-card">
+        <div class="article-nav-label">← back to</div>
+        <div class="article-nav-title">DDIA</div>
+      </a>
+      <a href="/ddia/chapter-2/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Data Models &amp; Query Languages</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

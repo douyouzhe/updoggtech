@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A system design deep dive into building a chat app at scale — WebSocket connection management, Snowflake IDs, offline delivery, and group messaging architecture.">
+<title>Design a Chat App — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -42,7 +42,7 @@
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .breadcrumb a:hover { color: var(--accent); }
-  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
   .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -138,165 +138,73 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">chat-app</span>
     </div>
-    <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Chat App</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>11 min read</span>
       <span class="separator">·</span>
-      <span style="color:var(--accent)">Tech Stacks</span>
+      <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>A chat application sits at one of the most demanding intersections of system design: it must handle billions of users, hundreds of billions of messages per day, sub-second delivery latency, reliable offline queuing, and complex group semantics — all while maintaining end-to-end encryption and accurate presence information.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Use WebSockets for full-duplex, persistent client-server connections. Route messages through a WebSocket Manager (key-value store) that maps user IDs to servers. Generate message IDs with Snowflake (time-ordered, distributed, 64-bit). Queue messages as "pending" for offline users and deliver via push notification. Cap group size to bound fan-out cost.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Requirements</h2>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
+    <h3>Functional</h3>
+    <ul>
+      <li>User registration and authentication</li>
+      <li>One-to-one messaging</li>
+      <li>Group chat</li>
+      <li>Media support: text, images, audio, video</li>
+      <li>Read receipts</li>
+      <li>Last seen / online status tracking</li>
+    </ul>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h3>Non-Functional</h3>
+    <ul>
+      <li><strong>Low latency</strong> — real-time feel is the core product promise</li>
+      <li><strong>High availability</strong> — dropped connections or missed messages destroy trust</li>
+      <li><strong>Massive scale</strong> — 4 billion users, 100 billion messages daily</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h2>Protocol Selection: Why WebSockets</h2>
+    <p>The central challenge of chat is server-to-client message push. Three approaches exist:</p>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
-
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Protocol</th><th>Problem</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td class="col-b">Short polling</td><td>Latency determined by poll interval; frequent polls waste resources, infrequent polls feel laggy</td></tr>
+        <tr><td class="col-b">Long polling</td><td>Repeated connection setup/teardown overhead; multiple simultaneous requests can cause message ordering issues</td></tr>
+        <tr><td class="col-a">WebSockets</td><td>Persistent full-duplex connection; eliminates polling overhead; supports true real-time bidirectional messaging</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <p>WebSockets win because they maintain a single persistent connection per client, enabling the server to push messages the instant they arrive with no polling lag and no connection re-establishment overhead.</p>
+
+    <h2>Core Services</h2>
+    <ul>
+      <li><strong>User Service</strong> — RESTful API for user CRUD and authentication</li>
+      <li><strong>Chat / Group Service</strong> — manages chat creation, deletion, and group membership; stores <code>[group_id, member_list]</code> pairs</li>
+      <li><strong>Message Service</strong> — persists messages and publishes them to Kafka for downstream processing</li>
+      <li><strong>WebSocket Manager</strong> — maintains a key-value mapping of <code>[user_id → websocket_server:port]</code>; backed by Redis for fast in-memory lookup across 65,000+ available ports per server</li>
+      <li><strong>Last Seen Service</strong> — samples user activity at ~1-minute intervals; records a timestamp when the app is open</li>
+    </ul>
+
+    <h2>Message Schema and ID Generation</h2>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -304,37 +212,58 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">schema</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+      <pre><code><span class="cm">-- 1-to-1 message</span>
+message_id      BIGINT   <span class="cm">-- Snowflake ID (time-ordered)</span>
+sender_id       BIGINT
+receiver_id     BIGINT
+content         TEXT     <span class="cm">-- encrypted</span>
+status          ENUM     <span class="cm">-- Pending | Delivered | Read</span>
+created_at      TIMESTAMP
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+<span class="cm">-- Group message (receiver_id replaced by channel)</span>
+message_id      BIGINT
+sender_id       BIGINT
+channel_id      BIGINT   <span class="cm">-- broadcast to all members</span>
+content         TEXT
+status          ENUM
+created_at      TIMESTAMP</code></pre>
     </div>
+
+    <p>Message IDs use <strong>Snowflake</strong>: a 64-bit integer composed of a 41-bit millisecond timestamp, a 10-bit machine ID, and a 12-bit sequence number. This gives distributed uniqueness without coordination, and the timestamp prefix keeps messages naturally time-ordered for display.</p>
+
+    <h2>Delivery: Online vs. Offline Users</h2>
+    <p>When a message is sent, the Message Service checks whether the recipient has an active WebSocket connection by querying the WebSocket Manager. Two paths diverge:</p>
+    <ul>
+      <li><strong>Online user</strong> — message is routed directly to the recipient's WebSocket server and delivered immediately; status advances to <strong>Delivered</strong></li>
+      <li><strong>Offline user</strong> — message is stored with status <strong>Pending</strong>; a push notification is dispatched via Apple Push Notification Service or Android push notifiers; delivery is confirmed when the user reconnects</li>
+    </ul>
+
+    <h2>Group Chat and Fan-out</h2>
+    <p>Group messages replace <code>receiver_id</code> with a <code>channel_id</code> and must be broadcast to all group members simultaneously. This fan-out is the main scalability challenge in group chat: a message to a 500-person group requires 500 individual deliveries. The design caps group size (WeChat's 500-user ceiling is cited as the reference) to bound the maximum fan-out cost and reduce delivery lag. The system accepts slightly different delivery timing across group members as a reasonable tradeoff for performance.</p>
+
+    <h2>Media Storage</h2>
+    <p>Images, audio, and video are not stored inline in message objects. Instead, the message record holds a reference, and the actual binary content lives in a file system backed by CDN distribution. This keeps message database rows small and uniform while leveraging optimized object storage for large binary payloads.</p>
+
+    <h2>Last Seen and Presence</h2>
+    <p>Recording exact timestamps for every user action at 4 billion-user scale would generate enormous write load. Instead, the Last Seen Service samples: it polls whether the user has the app open approximately every minute and records a timestamp if so. This introduces minor inaccuracy in "last seen" timestamps — a deliberately accepted tradeoff to keep storage and write throughput manageable.</p>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Chat design is mostly about two hard problems: real-time delivery (WebSockets + WebSocket Manager for routing) and offline queuing (Pending status + push notifications). Snowflake IDs solve distributed unique ID generation with built-in time ordering. Group size caps are an explicit scalability lever — the smaller the cap, the cheaper the fan-out. Last seen sampling trades minor accuracy for write throughput.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/system-design/video-streaming/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Design a Video Streaming Platform</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/system-design/ride-share/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Ride-share App</div>
       </a>
     </div>
   </div>

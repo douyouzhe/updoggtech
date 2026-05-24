@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.2 of DDIA: relational vs document vs graph data models, impedance mismatch, schema-on-read vs schema-on-write, and declarative vs imperative query languages.">
+<title>Data Models &amp; Query Languages — updoggtech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-2</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.2</span>
+    <h1 class="article-title">Data Models &amp; Query Languages</h1>
+    <div class="article-meta">
+      <span>Apr 02, 2023</span>
+      <span class="separator">·</span>
+      <span>12 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Data models are the most consequential decision in any system. They shape not only how software is written, but how we <em>think</em> about the problem at all. Chapter 2 surveys the three dominant families — relational, document, and graph — and examines the query languages that each naturally pairs with.</p>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Relational wins for many-to-many joins and strong schema guarantees. Document wins for self-contained hierarchical data and schema flexibility. Graph wins when relationships are the data. Know the tradeoffs; most production systems mix all three.</p>
+    </div>
+
+    <h2>Relational Model vs Document Model</h2>
+    <p>Edgar Codd proposed the relational model in 1970: data is organized into <strong>relations</strong> (tables), each a collection of <strong>tuples</strong> (rows). For decades this dominated, and SQL remains the lingua franca of data. NoSQL emerged in the 2010s with a different set of motivations: greater scalability (including writes), schema flexibility for rapidly evolving data, and a better fit for certain data structures that are awkward to express in tables.</p>
+
+    <h3>Object-Relational Impedance Mismatch</h3>
+    <p>Most application code today is written in object-oriented languages. Data lives in tables. The translation between the two — handled by ORMs like Hibernate or ActiveRecord — is the <strong>impedance mismatch</strong>. It is not just an inconvenience; it forces developers to mentally maintain two representations of the same data and can hide performance problems (the N+1 query problem being the classic example).</p>
+    <p>For a résumé (LinkedIn profile) example: a user has one name, but multiple jobs and multiple education entries. In SQL you need separate tables with foreign keys for positions and education, then a JOIN to reconstruct the profile. In a document store (MongoDB, CouchDB) you store the entire profile as one JSON document — the data locality is natural and there is no JOIN needed.</p>
+
+    <h3>One-to-Many, Many-to-One, Many-to-Many</h3>
+    <p><strong>One-to-many</strong> relationships (user → positions) are the document model's strong suit: embed the child documents inside the parent. <strong>Many-to-one</strong> relationships (many users share the same city name, stored as an ID referencing a cities table) are better served by normalization in a relational database. When you normalize, you eliminate redundancy but you also need joins. Document databases have weak join support, so many-to-one relationships require application-level joins — moving join logic from the database into application code.</p>
+    <p><strong>Many-to-many</strong> relationships (a book has many authors, an author has many books) push the document model hardest. Early network-model databases like IDS and CODASYL attempted to solve this with manual access-path traversal; the relational model replaced that with the query optimizer doing the path selection automatically — a major usability win.</p>
+
+    <h2>Schema-on-Read vs Schema-on-Write</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Property</th><th class="col-a">Schema-on-Write (Relational)</th><th class="col-b">Schema-on-Read (Document)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Schema enforcement</td><td class="col-a">At write time by the DB</td><td class="col-b">At read time by application code</td></tr>
+        <tr><td>Adding a new field</td><td class="col-a">ALTER TABLE migration (can lock table)</td><td class="col-b">Just start writing new documents; old ones return null</td></tr>
+        <tr><td>Heterogeneous data</td><td class="col-a">Hard — every row must fit the schema</td><td class="col-b">Easy — different documents can have different fields</td></tr>
+        <tr><td>Data integrity</td><td class="col-a">Guaranteed by DB constraints</td><td class="col-b">Application's responsibility</td></tr>
+        <tr><td>Query flexibility</td><td class="col-a">Strong — optimizer handles joins</td><td class="col-b">Weaker — poor multi-document join support</td></tr>
+      </tbody>
+    </table>
+    <p>Schema-on-read is sometimes called "schemaless," but this is misleading — the schema exists implicitly in application code. The analogy Kleppmann uses: schema-on-write is like static (compile-time) type checking, schema-on-read is like dynamic (runtime) type checking.</p>
+
+    <h3>Data Locality</h3>
+    <p>Document databases often store a document as a single contiguous encoded blob (JSON, BSON, XML). If your application frequently needs the entire document, this <strong>data locality</strong> advantage reduces I/O. However, if you only need part of a document, you still load the whole blob. And updates that grow a document may require rewriting it entirely. Locality therefore helps most for documents that are read as a whole and updated infrequently.</p>
+
+    <h2>Query Languages</h2>
+    <h3>Declarative vs Imperative</h3>
+    <p>SQL is <strong>declarative</strong>: you describe what you want, not how to get it. The query optimizer decides whether to use an index, which join algorithm to pick, and whether to parallelize the execution. This gives the database engine freedom to improve performance without changing the query. CSS selectors and XPath are also declarative.</p>
+    <p>MapReduce is a programming model (not purely declarative, not purely imperative) for processing large datasets across many machines. The user writes <code>map</code> and <code>reduce</code> functions in a general-purpose language, giving full expressive power, but losing the optimizer's ability to rewrite the query. MongoDB added an aggregation pipeline — a more declarative alternative to its JavaScript-based MapReduce.</p>
+
+    <h2>Graph Data Model</h2>
+    <p>When many-to-many relationships are pervasive and the data is highly connected, a graph model is the most natural representation. A <strong>property graph</strong> (used by Neo4j) consists of vertices and edges, each carrying a map of properties. Edges have a direction (head vertex → tail vertex) and a label. Crucially, there is no schema: any vertex can have an edge to any other vertex.</p>
+
+    <h3>Cypher Query Language</h3>
+    <p>Cypher is Neo4j's declarative query language for property graphs. A pattern like <code>(person)-[:BORN_IN]-&gt;()-[:WITHIN*0..]-&gt;(us:Location {name:'United States'})</code> finds all people born anywhere in the USA, traversing any number of WITHIN edges upward through a location hierarchy. Writing this in SQL requires recursive common table expressions (<code>WITH RECURSIVE</code>) — possible but verbose.</p>
+
+    <h3>Triple-Stores and SPARQL</h3>
+    <p>A triple-store models everything as <strong>(subject, predicate, object)</strong> triples, e.g. <code>(Jim, likes, bananas)</code>. RDF (Resource Description Framework) is a common format, and SPARQL is the query language for it. This model closely mirrors how knowledge graphs and semantic web data are represented. Datalog is an older precursor that underpins Datomic and is also worth knowing.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Model</th><th>Best fit</th><th>Example systems</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Relational</td><td>Structured, tabular, many-to-many with joins</td><td>PostgreSQL, MySQL, Oracle</td></tr>
+        <tr><td class="col-a">Document</td><td>Self-contained hierarchical records, schema flexibility</td><td>MongoDB, CouchDB, DynamoDB</td></tr>
+        <tr><td class="col-b">Graph</td><td>Highly connected data, relationship-centric queries</td><td>Neo4j, Amazon Neptune, JanusGraph</td></tr>
+        <tr><td class="col-b">Triple-store</td><td>Semantic data, knowledge graphs</td><td>Datomic, Apache Jena</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>No single data model wins universally. Relational normalizes and joins; document embeds and shards by document; graph traverses relationships efficiently. In interviews: lead with the data's relationship structure. One-to-many self-contained data → document. Complex many-to-many → relational or graph. Schema flexibility needs → document (schema-on-read). Always mention the impedance mismatch and the cost of application-level joins when document stores lack native join support.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-1/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Reliable, Scalable &amp; Maintainable</div>
+      </a>
+      <a href="/ddia/chapter-3/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Storage &amp; Retrieval</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

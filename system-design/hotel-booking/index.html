@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
+<title>Design a Hotel Booking App — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -42,7 +42,7 @@
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .breadcrumb a:hover { color: var(--accent); }
-  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
   .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -138,165 +138,95 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">hotel-booking</span>
     </div>
-    <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Hotel Booking App</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>10 min read</span>
       <span class="separator">·</span>
-      <span style="color:var(--accent)">Tech Stacks</span>
+      <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>A hotel booking platform is a two-sided marketplace with strict correctness requirements on the critical path: double-booking a room is a severe UX failure, while incorrectly blocking available inventory costs revenue. The core design challenge is maintaining accurate room availability under concurrent bookings across a global user base.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Use SQL throughout for ACID correctness — hotel and room data is bounded in size, and bookings demand transaction integrity. A row-level constraint on <code>available_count</code> prevents overselling at the database level. A Redis hold with ~10-minute TTL bridges the checkout gap. Kafka feeds listing changes into Elasticsearch for search. CDN distributes hotel media globally.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Requirements</h2>
 
+    <h3>Functional (Hotel Admin)</h3>
+    <ul>
+      <li>CRUD operations for hotels and rooms</li>
+      <li>Manage bookings (view, cancel, modify)</li>
+      <li>Access business insights and reporting</li>
+    </ul>
+
+    <h3>Functional (User)</h3>
+    <ul>
+      <li>Search for hotels and available rooms by location, dates, and filters</li>
+      <li>Make reservations</li>
+    </ul>
+
+    <h3>Non-Functional</h3>
+    <ul>
+      <li><strong>High consistency</strong> — no double-bookings; availability counts must be correct</li>
+      <li><strong>Low latency</strong> — search and checkout must feel instant</li>
+      <li><strong>High availability</strong> — a down booking service means lost revenue</li>
+      <li><strong>Scalability</strong> — handles global user load and seasonal peaks (holidays, events)</li>
+    </ul>
+
+    <h2>Hotel and Room Listing Service</h2>
+    <p>The hotel and room catalog is stored in a <strong>SQL database</strong>. The rationale is deliberately simple: the number of hotels in the world is finite and grows predictably. A relational database is the right fit — the data is structured, growth is foreseeable, and the query patterns (look up hotel by ID, list rooms by hotel) are well-suited to SQL indexes.</p>
+
+    <p>Hotel images and videos are stored in <strong>AWS S3</strong> (or equivalent object storage). The SQL database holds references (URLs) to these media assets. A <strong>CDN</strong> sits in front of S3 to serve media to a global user base with low latency — fetching a hotel image from a geographically proximate CDN edge is orders of magnitude faster than hitting the origin bucket.</p>
+
+    <p>When hotels or rooms are created or updated, the changes are published to Kafka as events. A consumer reads these events and updates the <strong>Elasticsearch search index</strong> asynchronously, keeping search results eventually consistent with the source of truth.</p>
+
+    <h3>Key APIs</h3>
     <div class="code-block">
       <div class="code-block-header">
         <div class="code-block-header-left">
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
+          <span class="code-lang">REST API</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
+      <pre><code>POST   /hotels              <span class="cm">-- create hotel</span>
+PUT    /hotels/{id}         <span class="cm">-- update hotel</span>
+GET    /hotels/{id}         <span class="cm">-- get hotel details</span>
+
+PUT    /hotels/{id}/rooms/{room_id}   <span class="cm">-- update room</span>
+GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</span></code></pre>
     </div>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h2>Search Service</h2>
+    <p>Search is powered by an <strong>Elasticsearch</strong> cluster (Solr is a comparable alternative — both are built on Apache Lucene). The two differ in their strengths:</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
-
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Feature</th><th>Elasticsearch</th><th>Solr</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>Best for</td><td class="col-a">Time-series data, real-time indexing</td><td class="col-b">Static data sets with heavy caching</td></tr>
+        <tr><td>Fuzzy search</td><td class="col-a">Excellent</td><td class="col-b">Good</td></tr>
+        <tr><td>Type-ahead</td><td class="col-a">Built-in completion suggester</td><td class="col-b">Supported via edge n-gram</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <p>For a hotel platform where listings update continuously (price changes, availability, new properties), Elasticsearch is the better fit. The search index is updated via Kafka events whenever listings change, removing fully-booked rooms from search results automatically.</p>
+
+    <h2>Booking Service and Availability Tracking</h2>
+    <p>The booking service uses a <strong>SQL database</strong> for its ACID guarantees — a double-booking is unacceptable, and ACID transactions are the clean way to prevent it. Room availability is tracked in a dedicated table:</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -304,37 +234,65 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">SQL schema</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+      <pre><code><span class="kw">CREATE TABLE</span> room_availability (
+  room_id         <span class="ty">BIGINT</span>,
+  date            <span class="ty">DATE</span>,
+  available_count <span class="ty">INT</span> <span class="kw">CHECK</span> (available_count >= <span class="num">0</span>),
+  <span class="kw">PRIMARY KEY</span> (room_id, date)
+);
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+<span class="cm">-- Row-level constraint prevents available_count going negative</span>
+<span class="cm">-- A booking that would set count to -1 raises a constraint violation</span></code></pre>
     </div>
+
+    <p>The <code>CHECK (available_count >= 0)</code> constraint is the database-level guard against overselling. When a concurrent transaction attempts to decrement below zero, it fails — enforcing correctness without application-level locking.</p>
+
+    <h2>Preventing Overselling During Checkout</h2>
+    <p>Between when a user selects a room and when they complete payment, other users might book the same room. The solution mirrors the e-commerce cart pattern: a <strong>Redis hold with a ~10-minute TTL</strong> soft-reserves the room during checkout. The flow:</p>
+    <ul>
+      <li>User selects room → Redis hold created, <code>available_count</code> decremented tentatively</li>
+      <li>User completes payment → booking record written to SQL with status <strong>Booked</strong>; hold confirmed</li>
+      <li>User abandons checkout → Redis TTL expires → <code>available_count</code> automatically restored via cache invalidation</li>
+      <li>Payment fails → booking status set to <strong>Payment Declined</strong>; count restored</li>
+    </ul>
+
+    <h3>Booking Status Lifecycle</h3>
+    <ul>
+      <li><strong>Reserved</strong> — Redis hold active; checkout in progress</li>
+      <li><strong>Booked</strong> — payment confirmed; room locked</li>
+      <li><strong>Payment Declined</strong> — payment failed; room released</li>
+      <li><strong>User Cancelled</strong> — user cancelled confirmed booking</li>
+      <li><strong>Completed</strong> — stay has occurred</li>
+    </ul>
+
+    <h2>Analytics and Reporting</h2>
+    <p>The Analytics Service consumes two event streams from Kafka: search actions (what users search for, which results they click) and order transactions (bookings, cancellations, revenue). These feeds power:</p>
+    <ul>
+      <li><strong>Price optimization</strong> — surfacing demand signals to hotel managers for dynamic pricing</li>
+      <li><strong>Business insights</strong> — occupancy rates, revenue trends, booking lead times</li>
+      <li><strong>Accounting reports</strong> — reconciliation data for hotel finance teams</li>
+    </ul>
+
+    <h2>Why Not Cassandra for Bookings?</h2>
+    <p>Unlike e-commerce order history (high volume, append-heavy, suitable for Cassandra archival), hotel booking volume is low enough that a SQL master database can retain the full history without a dedicated archival service. The correctness benefits of ACID transactions outweigh the scalability benefits of NoSQL at this data volume.</p>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Hotel booking design is all about consistency: SQL + row-level constraints prevent double-booking at the database level; Redis TTL holds solve the checkout gap without permanently blocking inventory; Kafka feeds Elasticsearch asynchronously to keep search accurate. The "why not NoSQL" answer here is simple — booking volume doesn't justify sacrificing ACID, and hotel counts are bounded.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/system-design/url-shortener/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Design a URL Shortener</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
+      <a href="/system-design/" class="article-nav-card next">
         <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+        <div class="article-nav-title">System Design</div>
       </a>
     </div>
   </div>

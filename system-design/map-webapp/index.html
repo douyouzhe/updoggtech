@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A system design deep dive into building a map web app at scale — geospatial indexing, route pre-computation, WebSocket navigation, and ML-powered ETA refinement.">
+<title>Design a Map Web App — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -42,7 +42,7 @@
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .breadcrumb a:hover { color: var(--accent); }
-  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
   .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -138,203 +138,115 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">map-webapp</span>
     </div>
-    <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Map Web App</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>11 min read</span>
       <span class="separator">·</span>
-      <span style="color:var(--accent)">Tech Stacks</span>
+      <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>A map platform like Google Maps serves billions of users across wildly different use cases — turn-by-turn navigation, business discovery, satellite imagery, traffic-aware routing, and third-party integrations for apps like Uber. At 3 billion monthly active users and 10 million API partners, it is one of the most data-intensive and latency-sensitive systems in existence.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Pre-compute routes between sectional nodes and store them in a geohash-indexed key-value store (BigTable/DynamoDB/Cassandra). Use WebSockets for real-time navigation. Feed user location pings (every 5s, at-most-once) into a message queue. Let CDC-driven Kafka keep the Elasticsearch search index current with map changes. Push ML-powered ETA refinement and hotspot prediction offline.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Requirements</h2>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
+    <h3>Functional</h3>
+    <ul>
+      <li>Identify roads, places, and routes on a map</li>
+      <li>Calculate accurate distance and ETA accounting for traffic, road conditions, and real-time incidents</li>
+      <li>Provide a pluggable API for third-party integration (ride-share apps, vehicle manufacturers, data providers)</li>
+    </ul>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h3>Non-Functional</h3>
+    <ul>
+      <li><strong>Low latency</strong> — route queries must return in milliseconds, not seconds</li>
+      <li><strong>High availability</strong> — navigation failures mid-trip are critical user experiences</li>
+      <li><strong>Massive scale</strong> — 3 billion monthly active users, 10 million API partners</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h2>Map Data: Ingestion and Storage</h2>
+    <p>Initial map data is sourced from government municipal maps (e.g., USGS), satellite imagery providers (Planet, Maxar), street-level imagery vehicles, and third-party geographic data providers. Continuous updates arrive via user-submitted feedback, business submissions, and ongoing satellite refreshes.</p>
+    <p>All map modifications are processed through Kafka via <strong>Change Data Capture (CDC)</strong>, enabling downstream consumers — search indexers, route pre-computers, analytics services — to react to map changes asynchronously.</p>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
+    <h3>Spatial Indexing with Geohash</h3>
+    <p>The map is represented as latitude/longitude coordinates (a 2D x-y plane). To make spatial queries efficient at database scale, the system uses two complementary structures:</p>
+    <ul>
+      <li><strong>Quadtree</strong> — recursively subdivides regions into four quadrants, forming a hierarchical spatial index</li>
+      <li><strong>Geohash</strong> — encodes 2D geographic coordinates into a 1D sortable string, enabling efficient range queries on a standard key-value store</li>
+    </ul>
+    <p>The primary database of choice is Google's in-house single-keyed <strong>BigTable</strong>; at similar scale, AWS DynamoDB or Cassandra are viable alternatives for their massive data volume handling.</p>
 
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
+    <h2>Routing Algorithm</h2>
+    <p>Standard graph traversal (BFS) does not work for routing because road segments have variable weights (distance, speed limit, traffic). The correct algorithms are <strong>Dijkstra</strong> or <strong>Floyd-Warshall</strong>, which handle weighted edges. However, running Dijkstra across the full global road graph in real time has time complexity of O((V+E)logV) — far too expensive for 3 billion concurrent users.</p>
 
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
+    <h3>Pre-Computation Strategy</h3>
+    <p>The solution is to <strong>sacrifice storage for speed</strong>: routes between sampled nodes within each geographic section are pre-computed and stored. Navigation then resolves to a lookup across sections rather than a live graph traversal. Only the final unmapped micro-segment requires on-the-fly computation.</p>
+    <p>When a traffic incident causes a significant ETA change, the impact <strong>bubbles up recursively</strong> through the section hierarchy, updating only the affected route segments rather than recomputing globally.</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
+    <h2>Real-Time Navigation</h2>
+    <p>Navigation sessions require bidirectional, low-latency communication between server and client — WebSockets are the right protocol here. A <strong>WebSocket Manager</strong> maintains a key-value mapping of connected users to their WebSocket server and port, enabling the Navigation Tracking Service to reach any active session.</p>
 
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
+    <p>Three events trigger a navigation update:</p>
+    <ul>
+      <li><strong>Route deviation</strong> — user strays from the planned path; recalculate</li>
+      <li><strong>Significant ETA delay</strong> — a new incident on the route exceeds a threshold; notify user</li>
+      <li><strong>Better route available</strong> — proactively reroute if a faster path opens up</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
+    <h2>User Location Tracking</h2>
+    <p>Active users transmit their GPS location <strong>every 5 seconds</strong> (when location sharing is enabled). These packets flow into a message queue that decouples producers from consumers. The delivery guarantee is <strong>at-most-once</strong>: a single lost location packet is acceptable because the next one arrives 5 seconds later, and the cost of guaranteed delivery would outweigh the benefit for this use case.</p>
 
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Design Decision</th><th>Choice</th><th>Rationale</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>Route computation</td><td class="col-a">Pre-compute + store</td><td>Real-time Dijkstra is O((V+E)logV) — too slow at 3B users</td></tr>
+        <tr><td>Location delivery</td><td class="col-a">At-most-once</td><td>Single lost packet is non-critical; next arrives in 5s</td></tr>
+        <tr><td>Spatial indexing</td><td class="col-a">Geohash over quadtree alone</td><td>Enables efficient 1D range queries on 2D geographic data</td></tr>
+        <tr><td>Map data consistency</td><td class="col-b">CDC-based eventual consistency</td><td>Acceptable for map data; real-time map updates are not critical</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h2>Search and Discovery</h2>
+    <p>Place name search is powered by an <strong>Elasticsearch cluster</strong> supporting fuzzy matching and type-ahead. The index is populated from two streams: direct place name data and map CDC events. Map browsing displays nodes with priority-based filtering that adapts to zoom level — zooming out shows only major landmarks, zooming in reveals fine-grained detail.</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
-
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
-    </div>
+    <h2>ML and Analysis Service</h2>
+    <p>The Analysis Service consumes location and behavioral data to power several advanced features:</p>
+    <ul>
+      <li><strong>User profiling</strong> — driving habits, typical speed patterns, home/office location prediction</li>
+      <li><strong>ETA refinement</strong> — percentile-based accuracy ranges using aggregated historical trip data</li>
+      <li><strong>Proactive trip planning</strong> — departure reminders tied to calendar appointments or flight times</li>
+      <li><strong>Data source scoring</strong> — reliability weighting for user-submitted incidents vs. third-party providers</li>
+      <li><strong>Road discovery</strong> — identifying unmapped roads through aggregate user travel patterns</li>
+      <li><strong>Hotspot prediction</strong> — forecasting congestion zones and surfacing alternative routes before congestion hits</li>
+    </ul>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Map systems live or die on their spatial indexing and pre-computation strategy. Geohash bridges 2D geography to 1D key-value lookups; pre-computed routes bridge the gap between Dijkstra's correctness and real-time latency requirements. Everything else — CDC pipelines, WebSocket navigation, at-most-once location pings — is about keeping these pre-computed answers current and delivering them fast.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/system-design/ecommerce-platform/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Design an E-commerce Platform</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/system-design/video-streaming/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Video Streaming Platform</div>
       </a>
     </div>
   </div>

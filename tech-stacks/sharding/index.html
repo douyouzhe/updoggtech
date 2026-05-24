@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
+<title>Sharding — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -24,11 +24,7 @@
   .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
   .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
 
-  nav {
-    position: sticky; top: 0; z-index: 100;
-    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-  }
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
   .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
   .logo-bracket { color: var(--muted); }
@@ -37,7 +33,6 @@
   .nav-links a:hover { color: var(--text); background: var(--bg3); }
   .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
 
-  /* ARTICLE HEADER */
   .article-header { padding: 56px 0 40px; }
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
@@ -47,7 +42,6 @@
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
 
-  /* ARTICLE BODY */
   .article-body { padding: 40px 0 80px; }
   .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
   .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
@@ -56,16 +50,8 @@
   .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
   .article-body strong { color: var(--text); font-weight: 700; }
 
-  /* CODE BLOCKS */
-  .code-block {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
-    margin: 28px 0; overflow: hidden;
-  }
-  .code-block-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; border-bottom: 1px solid var(--border);
-    background: var(--bg3);
-  }
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
   .code-block-header-left { display: flex; align-items: center; gap: 10px; }
   .code-dot { width: 10px; height: 10px; border-radius: 50%; }
   .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -76,29 +62,21 @@
   .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
   .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
 
-  /* INLINE CODE */
   .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
   .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
 
-  /* CALLOUT */
-  .callout {
-    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
-    border-left: 3px solid var(--accent); border-radius: 8px;
-    padding: 16px 20px; margin: 28px 0;
-  }
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
   .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
   .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
 
-  /* COMPARISON TABLE */
   .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
   .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
-  /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
   .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
   .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -139,164 +117,65 @@
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
       <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <span style="color:var(--text)">sharding</span>
     </div>
     <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <h1 class="article-title">Sharding</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 02, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>10 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>Sharding is a technique for <strong>horizontally partitioning</strong> a database across multiple independent nodes, each called a shard, so that the dataset and the write load are distributed rather than concentrated on a single machine. When a single database server can no longer handle the volume of data or query throughput — and vertical scaling (bigger CPU, more RAM) has hit its ceiling — sharding is the next step.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Sharding splits data across multiple database nodes by a shard key. Hash-based sharding gives even distribution; range-based sharding enables efficient range scans. Consistent hashing minimizes data movement when resharding. The cost is complexity: cross-shard queries, joins, and transactions require significant engineering effort.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
-
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
-
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
+    <h2>Vertical vs. Horizontal Partitioning</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Dimension</th><th class="col-a">Vertical Partitioning</th><th class="col-b">Horizontal Partitioning (Sharding)</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>What is split</td><td class="col-a">Columns — different tables/columns on different servers (functional decomposition)</td><td class="col-b">Rows — the same table spread across multiple nodes</td></tr>
+        <tr><td>Scale limit</td><td class="col-a">Bounded by the largest single-table row count</td><td class="col-b">Scales horizontally with node count</td></tr>
+        <tr><td>Use case</td><td class="col-a">Separating hot columns, microservice decomposition</td><td class="col-b">Very large tables that outgrow a single node</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h2>Sharding Strategies</h2>
+
+    <h3>Hash-Based Sharding</h3>
+    <p>Apply a hash function to the shard key and compute <code>hash(key) % num_shards</code> to determine which shard holds a given row. This distributes data evenly across shards regardless of the key's natural ordering.</p>
+    <ul>
+      <li><strong>Pro:</strong> Uniform distribution; no single shard becomes disproportionately large.</li>
+      <li><strong>Con:</strong> Range queries require querying all shards. Adding or removing a shard changes <code>num_shards</code> and invalidates all mappings, requiring a full data migration.</li>
+    </ul>
+
+    <h3>Range-Based Sharding</h3>
+    <p>Partition rows by contiguous ranges of the shard key — e.g., user IDs 1–1,000,000 on shard 1, 1,000,001–2,000,000 on shard 2. Often used when the key has a natural ordering (timestamps, sequential IDs).</p>
+    <ul>
+      <li><strong>Pro:</strong> Range queries can target a single shard. Easy to reason about data placement.</li>
+      <li><strong>Con:</strong> Hotspot risk — if recent data is the most active, the highest-range shard bears all the write load (a common problem with time-series data and sequential IDs).</li>
+    </ul>
+
+    <h3>Directory-Based Sharding</h3>
+    <p>A lookup table (the "directory") maps each key to its shard. The application queries the directory on every request to locate the right shard.</p>
+    <ul>
+      <li><strong>Pro:</strong> Flexible — any key can be remapped to any shard without changing the sharding logic.</li>
+      <li><strong>Con:</strong> The directory is a single point of failure and a performance bottleneck; it must be highly available and low-latency.</li>
+    </ul>
+
+    <h2>Consistent Hashing</h2>
+    <p>Standard hash-based sharding forces a full data reshuffle when nodes are added or removed. Consistent hashing solves this by mapping both keys and nodes onto a logical ring. When a node is added, it only claims the keyspace between itself and its predecessor — all other assignments remain stable. When a node is removed, its keys migrate only to its successor. This means roughly <code>k/n</code> keys move when adding one node to an <code>n</code>-node cluster (where <code>k</code> is total key count), rather than remapping nearly everything.</p>
+    <p>Most production consistent hashing implementations use <strong>virtual nodes</strong>: each physical node owns multiple positions on the ring, which smooths out uneven distribution that can arise with small cluster sizes.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -304,37 +183,58 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">python</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+      <pre><code><span class="kw">import</span> hashlib
+<span class="kw">from</span> sortedcontainers <span class="kw">import</span> SortedDict
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+<span class="kw">class</span> <span class="ty">ConsistentHashRing</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, virtual_nodes=<span class="num">150</span>):
+        self.ring = <span class="fn">SortedDict</span>()
+        self.vnodes = virtual_nodes
+
+    <span class="kw">def</span> <span class="fn">add_node</span>(self, node):
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(self.vnodes):
+            h = <span class="fn">int</span>(hashlib.<span class="fn">md5</span>(<span class="fn">f</span><span class="str">"{node}-{i}"</span>.<span class="fn">encode</span>()).<span class="fn">hexdigest</span>(), <span class="num">16</span>)
+            self.ring[h] = node   <span class="cm"># place virtual node on ring</span>
+
+    <span class="kw">def</span> <span class="fn">get_node</span>(self, key):
+        h = <span class="fn">int</span>(hashlib.<span class="fn">md5</span>(key.<span class="fn">encode</span>()).<span class="fn">hexdigest</span>(), <span class="num">16</span>)
+        idx = self.ring.<span class="fn">bisect_right</span>(h) % <span class="fn">len</span>(self.ring)
+        <span class="kw">return</span> self.ring.<span class="fn">peekitem</span>(idx)[<span class="num">1</span>]   <span class="cm"># nearest clockwise node</span></code></pre>
     </div>
+
+    <h2>Choosing a Shard Key</h2>
+    <p>The shard key is the most consequential design decision in a sharded system. A bad key creates hotspots that nullify the benefits of sharding. Good shard key properties:</p>
+    <ul>
+      <li><strong>High cardinality</strong> — enough distinct values to spread data across all shards.</li>
+      <li><strong>Even write distribution</strong> — avoid monotonically increasing keys (auto-increment IDs, timestamps) with hash-based sharding; they naturally create a write hotspot on the "current" shard.</li>
+      <li><strong>Aligned with access patterns</strong> — queries that include the shard key can be routed to a single shard; queries without it must fan out to all shards (scatter-gather).</li>
+    </ul>
+
+    <h2>Challenges &amp; Tradeoffs</h2>
+    <ul>
+      <li><strong>Cross-shard joins</strong> — SQL joins across shards require the application layer to fetch data from multiple shards and merge it in memory. Expensive and complex.</li>
+      <li><strong>Distributed transactions</strong> — ACID transactions that span multiple shards need two-phase commit (2PC) or saga patterns, both of which add latency and failure surface area.</li>
+      <li><strong>Rebalancing</strong> — as data grows unevenly, shards may need to be split or merged. With consistent hashing this is less disruptive, but still a significant operational event.</li>
+      <li><strong>Schema changes</strong> — DDL changes (adding a column) must be applied to every shard, usually with online schema change tooling (pt-online-schema-change, gh-ost).</li>
+    </ul>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Shard only when you have exhausted vertical scaling and read replicas. The added operational complexity is real. When you do shard, invest heavily in shard key design — a well-chosen key keeps queries single-shard and writes balanced. Use consistent hashing to minimize data movement during topology changes, and plan your cross-shard query strategy before the schema is set in stone.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/tech-stacks/caching/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Caching</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/tech-stacks/message-queue/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Message Queue</div>
       </a>
     </div>
   </div>

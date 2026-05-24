@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A practical guide to Spark join strategies — broadcast join, shuffle hash join, sort-merge join, cartesian join, bucketing, and when to use each.">
+<title>Spark Join Strategy — updoggtech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">spark-joins</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">Spark Join Strategy</h1>
+    <div class="article-meta">
+      <span>Jul 15, 2023</span>
+      <span class="separator">·</span>
+      <span>11 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Joins are among the most expensive operations in distributed data processing. In Apache Spark, the choice of join strategy determines whether a job runs in minutes or hours. Spark's Catalyst optimizer selects a strategy automatically based on dataset size and available statistics, but understanding each strategy — and when to override the optimizer — is a core data engineering interview skill.</p>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Use Broadcast Join when one side is small enough to fit in memory — it eliminates network shuffling entirely. Use Sort-Merge Join for large-large joins; it is Spark's robust default for that case. Shuffle Hash Join is fast for large datasets when the build side fits in a hash table. Avoid Cartesian Join unless you explicitly need a cross product. Bucketing pre-partitions data to eliminate shuffle in repeated joins.</p>
+    </div>
+
+    <h2>Why Join Strategy Matters</h2>
+    <p>In a distributed cluster, the main cost of a join is moving data across the network — called a <strong>shuffle</strong>. A shuffle forces Spark to serialize data, write it to disk, send it over the network to the correct executor, and deserialize it on the receiving end. For large datasets this can dominate total job runtime. The goal of every join optimization is to minimize unnecessary shuffling.</p>
+
+    <h2>Broadcast Join</h2>
+    <p>When one of the two datasets is small enough to fit in the memory of every worker, Spark <strong>broadcasts</strong> (replicates) the smaller dataset to all executor nodes. Each executor then performs the join locally against its partition of the larger dataset — no shuffle required for the large side.</p>
+    <ul>
+      <li><strong>Advantage:</strong> Eliminates network shuffle for the large dataset entirely. Direct in-memory access, no disk I/O. Best-case performance for small-large joins.</li>
+      <li><strong>Limitation:</strong> The broadcast dataset must fit in executor memory. If it is too large, the broadcast itself causes out-of-memory errors across all workers. The broadcast threshold is configurable.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> pyspark.sql <span class="kw">import</span> functions <span class="kw">as</span> F
+
+<span class="cm"># auto broadcast: threshold default is 10 MB</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">10485760</span>)
+
+<span class="cm"># manual broadcast hint — forces broadcast regardless of size</span>
+result = orders.<span class="fn">join</span>(
+    F.<span class="fn">broadcast</span>(country_codes),   <span class="cm"># broadcast the small lookup table</span>
+    on=<span class="str">"country_code"</span>,
+    how=<span class="str">"left"</span>
+)
+
+<span class="cm"># disable auto broadcast (for testing other strategies)</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">-1</span>)</code></pre>
+    </div>
+
+    <h2>Shuffle Hash Join</h2>
+    <p>Both datasets are repartitioned by the join key via a network shuffle, so all rows with the same key land on the same executor. Spark then builds a hash table in memory from one side (the "build" side, usually the smaller one) and probes it with each row from the other side.</p>
+    <ul>
+      <li><strong>Advantage:</strong> Handles large datasets that exceed the broadcast threshold. Tolerates skewed distributions via fault-tolerant RDD lineage recovery. Good for cases where both datasets are large but the build side still fits in a hash table.</li>
+      <li><strong>Limitation:</strong> Requires a full network shuffle — high I/O. If the build side does not fit in memory, Spark spills to disk, degrading performance significantly.</li>
+    </ul>
+
+    <h2>Sort-Merge Join</h2>
+    <p>Spark's default strategy for large-large joins. Both sides are shuffled by the join key and then sorted. The sorted partitions are merged sequentially — records are matched by scanning forward through both sorted streams simultaneously, which requires only constant memory regardless of dataset size.</p>
+    <ul>
+      <li><strong>Advantage:</strong> Can handle datasets that exceed total available memory — sorting and merging happen in bounded chunks. Efficient for high-cardinality keys and skewed distributions. The most general-purpose Spark join strategy.</li>
+      <li><strong>Limitation:</strong> Sorting adds CPU overhead. Multiple shuffle read/write cycles increase disk I/O. Not as fast as broadcast join for small-large scenarios.</li>
+    </ul>
+
+    <h2>Cartesian (Cross) Join</h2>
+    <p>Pairs every row from the left dataset with every row from the right dataset, producing an M×N result. No join key is required. The output size grows quadratically — even moderately large inputs produce unmanageably large outputs.</p>
+    <ul>
+      <li><strong>Appropriate uses:</strong> Generating all pairwise combinations for small datasets, certain ML feature cross-product computations.</li>
+      <li><strong>Warning:</strong> Accidentally triggering a cartesian join on large tables (e.g., by omitting a join condition) is a common cause of Spark job failures and runaway cluster costs.</li>
+    </ul>
+
+    <h2>Strategy Comparison</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>Best For</th><th>Network Shuffle</th><th>Memory Pressure</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Broadcast Join</strong></td><td>Small (&lt; threshold) × Large</td><td>Small side only</td><td>Low (if small side fits)</td></tr>
+        <tr><td><strong>Shuffle Hash Join</strong></td><td>Medium × Large (build side fits in hash table)</td><td>Both sides</td><td>Medium–High</td></tr>
+        <tr><td><strong>Sort-Merge Join</strong></td><td>Large × Large (default)</td><td>Both sides + sort</td><td>Low (streaming merge)</td></tr>
+        <tr><td><strong>Cartesian Join</strong></td><td>Cross product (tiny datasets only)</td><td>All data to one node</td><td>Extreme</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Bucketing: Eliminating Shuffle on Repeated Joins</h2>
+    <p><strong>Bucketing</strong> pre-partitions a table by the join key when it is written to storage. If both sides of a join are bucketed on the same key with the same number of buckets, Spark can skip the shuffle entirely — the data is already co-located by key. This is a one-time write cost that pays dividends on every subsequent join over that table.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># write orders bucketed by customer_id — one-time cost</span>
+orders.<span class="fn">write</span> \
+    .<span class="fn">bucketBy</span>(<span class="num">64</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \
+    .<span class="fn">saveAsTable</span>(<span class="str">"orders_bucketed"</span>)
+
+<span class="cm"># write customers with same bucket count + key</span>
+customers.<span class="fn">write</span> \
+    .<span class="fn">bucketBy</span>(<span class="num">64</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \
+    .<span class="fn">saveAsTable</span>(<span class="str">"customers_bucketed"</span>)
+
+<span class="cm"># join is now shuffle-free — Catalyst detects co-location</span>
+result = spark.<span class="fn">table</span>(<span class="str">"orders_bucketed"</span>).<span class="fn">join</span>(
+    spark.<span class="fn">table</span>(<span class="str">"customers_bucketed"</span>),
+    on=<span class="str">"customer_id"</span>
+)</code></pre>
+    </div>
+
+    <h2>Reading the Query Plan</h2>
+    <p>Use <code>df.explain()</code> (or <code>explain(mode='extended')</code>) to inspect which join strategy Spark selected. Look for the physical plan node: <code>BroadcastHashJoin</code>, <code>ShuffledHashJoin</code>, <code>SortMergeJoin</code>, or <code>CartesianProduct</code>. If Spark picked the wrong strategy — common when table statistics are stale — use hint annotations (<code>broadcast()</code>, <code>/*+ SHUFFLE_HASH */</code>, <code>/*+ MERGE */</code>) or run <code>ANALYZE TABLE</code> to refresh statistics.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Always check the physical plan first — let Spark's optimizer do its job, and only override when you have evidence it chose wrong. The decision tree: small side fits in memory → Broadcast; both sides are large but build side fits in hash table → Shuffle Hash; both sides are truly large → Sort-Merge. Bucket frequently-joined large tables at write time to eliminate shuffle permanently on those join paths.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/oauth/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">OAuth 2.0</div>
+      </a>
+      <a href="/tech-stacks/graphql-rest-comparison/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">GraphQL &amp; REST Comparison</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

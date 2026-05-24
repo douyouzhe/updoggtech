@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
+<title>Design a Video Streaming Platform — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -42,7 +42,7 @@
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .breadcrumb a:hover { color: var(--accent); }
-  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
   .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -138,30 +138,57 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">video-streaming</span>
     </div>
-    <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Video Streaming Platform</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>11 min read</span>
       <span class="separator">·</span>
-      <span style="color:var(--accent)">Tech Stacks</span>
+      <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>A video streaming platform like YouTube or Netflix must handle massive storage (hundreds of terabytes of daily uploads), complex multi-format transcoding, global CDN delivery with minimal buffering, and ML-driven recommendations that keep users engaged. The upload pipeline and the playback pipeline are effectively two separate systems with very different constraints.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Video uploads flow through a Kafka-backed pipeline of content filtering, classification, and multi-resolution transcoding before landing in blob storage and Cassandra metadata. Playback is served from geographically distributed CDNs. Recommendations are computed offline and stored in key-value NoSQL. TCP is chosen over UDP for reliability — no packet loss means no buffering artifacts.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Requirements</h2>
+
+    <h3>Functional</h3>
+    <ul>
+      <li>User authentication (register and login)</li>
+      <li>Video upload</li>
+      <li>Video playback</li>
+      <li>Homepage with content discovery</li>
+      <li>Multi-platform support: devices, formats, resolutions, quality levels, regions, and languages</li>
+    </ul>
+
+    <h3>Non-Functional</h3>
+    <ul>
+      <li><strong>Low latency, high availability</strong> — minimal buffering is the primary user experience metric</li>
+      <li><strong>User engagement</strong> — high-quality recommendation content keeps watch time high</li>
+    </ul>
+
+    <h3>Scale Estimates</h3>
+    <ul>
+      <li>10 million daily active users, each watching ~10 videos per day</li>
+      <li>1% are content creators uploading ~2 videos per day each</li>
+      <li>Average video size: 500 MB → approximately 100 TB of new storage daily</li>
+    </ul>
+
+    <h2>Protocol: TCP vs. UDP</h2>
+    <p>YouTube and Netflix adopted <strong>TCP</strong> as the transport protocol primarily to guarantee video quality — TCP's retransmission ensures zero packet loss, eliminating the pixelation or blocking artifacts that dropped UDP packets cause. Security is a secondary benefit. The tradeoff is slightly higher latency compared to UDP, which is acceptable for on-demand streaming. UDP remains dominant in live streaming where low latency matters more than perfect quality. Google's <strong>QUIC</strong> protocol is an emerging alternative that achieves TCP-like reliability over UDP.</p>
+
+    <h2>Upload Pipeline</h2>
+    <p>The upload path is the most complex flow in the system. A raw video file goes through multiple transformations before it is ready for viewers:</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -169,172 +196,69 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
+          <span class="code-lang">flow</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
+      <pre><code>Creator uploads raw video
+  → Content Onboarding Initializer Service
+  → Kafka message queue
+      ├── Multi-part Resolver: chunks file for parallel processing
+      ├── Content Filter: screens for illegal/inappropriate material
+      ├── Classifier & Tagger: generates tags, ratings, categories
+      └── Transcoder: produces multiple resolutions, formats, bitrates
+            └── Blob storage (S3)
+                └── Elasticsearch indexing
+                    └── Content Service → Cassandra (metadata)</code></pre>
     </div>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <p>Chunking the upload into parallel parts through the <strong>Multi-part Resolver</strong> dramatically reduces total processing time for large files. Each chunk can be processed independently and re-uploaded on failure without restarting the entire transfer.</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h2>Storage Architecture</h2>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
-
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Data Type</th><th>Storage</th><th>Rationale</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>User accounts</td><td class="col-a">SQL (RDBMS)</td><td>ACID compliance for authentication and billing data</td></tr>
+        <tr><td>Video metadata</td><td class="col-b">Cassandra (NoSQL)</td><td>High write throughput; fixed query patterns (by video ID)</td></tr>
+        <tr><td>Video files</td><td class="col-a">Blob storage (S3)</td><td>Object store purpose-built for large binary content</td></tr>
+        <tr><td>Recommendations</td><td class="col-a">Key-value NoSQL</td><td>Fast point lookups by user ID; updated via offline batch jobs</td></tr>
+        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text and fuzzy search with type-ahead</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h2>User Authentication</h2>
+    <p>The authentication flow uses a standard RESTful API service backed by a SQL database for ACID guarantees. A <strong>Redis cache with Cache-Aside (lazy loading)</strong> pattern sits in front of the SQL database: data is loaded into cache on first miss and served from cache on subsequent reads. Lazy loading is preferred over write-through here because it avoids caching data that is never actually requested.</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+    <h2>Content Delivery</h2>
+    <p>Video files are served through a globally distributed CDN network. A <strong>Host Optimizer</strong> service directs each client to the nearest CDN node based on geographic proximity and current server load. <strong>Lazy loading</strong> is applied at the CDN layer — only the segments the user is currently watching are fetched, rather than the full video file, reducing bandwidth costs and startup latency.</p>
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
-    </div>
+    <h2>Homepage and Search</h2>
+    <p>The homepage combines two data sources:</p>
+    <ul>
+      <li><strong>Search Service</strong> — an Elasticsearch cluster with fuzzy search and type-ahead for active queries</li>
+      <li><strong>Recommendations</strong> — pre-computed ML predictions stored in a key-value NoSQL database, keyed by user ID for O(1) lookup</li>
+    </ul>
+    <p>Recommendations are computed <strong>offline</strong> from watch history, watch duration, and interaction signals (likes, shares, re-watches). These signals are fed into Kafka from the playback service and used to train recommendation models in batch.</p>
+
+    <h2>Playback Tracking</h2>
+    <p>During playback, the client continuously logs watch status and duration. This data flows into Kafka and drives two downstream consumers: the recommendation model training pipeline (offline) and the watch history service (near real-time). Continuous logging also enables resuming playback from the correct position across devices.</p>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Video streaming is two systems: upload (complex multi-stage pipeline optimized for throughput) and playback (optimized for latency via CDN and lazy loading). TCP's no-packet-loss guarantee is worth the latency tradeoff for on-demand streaming. Recommendations belong offline — pre-compute once, serve fast from key-value store, retrain continuously from Kafka-buffered behavior signals.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/system-design/map-webapp/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Design a Map Web App</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/system-design/chat-app/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Chat App</div>
       </a>
     </div>
   </div>

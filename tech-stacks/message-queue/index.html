@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A practical guide to message queues — why they exist, delivery semantics, pull vs push, dead-letter queues, and how they compare to Kafka.">
+<title>Message Queue — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -24,11 +24,7 @@
   .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
   .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
 
-  nav {
-    position: sticky; top: 0; z-index: 100;
-    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--border);
-  }
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
   .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
   .logo-bracket { color: var(--muted); }
@@ -37,7 +33,6 @@
   .nav-links a:hover { color: var(--text); background: var(--bg3); }
   .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
 
-  /* ARTICLE HEADER */
   .article-header { padding: 56px 0 40px; }
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
@@ -47,7 +42,6 @@
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
 
-  /* ARTICLE BODY */
   .article-body { padding: 40px 0 80px; }
   .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
   .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
@@ -56,16 +50,8 @@
   .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
   .article-body strong { color: var(--text); font-weight: 700; }
 
-  /* CODE BLOCKS */
-  .code-block {
-    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
-    margin: 28px 0; overflow: hidden;
-  }
-  .code-block-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 16px; border-bottom: 1px solid var(--border);
-    background: var(--bg3);
-  }
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
   .code-block-header-left { display: flex; align-items: center; gap: 10px; }
   .code-dot { width: 10px; height: 10px; border-radius: 50%; }
   .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -76,29 +62,21 @@
   .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
   .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
 
-  /* INLINE CODE */
   .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
   .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
 
-  /* CALLOUT */
-  .callout {
-    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
-    border-left: 3px solid var(--accent); border-radius: 8px;
-    padding: 16px 20px; margin: 28px 0;
-  }
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
   .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
   .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
 
-  /* COMPARISON TABLE */
   .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
   .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
-  /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
   .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
   .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -139,202 +117,107 @@
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
       <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <span style="color:var(--text)">message-queue</span>
     </div>
     <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <h1 class="article-title">Message Queue</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 02, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>10 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>A <strong>message queue</strong> is a durable buffer that decouples the producer of a message from its consumer. The producer sends a message to the queue and moves on; one or more consumers process it asynchronously, at their own pace. This asynchronous handoff is what makes message queues a fundamental building block for resilient, loosely-coupled distributed systems.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Message queues decouple producers from consumers in time and speed. They absorb traffic bursts, enable async work, and improve system resilience. Choose between at-least-once and exactly-once delivery based on whether your consumers are idempotent. Use dead-letter queues to handle poison messages without blocking the main queue.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Core Problems Message Queues Solve</h2>
+    <ul>
+      <li><strong>Traffic spikes</strong> — a queue absorbs burst traffic so downstream services are not overwhelmed. The producer writes at its pace; the consumer processes at its pace. This is sometimes called the "shock absorber" pattern.</li>
+      <li><strong>Service decoupling</strong> — the producer does not need to know about the consumer, its location, or whether it is currently running. Each service evolves independently.</li>
+      <li><strong>Async offloading</strong> — work that does not need to block the user response (sending email, resizing images, generating reports) can be queued and handled out-of-band, reducing user-facing latency.</li>
+      <li><strong>Resilience</strong> — if a downstream service crashes, messages accumulate in the queue. When the service recovers, it processes the backlog without any message loss.</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
-
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
-
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
+    <h2>Delivery Semantics</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Semantic</th><th>Guarantee</th><th>Risk</th><th>When to Use</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td><strong>At-Most-Once</strong></td><td>Message delivered zero or one time</td><td>Message loss</td><td>Metrics, heartbeats — loss is tolerable</td></tr>
+        <tr><td><strong>At-Least-Once</strong></td><td>Message delivered one or more times</td><td>Duplicates</td><td>Most use cases — requires idempotent consumers</td></tr>
+        <tr><td><strong>Exactly-Once</strong></td><td>Message delivered exactly one time</td><td>High complexity / latency</td><td>Financial transactions, inventory updates</td></tr>
+      </tbody>
+    </table>
+    <p>At-least-once is the practical default. The burden of handling duplicates is placed on the consumer — typically by checking a <strong>deduplication ID</strong> before processing, or by making the operation naturally idempotent (e.g., <code>SET user.status = 'active'</code> is safe to run twice; <code>balance -= 100</code> is not).</p>
+
+    <h2>Push vs. Pull</h2>
+    <p><strong>Push</strong> — the broker delivers messages to consumers as they arrive. Low latency, but the broker must track consumer capacity to avoid overwhelming a slow consumer.</p>
+    <p><strong>Pull</strong> — consumers poll the broker for new messages. This naturally rate-limits delivery to the consumer's capacity and is the model used by Kafka and SQS. The downside is that polling adds a small latency floor and wastes CPU with empty-poll cycles, which is mitigated by <strong>long polling</strong> (the broker holds the connection open until a message arrives or a timeout expires).</p>
+
+    <h2>Dead-Letter Queues (DLQ)</h2>
+    <p>When a consumer repeatedly fails to process a message — due to a malformed payload, a transient bug, or an incompatible schema change — that message becomes a "poison pill" that blocks the queue. A <strong>dead-letter queue</strong> is a secondary queue to which messages are moved after exceeding a maximum delivery attempt count (<code>maxReceiveCount</code> in SQS). This keeps the main queue flowing while preserving the failed message for inspection and replay.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// AWS SQS: attach a DLQ to a source queue</span>
+{
+  <span class="str">"deadLetterTargetArn"</span>: <span class="str">"arn:aws:sqs:us-east-1:123456:my-dlq"</span>,
+  <span class="str">"maxReceiveCount"</span>: <span class="num">5</span>   <span class="cm">// move to DLQ after 5 failed deliveries</span>
+}</code></pre>
+    </div>
+
+    <h2>Message Queue vs. Kafka</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th class="col-a">Traditional MQ (RabbitMQ, SQS)</th><th class="col-b">Kafka</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Message lifecycle</td><td class="col-a">Deleted after successful consumption</td><td class="col-b">Retained for a configurable period; multiple consumers can re-read</td></tr>
+        <tr><td>Consumer model</td><td class="col-a">Competing consumers — one consumer per message</td><td class="col-b">Consumer groups — multiple independent groups each read all messages</td></tr>
+        <tr><td>Ordering</td><td class="col-a">FIFO within a queue (with caveats)</td><td class="col-b">Strict ordering within a partition</td></tr>
+        <tr><td>Throughput</td><td class="col-a">High, but lower ceiling</td><td class="col-b">Very high — designed for streaming at scale</td></tr>
+        <tr><td>Best for</td><td class="col-a">Task queues, job distribution, RPC</td><td class="col-b">Event streaming, audit logs, data pipelines</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
-
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
-    </div>
+    <h2>Idempotency in Consumers</h2>
+    <p>Because at-least-once delivery is the norm, well-designed consumers must be <strong>idempotent</strong> — processing the same message twice produces the same result as processing it once. Common patterns:</p>
+    <ul>
+      <li><strong>Idempotency key</strong> — include a unique message ID in every message. The consumer checks a processed-IDs store before acting; skip if already seen.</li>
+      <li><strong>Natural idempotency</strong> — design operations so duplication is harmless: upserts instead of inserts, <code>SET</code> instead of <code>INCREMENT</code>.</li>
+      <li><strong>Database transactions</strong> — wrap the consume + state-update in a single transaction with a uniqueness constraint on the message ID column.</li>
+    </ul>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Use message queues to decouple services in time and protect downstream systems from traffic spikes. Design consumers to be idempotent by default — at-least-once delivery is the realistic guarantee in any distributed system. Wire up a dead-letter queue from day one so poison messages surface immediately rather than silently blocking your processing pipeline.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/tech-stacks/sharding/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Sharding</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/tech-stacks/nosql/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">NoSQL</div>
       </a>
     </div>
   </div>

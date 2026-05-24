@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A system design deep dive into building a scalable e-commerce platform covering microservices, inventory, search, and event-driven order processing.">
+<title>Design an E-commerce Platform — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -42,7 +42,7 @@
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .breadcrumb a:hover { color: var(--accent); }
-  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
   .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
   .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
   .article-meta .separator { color: var(--border); }
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -138,165 +138,80 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">ecommerce-platform</span>
     </div>
-    <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design an E-commerce Platform</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Mar 31, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>12 min read</span>
       <span class="separator">·</span>
-      <span style="color:var(--accent)">Tech Stacks</span>
+      <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>An e-commerce platform is one of the most demanding distributed systems to design. It combines real-time inventory management, financial transaction processing, high-traffic search and discovery, and ML-driven recommendations — all under strict consistency requirements where an oversold item or a lost order directly translates to lost revenue and user trust.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Use microservices behind an API gateway: SQL for orders and users (ACID), NoSQL for product catalogs (schema flexibility), Cassandra for historical order archival, Redis with TTL for cart holds, and Kafka to decouple the checkout pipeline from downstream processing. Elasticsearch powers search via CDC-fed indexing.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Requirements</h2>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
+    <h3>Functional</h3>
+    <ul>
+      <li>User registration and authentication</li>
+      <li>Merchant shop and product management (CRUD)</li>
+      <li>Search, cart, and wishlist capabilities</li>
+      <li>Checkout and purchase completion</li>
+      <li>Homepage feed and order history viewing</li>
+    </ul>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h3>Non-Functional</h3>
+    <ul>
+      <li><strong>Low latency</strong> — product search and checkout must feel instant</li>
+      <li><strong>High availability</strong> — downtime during peak sales (Prime Day, 11/11) is unacceptable</li>
+      <li><strong>High consistency</strong> — inventory and payment state must be correct</li>
+      <li><strong>Revenue maximization</strong> — the system should never over-restrict sales or oversell inventory</li>
+    </ul>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h2>Core Services</h2>
+    <p>The platform is decomposed into focused microservices, each owning its data store:</p>
+    <ul>
+      <li><strong>User Service</strong> — authentication, profile management</li>
+      <li><strong>Shop Service</strong> — merchant store creation and settings</li>
+      <li><strong>Product Service</strong> — catalog CRUD, attributes, media</li>
+      <li><strong>Search Service</strong> — Elasticsearch-powered full-text and faceted search</li>
+      <li><strong>Serviceability Service</strong> — filters products by purchase eligibility (region, availability)</li>
+      <li><strong>Inventory Service</strong> — stock tracking and reservation</li>
+      <li><strong>Pricing Service</strong> — dynamic pricing calculations and promotions</li>
+      <li><strong>Order Service</strong> — transaction processing and order lifecycle</li>
+      <li><strong>Recommendation Service</strong> — ML-driven personalized suggestions</li>
+      <li><strong>Notification Service</strong> — email, SMS, and push updates</li>
+    </ul>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
+    <h2>Data Storage Decisions</h2>
+    <p>Storage selection is driven by each service's access patterns and consistency requirements:</p>
 
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
-
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Data Type</th><th>Storage</th><th>Rationale</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>Users, orders, shops</td><td class="col-a">SQL (RDBMS)</td><td>ACID properties required for financial transactions and structured relational data</td></tr>
+        <tr><td>Product catalogs</td><td class="col-a">NoSQL (Document)</td><td>Products have heterogeneous attribute sets; document stores avoid null-heavy schemas</td></tr>
+        <tr><td>Historical orders</td><td class="col-b">Cassandra</td><td>Horizontally scalable, high write throughput without read degradation; suitable for append-heavy archival</td></tr>
+        <tr><td>Cart holds</td><td class="col-a">Redis (TTL)</td><td>~10-minute TTL temporarily reserves inventory without permanently blocking stock from other buyers</td></tr>
+        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text search, fuzzy matching, and faceted filtering at scale</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h2>The Checkout Pipeline</h2>
+    <p>Checkout is the most critical — and most complex — flow. The key design insight is to <strong>decouple the user-facing checkout confirmation from the downstream order processing chain</strong> using Kafka. The user gets an immediate acknowledgement; the inventory deduction, payment charge, notification dispatch, and fulfillment kick-off happen asynchronously.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -304,37 +219,61 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">flow</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
-
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+      <pre><code>User clicks "Buy"
+  → Cart Service validates TTL hold still active
+  → Order Service writes pending order to SQL
+  → Publishes OrderCreated event to Kafka
+      ├── Inventory Service: deduct stock
+      ├── Payment Service (Stripe/PayPal): charge card
+      │     └── Webhook callback updates order status
+      ├── Notification Service: send confirmation email
+      └── Recommendation Service: record purchase signal</code></pre>
     </div>
+
+    <p>External payment providers (Stripe, PayPal) integrate via webhooks that fire on payment success or failure, driving the order's status state machine.</p>
+
+    <h2>Search and Discovery</h2>
+    <p>Product and shop updates flow into the Elasticsearch cluster via <strong>Change Data Capture (CDC)</strong> — the primary databases emit change events that a CDC connector (e.g., Debezium) publishes to Kafka, which then feeds the search indexer. This keeps the search index eventually consistent without coupling write latency to indexing.</p>
+    <p>The Search Service handles fuzzy matching and type-ahead queries. The Serviceability Service filters results by the requesting user's region and purchase eligibility before returning results to the client.</p>
+
+    <h2>Scaling for Peak Traffic</h2>
+    <p>Flash sales and seasonal peaks (like 11/11) can spike traffic by orders of magnitude. Two processing models handle different merchant segments:</p>
+    <ul>
+      <li><strong>Large enterprises (batch pull)</strong> — Apache Airflow schedules bulk pulls; better for high-volume, scheduled inventory updates</li>
+      <li><strong>SMEs (push model)</strong> — events are immediately distributed upon product or order changes</li>
+    </ul>
+    <p>The async Kafka pipeline also serves as a natural buffer during these surges, preventing the order processing back-end from being overwhelmed by sudden checkout bursts.</p>
+
+    <h2>ML and Recommendations</h2>
+    <p>User behavior signals — search queries, cart additions, wishlist saves, and purchase completions — are captured via Kafka and fed into Spark Streaming for real-time analysis. The Recommendation Service uses these signals for:</p>
+    <ul>
+      <li>User segmentation (regression models, KNN clustering)</li>
+      <li>Personalized product recommendations on the homepage</li>
+      <li>Dynamic pricing algorithms</li>
+      <li>Demand forecasting to assist inventory planning</li>
+    </ul>
+    <p>Every database table includes <code>created_at</code> and <code>updated_at</code> timestamp columns, which serve double duty: debugging production issues and providing temporal features for ML models.</p>
+
+    <h2>Inventory Consistency Tradeoff</h2>
+    <p>The hardest consistency problem in e-commerce is the cart-to-purchase gap: if you deduct inventory when the item is added to cart, you block sales for users who abandon carts. If you deduct only at checkout, you risk overselling during high-demand bursts. The chosen middle ground is a <strong>Redis hold with TTL (~10 minutes)</strong>: inventory is soft-reserved on cart add and permanently deducted on successful checkout. Expired holds are automatically released by Redis.</p>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>E-commerce system design is fundamentally about isolating consistency domains: use SQL + ACID for money and orders, document stores for flexible catalogs, Cassandra for archival scale, and Kafka to decouple the checkout critical path from all downstream effects. The Redis TTL cart hold is the canonical answer to the oversell vs. lost-sale tradeoff.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
-        <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+      <a href="/system-design/" class="article-nav-card">
+        <div class="article-nav-label">← back to</div>
+        <div class="article-nav-title">System Design</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/system-design/map-webapp/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Map Web App</div>
       </a>
     </div>
   </div>

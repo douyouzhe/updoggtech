@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<meta name="description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
+<title>Kubernetes (k8s) — updoggtech</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -95,8 +95,8 @@
   .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table tr:hover td { background: var(--bg2); }
-  .compare-table .col-graphql { color: var(--accent2); }
-  .compare-table .col-rest { color: var(--accent3); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
 
   /* ARTICLE NAV */
   .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
@@ -139,164 +139,76 @@
     <div class="breadcrumb">
       <a href="/">home</a><span>/</span>
       <a href="/tech-stacks/">tech-stacks</a><span>/</span>
-      <span style="color:var(--text)">graphql-rest-comparison</span>
+      <span style="color:var(--text)">kubernetes</span>
     </div>
     <span class="article-tag">Tech Stacks</span>
-    <h1 class="article-title">GraphQL & REST Comparison</h1>
+    <h1 class="article-title">Kubernetes (k8s)</h1>
     <div class="article-meta">
-      <span>Sep 08, 2023</span>
+      <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>12 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+    <p>Kubernetes is an open-source <strong>container orchestration platform</strong> that automates the deployment, scaling, and management of containerized applications. As the industry shifted from monolithic services toward microservices, the need emerged for an orchestrator that could run independent, lightweight application containers with <strong>high availability, scalability, and robustness</strong> — that is exactly what Kubernetes delivers.</p>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GraphQL and REST are not as different as they seem. GraphQL introduces subtle modifications — mainly around how resources are described and fetched — that significantly improve the developer experience.</p>
+      <p>Kubernetes organizes containers into Pods, assigns them stable network identities via Services, and coordinates everything through a master node running the API Server, Scheduler, Controller Manager, and etcd. Worker nodes run Kubelet and Kube Proxy to host the actual workloads.</p>
     </div>
 
-    <h2>Resources</h2>
-    <p>The core concept of REST is the <strong>resource</strong>. Each resource is uniquely identified by a URL, and you access it by sending a GET request to that URL.</p>
+    <h2>Core Primitives</h2>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST response</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="cm">// GET /api/movies/123</span>
-{
-  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
-  <span class="str">"director"</span>: {
-    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
-    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
-  },
-  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
-}</code></pre>
-    </div>
+    <h3>Pod</h3>
+    <p>The fundamental unit in Kubernetes. A Pod is an <strong>abstraction layer over one or more containers</strong>, making Kubernetes independent of the underlying container runtime (Docker, containerd, CRI-O). Each Pod receives a virtual IP address for intra-cluster communication, but this IP changes whenever the Pod is replaced — which is why Pods need a stable addressing mechanism on top.</p>
 
-    <p>GraphQL decouples the shape of a resource from how you fetch it. You define types in a schema independently of retrieval methods:</p>
+    <h3>Service</h3>
+    <p>A Service provides a <strong>static IP address</strong> that persists independently of Pod lifecycles. When a Pod dies and a new one starts, the Service's IP stays fixed and continues routing traffic to healthy Pods. Services also act as an internal load balancer, distributing requests across multiple replicas of the same application.</p>
 
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
-  id: <span class="ty">ID</span>
-  title: <span class="ty">String</span>
-  released: <span class="ty">Date</span>
-  director: <span class="ty">Director</span>
-}
+    <h3>Ingress</h3>
+    <p>Ingress sits at the cluster boundary and behaves like a <strong>reverse proxy</strong>. It translates an external domain name (e.g. <code>api.example.com</code>) into the correct internal Service IP and port based on routing rules, so you expose one entry point rather than a NodePort per service.</p>
 
-<span class="kw">type </span><span class="ty">Director</span> {
-  id: <span class="ty">ID</span>
-  name: <span class="ty">String</span>
-  dob: <span class="ty">Date</span>
-  movies: [<span class="ty">Movie</span>]
-}
+    <h3>ConfigMap &amp; Secret</h3>
+    <p><strong>ConfigMap</strong> externalizes application configuration (environment variables, config files) so you can update settings without rebuilding the container image. <strong>Secret</strong> mirrors ConfigMap but stores sensitive data — credentials, API keys, TLS certificates — encoded in base64. Neither should be used as a secure vault; for production secrets management, pair them with tools like HashiCorp Vault.</p>
 
-<span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}</code></pre>
-    </div>
+    <h3>Volumes</h3>
+    <p>Container filesystems are ephemeral — data disappears when a Pod restarts. Volumes attach persistent storage (local disk or remote block/object storage) to a Pod, ensuring stateful workloads like databases survive Pod replacements.</p>
 
-    <h2>API Design</h2>
-    <p>REST APIs are described as a catalogue of endpoints. The shape is linear — a flat list of URLs you can call:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">REST endpoints</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
-<span class="kw">GET</span>    <span class="str">/director/:id</span>
-<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
-<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
-    </div>
-
-    <p>GraphQL instead uses a schema — a typed graph of everything accessible in the API. Read operations use <code>Query</code>, writes use <code>Mutation</code>:</p>
-
-    <div class="code-block">
-      <div class="code-block-header">
-        <div class="code-block-header-left">
-          <div class="code-dot" style="background:#ff5f57"></div>
-          <div class="code-dot" style="background:#febc2e"></div>
-          <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">GraphQL schema</span>
-        </div>
-        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
-      </div>
-      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
-  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
-  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
-}
-
-<span class="kw">type </span><span class="ty">Mutation</span> {
-  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
-}</code></pre>
-    </div>
-
-    <h2>Key Differences at a Glance</h2>
+    <h3>Deployment vs. StatefulSet</h3>
     <table class="compare-table">
       <thead>
-        <tr>
-          <th>Aspect</th>
-          <th class="col-graphql">GraphQL</th>
-          <th class="col-rest">REST</th>
-        </tr>
+        <tr><th>Aspect</th><th class="col-a">Deployment</th><th class="col-b">StatefulSet</th></tr>
       </thead>
       <tbody>
-        <tr>
-          <td>Resource identity</td>
-          <td>Separate from how you fetch it</td>
-          <td>The URL IS the resource identity</td>
-        </tr>
-        <tr>
-          <td>Response shape</td>
-          <td>Client decides what fields to return</td>
-          <td>Server decides what to include</td>
-        </tr>
-        <tr>
-          <td>Related data</td>
-          <td>One request via schema traversal</td>
-          <td>Multiple requests or custom params</td>
-        </tr>
-        <tr>
-          <td>Read vs write</td>
-          <td>Query / Mutation keywords</td>
-          <td>GET / POST / PUT / DELETE verbs</td>
-        </tr>
-        <tr>
-          <td>Schema / Docs</td>
-          <td>Built-in introspection</td>
-          <td>External tools (Swagger, OpenAPI)</td>
-        </tr>
+        <tr><td>Use case</td><td class="col-a">Stateless apps (web servers, APIs)</td><td class="col-b">Stateful apps (databases, message brokers)</td></tr>
+        <tr><td>Pod identity</td><td class="col-a">Interchangeable — any replica can handle any request</td><td class="col-b">Stable, ordered identity (pod-0, pod-1 …)</td></tr>
+        <tr><td>Data sync</td><td class="col-a">Not managed</td><td class="col-b">Ordered rollouts ensure leader/follower sync</td></tr>
+        <tr><td>Common pattern</td><td class="col-a">Most microservices</td><td class="col-b">Many teams prefer external DBs over StatefulSet</td></tr>
       </tbody>
     </table>
 
-    <h2>Request Handlers vs Resolvers</h2>
-    <p>In REST, each endpoint maps to a handler function. Here's a simple Express example:</p>
+    <h2>Architecture: Master &amp; Worker Nodes</h2>
+
+    <h3>Worker Node Components</h3>
+    <ul>
+      <li><strong>Container Runtime</strong> — The engine that actually runs containers: Docker, containerd, CRI-O, or Windows Containers.</li>
+      <li><strong>Kubelet</strong> — The node agent. It reads Pod specs (YAML), schedules containers onto the node, and reports node/Pod health back to the master.</li>
+      <li><strong>Kube Proxy</strong> — Implements the Service abstraction at the network layer. It intelligently forwards Service requests to healthy Pods, preferring same-node replicas to reduce latency.</li>
+    </ul>
+
+    <h3>Master Node Components</h3>
+    <ul>
+      <li><strong>API Server</strong> — The single cluster gateway. All communication (kubectl, internal components, CI/CD pipelines) goes through the API Server, which handles authentication and request validation.</li>
+      <li><strong>Scheduler</strong> — Watches for newly created Pods with no assigned node, then selects the best worker based on available CPU and RAM.</li>
+      <li><strong>Controller Manager</strong> — Runs reconciliation loops. When it detects that the desired state (e.g., 3 replicas) diverges from actual state (2 healthy pods), it triggers corrective actions like rescheduling.</li>
+      <li><strong>etcd</strong> — The cluster's distributed key-value store — the "brain" of Kubernetes. All cluster state (nodes, pods, configs, secrets) lives in etcd. Losing etcd without a backup means losing the entire cluster state.</li>
+    </ul>
+
+    <h2>Configuration (YAML)</h2>
+    <p>Every Kubernetes resource is declared as YAML. The four mandatory top-level keys are <code>apiVersion</code>, <code>kind</code>, <code>metadata</code>, and <code>spec</code>. The cluster continuously reconciles actual state with the declared <code>spec</code>, and writes the current state back into the <code>status</code> field automatically.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -304,37 +216,82 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">Node.js / Express</span>
+          <span class="code-lang">yaml</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">// REST — one handler per endpoint</span>
-app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
-  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
-})
+      <pre><code><span class="kw">apiVersion</span>: apps/v1
+<span class="kw">kind</span>: Deployment
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">my-app</span>
+  <span class="kw">labels</span>:
+    <span class="kw">app</span>: <span class="str">my-app</span>
+<span class="kw">spec</span>:
+  <span class="kw">replicas</span>: <span class="num">3</span>
+  <span class="kw">selector</span>:
+    <span class="kw">matchLabels</span>:
+      <span class="kw">app</span>: <span class="str">my-app</span>
+  <span class="kw">template</span>:
+    <span class="kw">metadata</span>:
+      <span class="kw">labels</span>:
+        <span class="kw">app</span>: <span class="str">my-app</span>
+    <span class="kw">spec</span>:
+      <span class="kw">containers</span>:
+        - <span class="kw">name</span>: <span class="str">my-app</span>
+          <span class="kw">image</span>: <span class="str">my-app:1.0.0</span>
+          <span class="kw">ports</span>:
+            - <span class="kw">containerPort</span>: <span class="num">8080</span></code></pre>
+    </div>
 
-<span class="cm">// GraphQL — one resolver per field</span>
-<span class="kw">const</span> resolvers = {
-  <span class="ty">Query</span>: {
-    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
-    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
-  }
-}</code></pre>
+    <h2>Namespaces</h2>
+    <p>Namespaces provide <strong>logical isolation</strong> within a single physical cluster, letting teams share infrastructure while keeping resources separated by function, team, or environment. Kubernetes ships with four built-in namespaces:</p>
+    <ul>
+      <li><strong>default</strong> — where user resources land when no namespace is specified.</li>
+      <li><strong>kube-system</strong> — system processes (API server, scheduler, etcd).</li>
+      <li><strong>kube-public</strong> — publicly readable data, accessible without authentication.</li>
+      <li><strong>kube-node-lease</strong> — node heartbeat objects used for availability tracking.</li>
+    </ul>
+    <p>Important scoping rules: <strong>ConfigMaps and Secrets are namespace-scoped</strong> — each namespace needs its own copy. Services can be referenced across namespaces using the FQDN <code>service.namespace.svc.cluster.local</code>. Volumes and Nodes are global resources not bound to any namespace.</p>
+
+    <h2>Helm</h2>
+    <p>Helm is the <strong>package manager for Kubernetes</strong>. It bundles all the YAML manifests for an application into a distributable unit called a <strong>Chart</strong>. Helm also acts as a templating engine — you parameterize values (image tag, replica count, resource limits) in a <code>values.yaml</code> file, making it straightforward to deploy the same chart to dev, staging, and production with different settings.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># install a chart from a public repo</span>
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install my-redis bitnami/redis \
+  --set auth.password=<span class="str">secret</span> \
+  --set replica.replicaCount=<span class="num">2</span>
+
+<span class="cm"># list running releases</span>
+helm list
+
+<span class="cm"># roll back to previous release</span>
+helm rollback my-redis <span class="num">1</span></code></pre>
     </div>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+      <p>Think of Kubernetes as a self-healing, declarative control loop: you describe <em>what</em> you want in YAML, and the master node's Controller Manager continuously drives actual state toward it. Pods give you isolation; Services give you stable addressing; etcd gives you durable cluster memory; and Helm gives you reusable, versioned packaging.</p>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+      <a href="/tech-stacks/kafka/" class="article-nav-card">
         <div class="article-nav-label">← previous</div>
-        <div class="article-nav-title">Spark Join Strategy</div>
+        <div class="article-nav-title">Apache Kafka</div>
       </a>
-      <a href="/tech-stacks/" class="article-nav-card next">
-        <div class="article-nav-label">back to →</div>
-        <div class="article-nav-title">Tech Stacks</div>
+      <a href="/tech-stacks/load-balancing/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Load Balancing</div>
       </a>
     </div>
   </div>

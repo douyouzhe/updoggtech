@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
+<title>Storage &amp; Retrieval — updoggtech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-3</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.3</span>
+    <h1 class="article-title">Storage &amp; Retrieval</h1>
+    <div class="article-meta">
+      <span>Apr 02, 2023</span>
+      <span class="separator">·</span>
+      <span>14 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 3 answers the question every backend engineer should be able to answer in an interview: "How does a database actually store and retrieve data?" Kleppmann walks through two fundamentally different storage engine families, explains how indexes work, and then pivots to the analytical world of data warehouses and column stores.</p>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>LSM-trees (log-structured) favor writes; B-trees favor reads. Both use indexes to make queries fast, with different tradeoffs. OLTP databases optimize for random-access point queries; OLAP warehouses optimize for sequential full-column scans. Column-oriented storage is the key insight that makes analytical queries fast.</p>
+    </div>
+
+    <h2>Log-Structured Storage Engines</h2>
+    <p>The simplest database is an append-only log: write goes to the end of a file, read scans from the beginning. Appends are extremely fast (sequential I/O), but reads are O(n). Indexes solve the read problem at the cost of write overhead.</p>
+
+    <h3>Hash Index</h3>
+    <p>Bitcask (the default storage engine in Riak) keeps an in-memory hash map from every key to the byte offset of its latest value in the log file. Writes append to the active segment; an in-memory pointer is updated. Reads do one disk seek to the offset. This works when the entire key set fits in RAM (common for high-write-rate, moderate-key-count workloads like URL shorteners). Compaction merges old segments, discarding overwritten values to reclaim disk space. Crash recovery restores the hash map from a snapshot.</p>
+
+    <h3>SSTables and LSM-Trees</h3>
+    <p><strong>Sorted String Tables (SSTables)</strong> impose a constraint: within each segment file, keys are sorted. This enables efficient merging (like merge sort), sparse in-memory indexes (one entry every few KB rather than one per key), and range queries. The <strong>Log-Structured Merge-Tree (LSM-Tree)</strong>, described by Patrick O'Neil et al. in 1996 and popularized by LevelDB, RocksDB, Cassandra, and HBase, is built on SSTables:</p>
+    <ol>
+      <li>Writes go to an in-memory balanced BST (<strong>memtable</strong>), e.g. a red-black tree.</li>
+      <li>When the memtable exceeds a threshold (~a few MB), it is flushed to disk as a new SSTable segment — already sorted.</li>
+      <li>Reads check the memtable first, then the most recent on-disk SSTable, then older ones in order. A <strong>Bloom filter</strong> per SSTable quickly answers "key definitely not here" to avoid unnecessary disk reads.</li>
+      <li>Background <strong>compaction</strong> merges SSTable levels. Leveled compaction (LevelDB/RocksDB) keeps total size per level bounded; size-tiered compaction (Cassandra default) groups similar-size SSTables.</li>
+    </ol>
+    <p>A crash before a memtable flush is recovered via a separate write-ahead log (WAL) that is discarded once the flush completes.</p>
+
+    <h2>B-Tree Storage Engines</h2>
+    <p>B-trees are the standard index structure for relational databases (PostgreSQL, MySQL/InnoDB, SQLite). Unlike LSM-trees that break data into variable-length segments, B-trees break data into fixed-size <strong>pages</strong> (traditionally 4 KB, matching disk block size). The tree is balanced: leaf pages contain values (or references to values), internal pages contain keys and pointers to child pages. A write updates the page in place, then writes a <strong>Write-Ahead Log (WAL)</strong> entry for crash recovery.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Property</th><th class="col-a">LSM-Tree</th><th class="col-b">B-Tree</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Write amplification</td><td class="col-a">Lower (sequential, batched)</td><td class="col-b">Higher (random page updates + WAL)</td></tr>
+        <tr><td>Read performance</td><td class="col-a">Slower (may check multiple SSTables)</td><td class="col-b">Faster (one path from root to leaf)</td></tr>
+        <tr><td>Space amplification</td><td class="col-a">Higher during compaction</td><td class="col-b">Lower (in-place updates)</td></tr>
+        <tr><td>Compression</td><td class="col-a">Better (sequential layout)</td><td class="col-b">Worse (fragmentation)</td></tr>
+        <tr><td>Concurrency</td><td class="col-a">Simpler (immutable SSTables)</td><td class="col-b">Requires careful latch management</td></tr>
+        <tr><td>Typical use</td><td class="col-a">Cassandra, RocksDB, HBase</td><td class="col-b">PostgreSQL, MySQL, SQLite</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Other Index Structures</h2>
+    <h3>Secondary Indexes</h3>
+    <p>The primary index maps a primary key to a row. A <strong>secondary index</strong> maps some other column's value to one or more row locations. Both B-trees and LSM-trees can serve secondary indexes. The key difference: primary key values are unique, secondary index values are not — each entry may point to a list of matching rows.</p>
+
+    <h3>Clustered vs Non-Clustered Indexes</h3>
+    <p>In a <strong>clustered index</strong> (InnoDB's primary key, for example), the actual row data is stored inside the index leaf page. Lookups by primary key are extremely fast — one disk access fetches both index and data. In a <strong>non-clustered (heap file) index</strong>, the index stores a pointer to the row's location in a separate heap file. A <strong>covering index</strong> is a middle ground: the index includes extra columns so that the query can be answered entirely from the index without touching the heap.</p>
+
+    <h3>In-Memory Databases</h3>
+    <p>Durability requires writing to disk eventually, but the primary bottleneck for in-memory databases is not RAM speed — it is the overhead of encoding data structures into disk-friendly formats. VoltDB, MemSQL (now SingleStore), and Redis all keep the authoritative dataset in RAM (with persistence options). Anti-caching extends the dataset beyond RAM by evicting LRU pages to disk, similar to virtual memory but managed at the database level.</p>
+
+    <h2>OLTP vs OLAP</h2>
+    <p>Online Transaction Processing (OLTP) databases serve application end-users: high volume, small random-access queries touching a few rows at a time. Online Analytical Processing (OLAP) serves data analysts: low volume, huge scans aggregating millions of rows to answer business questions. The access patterns are so different that organizations run separate systems for each.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Property</th><th class="col-a">OLTP</th><th class="col-b">OLAP</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Query type</td><td class="col-a">Point lookups, small updates</td><td class="col-b">Aggregates over many rows</td></tr>
+        <tr><td>Data touched per query</td><td class="col-a">Tens of rows</td><td class="col-b">Millions to billions of rows</td></tr>
+        <tr><td>Write pattern</td><td class="col-a">Random, low-latency</td><td class="col-b">Bulk ETL / event streams</td></tr>
+        <tr><td>Dataset size</td><td class="col-a">GB to TB</td><td class="col-b">TB to PB</td></tr>
+        <tr><td>Users</td><td class="col-a">End-users via application</td><td class="col-b">Analysts, data scientists</td></tr>
+        <tr><td>Examples</td><td class="col-a">MySQL, PostgreSQL</td><td class="col-b">Redshift, BigQuery, Snowflake</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Data Warehouses and Star Schema</h3>
+    <p>A <strong>data warehouse</strong> is a separate read-optimized database loaded from OLTP systems via ETL (Extract, Transform, Load). The dominant schema is the <strong>star schema</strong>: a central <strong>fact table</strong> (each row is an event — a sale, a click, an order) connected to multiple <strong>dimension tables</strong> (product, customer, date, store). The name comes from the diagram: fact table in the center, dimension tables radiating out like star points. A <strong>snowflake schema</strong> further normalizes dimension tables into sub-dimensions.</p>
+
+    <h2>Column-Oriented Storage</h2>
+    <p>Analytical queries typically touch only a few columns out of a table with hundreds. Row-oriented storage must load the entire row to extract one column. <strong>Column-oriented storage</strong> (used by Redshift, Parquet, Clickhouse, Vertica) stores all values for one column together, so a query touching 3 columns out of 100 reads only 3% of the data.</p>
+
+    <h3>Column Compression</h3>
+    <p>Column values are often repetitive (e.g., a product_id column with only a few thousand distinct values across billions of rows). This compresses extremely well. Common techniques:</p>
+    <ul>
+      <li><strong>Bitmap encoding</strong> — one bit per row per distinct value. For low-cardinality columns, store a sparse bitmap (run-length encoded).</li>
+      <li><strong>Run-length encoding</strong> — consecutive identical values compressed to (value, count). Effective when data is sorted by the column.</li>
+      <li><strong>Dictionary encoding</strong> — map distinct values to small integers, store integers. Used by Parquet and ORC.</li>
+    </ul>
+    <p>Compression also enables <strong>vectorized processing</strong>: the query engine operates on compressed column chunks using CPU SIMD instructions without decompressing first, dramatically reducing CPU cycles per row processed.</p>
+
+    <h3>Sort Order in Column Stores</h3>
+    <p>Rows can be sorted by one or more columns (like a clustered index). Sorting enables better run-length compression for the first sort key and speeds up range queries and GROUP BY on that key. Vertica even stores multiple sort orders on different replicas — different queries pick the replica whose sort order helps them most.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>For OLTP writes: LSM-tree beats B-tree on write throughput; B-tree beats LSM on read latency and predictability. For analytics: column-oriented storage is a near-universal win — less I/O, better compression, and CPU-friendly vectorized execution. Know that a data warehouse's star schema (fact + dimension tables) is the foundation for every SQL analytics query you will ever see in a BI tool or interview whiteboard.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-2/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Data Models &amp; Query Languages</div>
+      </a>
+      <a href="/ddia/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">DDIA</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>
