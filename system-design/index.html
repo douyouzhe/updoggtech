@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="System design interview prep — e-commerce, video streaming, chat app, ride-share, URL shortener and more.">
+<title>System Design — updoggtech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.2; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; display: flex; align-items: center; gap: 6px; }
+  .nav-links a:hover, .nav-links a.active { color: var(--text); background: var(--bg3); }
+  .nav-links a .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity 0.2s; }
+  .nav-links a:hover .dot, .nav-links a.active .dot { opacity: 1; }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; transition: opacity 0.2s; }
+  .nav-cta:hover { opacity: 0.88; }
+
+  .page-header { padding: 64px 0 48px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .page-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px; }
+  .page-title { font-size: clamp(32px, 5vw, 52px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 16px; }
+  .page-desc { font-family: var(--mono); font-size: 14px; color: var(--muted); max-width: 480px; line-height: 1.7; }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 40px; flex-wrap: wrap; }
+  .filter-btn { font-family: var(--mono); font-size: 12px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s; }
+  .filter-btn:hover, .filter-btn.active { background: var(--bg3); color: var(--text); border-color: var(--accent); }
+
+  .posts-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 80px; }
+
+  .post-row {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px 28px; text-decoration: none; color: var(--text);
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: center; gap: 24px;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  }
+  .post-row:hover { border-color: var(--accent); background: var(--bg3); transform: translateX(4px); }
+
+  .post-row-left { display: flex; align-items: center; gap: 20px; }
+  .post-num { font-family: var(--mono); font-size: 12px; color: #2a3347; min-width: 28px; }
+  .post-info { display: flex; flex-direction: column; gap: 6px; }
+  .post-tag { font-family: var(--mono); font-size: 10px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 2px 8px; border-radius: 3px; display: inline-block; align-self: flex-start; }
+  .post-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .post-excerpt { font-family: var(--mono); font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .post-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .post-date { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .post-arrow { color: var(--accent); font-size: 18px; transition: transform 0.2s; }
+  .post-row:hover .post-arrow { transform: translate(3px, -2px); }
+
+  .difficulty { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border-radius: 3px; }
+  .diff-medium { color: #fcd34d; background: rgba(252,211,77,0.08); border: 1px solid rgba(252,211,77,0.2); }
+  .diff-hard { color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+  .post-row { animation: fadeUp 0.4s ease backwards; }
+  .post-row:nth-child(1) { animation-delay: 0.05s; }
+  .post-row:nth-child(2) { animation-delay: 0.1s; }
+  .post-row:nth-child(3) { animation-delay: 0.15s; }
+  .post-row:nth-child(4) { animation-delay: 0.2s; }
+  .post-row:nth-child(5) { animation-delay: 0.25s; }
+  .post-row:nth-child(6) { animation-delay: 0.3s; }
+  .post-row:nth-child(7) { animation-delay: 0.35s; }
+
+  @media (max-width: 768px) {
+    .post-row { grid-template-columns: 1fr; }
+    .post-row-right { flex-direction: row; align-items: center; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="nav-inner">
+      <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+      <ul class="nav-links">
+        <li><a href="/system-design" class="active"><span class="dot"></span>System Design</a></li>
+        <li><a href="/tech-stacks"><span class="dot"></span>Tech Stacks</a></li>
+        <li><a href="/ddia"><span class="dot"></span>DDIA</a></li>
+      </ul>
+      <a href="/contact" class="nav-cta">Mock Interview →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <div class="breadcrumb">
+      <a href="/">home</a>
+      <span>/</span>
+      <span style="color:var(--text)">system-design</span>
+    </div>
+    <div class="page-label">// system design</div>
+    <h1 class="page-title">System Design<br>Interview Prep</h1>
+    <p class="page-desc">End-to-end breakdowns of real interview questions. From requirements to architecture to tradeoffs.</p>
+  </div>
+
+  <div class="filter-row">
+    <button class="filter-btn active">All (7)</button>
+    <button class="filter-btn">Distributed Systems</button>
+    <button class="filter-btn">Storage</button>
+    <button class="filter-btn">Real-time</button>
+  </div>
+
+  <div class="posts-list">
+    <a href="/system-design/ecommerce-platform" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">01</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design an E-commerce Platform</span>
+          <span class="post-excerpt">Product catalog, cart, inventory, payment processing, and order management at scale.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Mar 31, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/map-webapp" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">02</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Map Web App</span>
+          <span class="post-excerpt">Geo-indexing, tile rendering, routing algorithms, and location search at scale.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/video-streaming" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">03</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Video Streaming Platform</span>
+          <span class="post-excerpt">CDN strategy, encoding pipeline, chunked delivery, and millions of concurrent viewers.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/chat-app" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">04</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Chat App</span>
+          <span class="post-excerpt">WebSockets, message fan-out, presence indicators, and real-time delivery.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/ride-share" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">05</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Ride-share App</span>
+          <span class="post-excerpt">Geo-indexing, driver matching, surge pricing, and trip state machine design.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/url-shortener" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">06</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a URL Shortener</span>
+          <span class="post-excerpt">Hash collision handling, redirect latency, analytics tracking, and custom slugs.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/hotel-booking" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">07</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Hotel Booking App</span>
+          <span class="post-excerpt">Inventory locking, double-booking prevention, search ranking, and payment flows.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+      <ul class="footer-links">
+        <li><a href="/system-design">System Design</a></li>
+        <li><a href="/tech-stacks">Tech Stacks</a></li>
+        <li><a href="/ddia">DDIA</a></li>
+        <li><a href="/contact">Contact</a></li>
+      </ul>
+      <div class="footer-copy">© 2024 updoggtech</div>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
