@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into a proximity / nearby-places service (Yelp) — geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding by region.">
+<title>Design Nearby / Yelp (Proximity Service) — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/nearby/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design Nearby / Yelp (Proximity Service) — System Design">
+<meta property="og:description" content="Geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding.">
+<meta property="og:url" content="https://updoggtech.com/system-design/nearby/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design Nearby / Yelp (Proximity Service)">
+<meta name="twitter:description" content="How proximity search works: geohash vs quadtree, the boundary problem, and read-heavy scaling.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Nearby / Yelp (Proximity Service)","description":"Geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding.","datePublished":"2023-04-12","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/nearby/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">nearby</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design Nearby / Yelp (Proximity Service)</h1>
+    <div class="article-meta">
+      <span>Apr 12, 2023</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A proximity service answers one deceptively hard question: "what are the places near me?" Given a user's latitude/longitude and a radius, return nearby businesses ranked by distance and relevance — fast, at scale, for hundreds of millions of points of interest. This is the core of Yelp, Google Maps' "nearby," and the matching layer behind <a href="/system-design/ride-share/">ride-sharing</a>. The whole problem reduces to one thing a normal database can't do efficiently: <strong>geospatial indexing</strong> — turning two-dimensional coordinates into something you can index and query by region.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>A plain B-tree index can't do 2D range search</strong> efficiently — querying "within radius" by lat AND lng scans far too much. You need a spatial index.</li>
+        <li><strong>Geohash</strong> interleaves lat/lng bits into a short string so that nearby points share a common prefix — turning proximity into a prefix lookup on a normal index.</li>
+        <li><strong>Quadtree</strong> recursively splits space into 4 cells until each holds ≤ N points, adapting cell size to density (small cells downtown, big cells in the countryside).</li>
+        <li><strong>The boundary problem</strong> — a place just across a cell border is "near" but in a different cell, so you must also query the 8 neighboring cells.</li>
+        <li><strong>Read-heavy and nearly static</strong> — businesses rarely move, so cache aggressively; rebuild/precompute indexes offline.</li>
+        <li><strong>Two-step query</strong> — use the index to fetch candidate places in nearby cells, then filter by exact distance and rank.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>The crux is geospatial indexing. <strong>Geohash</strong> encodes a coordinate as a prefix-shareable string so "nearby" becomes a prefix query on an ordinary index; <strong>quadtrees</strong> subdivide space adaptively by density. Either way, a search fetches candidates from the user's cell plus its 8 neighbors (handling the boundary problem), then filters by exact distance and ranks. Because the data is read-heavy and almost static, cache hot regions hard and serve from replicas sharded by region.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">geohash grid + 8 neighbors (boundary problem)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>  ┌──────┬──────┬──────┐   query the user's cell (★) AND its
+  │ 9q8yt│ 9q8yw│ 9q8yx│   8 neighbors, because a place just
+  ├──────┼──────┼──────┤   across a border is "near" but lands
+  │ 9q8ys│ 9q8y★│ 9q8yr│   in a different cell.
+  ├──────┼──────┼──────┤
+  │ 9q8ye│ 9q8yg│ 9q8yu│   nearby points share a geohash prefix:
+  └──────┴──────┴──────┘   "9q8y…" → cheap prefix range scan</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> given a location and radius (or a "show me restaurants near here" with a default radius), return nearby places; support adding/updating a business; optionally filter by category. <strong>Non-functional:</strong> low latency, very read-heavy, high availability, scale to ~hundreds of millions of places and high search QPS. A key simplifying observation: <strong>the data is largely static</strong> — businesses don't move and are added/edited rarely — so we can precompute and cache aggressively, and eventual consistency of updates is fine. (Contrast with ride-share, where the "places" are moving drivers updating every few seconds — that needs a live in-memory index instead.)</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Say 200M places and 100M daily searches (~1–2K searches/sec average, much higher at peak, e.g. lunchtime in dense cities). Each place record is small (id, name, lat/lng, category, rating) — a few hundred bytes — so the dataset is tens of GB, easily cached. The workload is overwhelmingly reads against rarely-changing data, which steers the entire design toward indexing + caching rather than write throughput.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET /search?lat=37.78&amp;lng=-122.41&amp;radius=2km&amp;category=cafe
+      → [{id, name, distance, rating}, ...]   <span class="cm"># sorted</span>
+POST /places   {name, lat, lng, category, ...}   <span class="cm"># add/update a business</span></code></pre>
+    </div>
+
+    <h2>Step 4 — Why a Normal Index Fails</h2>
+    <p>The instinct is to store <code>lat</code> and <code>lng</code> columns and query <code>WHERE lat BETWEEN ... AND lng BETWEEN ...</code>. The problem: a B-tree index is one-dimensional. An index on <code>lat</code> finds the right latitude band but includes every place at that latitude across the whole planet; you then filter by longitude in memory (or vice versa). For a global dataset that's a massive scan per query. We need an index that preserves <strong>2D locality</strong> — points close on the map should be close in the index. Two standard structures do this.</p>
+
+    <h2>Step 5 — Geohash</h2>
+    <p><strong>Geohash</strong> recursively divides the world into a grid and interleaves the bits of latitude and longitude, encoding the result as a short base-32 string. Two properties make it powerful: a <strong>longer geohash = a smaller, more precise cell</strong> (each extra character ~ refines the box), and <strong>nearby locations share a common prefix</strong> (e.g. two cafes on the same block might both start with <code>9q8yyk</code>). So you store a <code>geohash</code> column, index it normally, and "find places near X" becomes "find places whose geohash starts with X's prefix" — a cheap prefix/range scan on an ordinary index. You pick the prefix length to match the search radius (longer prefix for a tight radius).</p>
+
+    <h2>Step 6 — Quadtree</h2>
+    <p>A <strong>quadtree</strong> takes an adaptive approach: start with the whole map as one node; if a cell contains more than a threshold of points, split it into four equal quadrants; recurse. The result is that <strong>dense areas (downtown) have many tiny cells while sparse areas (rural) have a few large ones</strong> — cell granularity follows data density automatically, so each leaf holds a bounded number of points. A search descends to the leaf containing the query point and collects nearby leaves. Quadtrees are typically held in memory and rebuilt periodically; they give very even result-set sizes regardless of density.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Geohash</th><th>Quadtree</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cell size</td><td class="col-a">Fixed grid per precision level</td><td class="col-b">Adapts to point density</td></tr>
+        <tr><td>Storage</td><td class="col-a">A string column — fits any DB index</td><td class="col-b">In-memory tree structure</td></tr>
+        <tr><td>Dense areas</td><td class="col-a">Cells can hold very many points</td><td class="col-b">Auto-subdivides → bounded per cell</td></tr>
+        <tr><td>Simplicity</td><td class="col-a">Very simple; prefix queries</td><td class="col-b">More complex to build/maintain</td></tr>
+        <tr><td>Updates</td><td class="col-a">Just recompute one string</td><td class="col-b">May trigger node split/merge</td></tr>
+      </tbody>
+    </table>
+
+    <p>Geohash is the simpler, more common interview answer (it rides on any existing database index); quadtrees shine when density varies wildly and you want even result sizes. Redis's geospatial commands and PostGIS use related techniques under the hood.</p>
+
+    <h2>Step 7 — Data Model and Storage</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema (geohash approach)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>places (
+   place_id PK, name, category, rating,
+   lat, lng,
+   geohash        <span class="cm"># indexed; e.g. "9q8yyk8ytpxr"</span>
+)
+INDEX on geohash   <span class="cm"># prefix range scans = nearby lookup</span></code></pre>
+    </div>
+    <p>You can store several geohash precisions (or just query with a variable prefix length) to match different radii. The places table is the source of truth; the geohash column is the spatial index riding on a standard B-tree.</p>
+
+    <h2>Step 8 — The Read Path and the Boundary Problem</h2>
+    <p>A search runs in two phases. <strong>Phase 1 (index):</strong> compute the geohash of the query point at the precision matching the radius, then fetch candidate places whose geohash shares that prefix. <strong>Phase 2 (refine):</strong> compute the exact great-circle distance from the query to each candidate, drop those outside the radius, and sort. The catch is the <strong>boundary problem</strong>: a place 50 meters away might sit just across a cell border and thus have a different geohash prefix, so it'd be missed. The fix is to also query the <strong>8 neighboring cells</strong> around the query cell, union the candidates, then refine. (Quadtrees have the analogous issue and similarly check adjacent leaves.)</p>
+
+    <h2>Step 9 — Caching and Read Scaling</h2>
+    <p>Because the data barely changes and reads dominate, caching is the main scaling lever. Cache results (or candidate sets) for <strong>popular cells</strong> — dense, frequently-searched areas like city centers — in Redis with a generous TTL, since a new restaurant appearing is not time-critical. Front read traffic with replicas, and let the mostly-static dataset live largely in memory. Most searches in busy areas should be served from cache without touching the primary store.</p>
+
+    <h2>Step 10 — Sharding and Scaling Writes</h2>
+    <p>Reads scale with replicas and cache; for storage and write distribution, <strong>shard by region</strong> (e.g. by geohash prefix, so a shard owns a contiguous area). This keeps a search's candidate cells on one shard most of the time. Watch for <strong>hotspots</strong>: a geohash-prefix shard covering Manhattan handles vastly more places and queries than one covering open ocean, so balance shards by load, not just by area (finer splits where it's dense). Writes (new/edited businesses) are rare and can update the index asynchronously.</p>
+
+    <h2>Step 11 — Ranking</h2>
+    <p>"Nearby" isn't only about distance. Final ordering typically blends <strong>distance</strong>, <strong>rating/popularity</strong>, category relevance, and sometimes sponsored placement. Because the candidate set after the spatial filter is small (places within the radius), this ranking is cheap to compute per request, or partially precomputed (e.g. a place's base popularity score) and combined with live distance.</p>
+
+    <h2>Step 12 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Geohash vs quadtree.</strong> Geohash is dead-simple and rides on any DB index but has fixed cells that overflow in dense areas; quadtrees adapt to density and bound result sizes but are an in-memory structure that's more work to maintain.</li>
+      <li><strong>Precision vs result count.</strong> A longer geohash prefix (smaller cell) returns fewer, tighter candidates but may need more neighbor cells for a given radius; shorter prefixes return more candidates to filter.</li>
+      <li><strong>Static data → cache hard.</strong> The read-heavy, rarely-changing nature makes aggressive caching and replication the dominant scaling strategy, with eventual consistency on updates being acceptable.</li>
+      <li><strong>Static places vs moving objects.</strong> This design assumes near-static points; tracking moving objects (drivers) needs a frequently-updated in-memory index instead — a different problem.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Proximity search is fundamentally a geospatial-indexing problem: map 2D coordinates onto something a database can index by region. Geohash (prefix-shareable strings) and quadtrees (density-adaptive cells) are the two standard answers; both require checking neighboring cells to handle boundaries, then refining by exact distance. Since the data is read-heavy and almost static, the rest is caching and region-sharding.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why can't you just index lat and lng?</strong> A B-tree is 1D; a 2D range query degenerates to scanning a whole latitude (or longitude) band. You need a spatial index that preserves 2D locality.<br>
+      <strong>How does geohash work?</strong> It interleaves lat/lng bits into a string so nearby points share a prefix and a longer string means a smaller cell — turning proximity into a prefix range scan.<br>
+      <strong>Geohash vs quadtree?</strong> Geohash = fixed grid, trivially stored as an indexed string; quadtree = density-adaptive cells held in memory, bounding points per cell.<br>
+      <strong>What's the boundary problem?</strong> A nearby place across a cell border has a different cell, so you must query the 8 neighboring cells and then filter by exact distance.<br>
+      <strong>Why is caching so effective here?</strong> Businesses rarely move, so the data is nearly static and read-heavy — popular regions can be cached with long TTLs.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/typeahead/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design Search Autocomplete (Typeahead)</div>
+      </a>
+      <a href="/system-design/leaderboard/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Leaderboard</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

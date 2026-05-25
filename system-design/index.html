@@ -108,6 +108,7 @@
   .post-row:nth-child(6) { animation-delay: 0.3s; }
   .post-row:nth-child(7) { animation-delay: 0.35s; }
   .post-row:nth-child(8) { animation-delay: 0.4s; }
+  .post-row:nth-child(n+9) { animation-delay: 0.45s; }
 
   @media (max-width: 768px) {
     .post-row { grid-template-columns: 1fr; }
@@ -146,7 +147,7 @@
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active">All (8)</button>
+    <button class="filter-btn active">All (15)</button>
     <button class="filter-btn" data-filter="distributed">Distributed Systems</button>
     <button class="filter-btn" data-filter="storage">Storage</button>
     <button class="filter-btn" data-filter="realtime">Real-time</button>
@@ -277,6 +278,118 @@
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
         <span class="post-date">Apr 08, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/key-value-store/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">09</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Distributed Key-Value Store</span>
+          <span class="post-excerpt">Consistent hashing, quorums, replication, vector clocks, and gossip — Dynamo-style.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 09, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/pastebin/" class="post-row" data-cat="storage">
+      <div class="post-row-left">
+        <span class="post-num">10</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Pastebin</span>
+          <span class="post-excerpt">Key generation, metadata vs blob storage, read-heavy caching, and expiration.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 10, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/typeahead/" class="post-row" data-cat="distributed">
+      <div class="post-row-left">
+        <span class="post-num">11</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Search Autocomplete (Typeahead)</span>
+          <span class="post-excerpt">Tries, precomputed top-k suggestions, ranking, and the offline data pipeline.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 11, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/nearby/" class="post-row" data-cat="realtime distributed">
+      <div class="post-row-left">
+        <span class="post-num">12</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Nearby / Yelp (Proximity)</span>
+          <span class="post-excerpt">Geospatial indexing with geohash and quadtrees, the boundary problem, and caching.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 12, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/leaderboard/" class="post-row" data-cat="realtime distributed">
+      <div class="post-row-left">
+        <span class="post-num">13</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Leaderboard</span>
+          <span class="post-excerpt">Redis sorted sets for O(log n) rank, persistence, sharding, and approximate rank.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 13, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/payment-system/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">14</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Payment System</span>
+          <span class="post-excerpt">Idempotency, the double-entry ledger, exactly-once, reconciliation, and sagas.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 14, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/ticketmaster/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">15</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Ticketmaster</span>
+          <span class="post-excerpt">Seat holds and locking to prevent oversell, the virtual waiting room, and consistency.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 15, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>

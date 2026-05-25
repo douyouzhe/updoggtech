@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into a payment system — the payment flow through a PSP, idempotency to prevent double charges, the double-entry ledger, exactly-once via reconciliation, sagas, and PCI compliance.">
+<title>Design a Payment System — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/payment-system/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design a Payment System — System Design">
+<meta property="og:description" content="The payment flow, idempotency to prevent double charges, the double-entry ledger, reconciliation, sagas, and PCI compliance.">
+<meta property="og:url" content="https://updoggtech.com/system-design/payment-system/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design a Payment System">
+<meta name="twitter:description" content="How payments work: PSP flow, idempotency, double-entry ledger, and reconciliation.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Payment System","description":"The payment flow, idempotency to prevent double charges, the double-entry ledger, reconciliation, sagas, and PCI compliance.","datePublished":"2023-04-14","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/payment-system/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">payment-system</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Payment System</h1>
+    <div class="article-meta">
+      <span>Apr 14, 2023</span>
+      <span class="separator">·</span>
+      <span>34 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A payment system moves money, and that single fact changes everything: correctness is non-negotiable. A bug in a feed can show a stale post; a bug here can double-charge a customer or lose a transaction, and there's no "eventually it'll be fine." The design is dominated by three ideas — <strong>idempotency</strong> (a retried request must never charge twice), a <strong>double-entry ledger</strong> (an immutable, always-balanced record of every movement of money), and <strong>reconciliation</strong> (continuously verifying your books against the payment provider). It's the most direct application of the correctness ideas in our <a href="/ddia/chapter-7/">DDIA notes on transactions</a> and <a href="/ddia/chapter-12/">end-to-end correctness</a>.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Correctness over availability</strong> — it's a CP-leaning system; better to reject a payment than to process it twice or lose it.</li>
+        <li><strong>Idempotency keys are mandatory</strong> — the client generates a unique key per payment intent; retries with the same key return the original result, never a second charge.</li>
+        <li><strong>Double-entry ledger</strong> — every transaction writes balanced debit + credit entries to an append-only, immutable ledger; balances are derived, never edited in place.</li>
+        <li><strong>Integrate a PSP, don't touch cards</strong> — route to Stripe/Adyen/etc.; tokenize cards so raw PANs never enter your system (PCI scope).</li>
+        <li><strong>Async with webhooks + a state machine</strong> — payments move pending → authorized → captured → settled; the PSP confirms asynchronously.</li>
+        <li><strong>Reconcile relentlessly</strong> — compare your ledger against PSP/bank statements daily to catch and fix any discrepancy. Trust, but verify.</li>
+        <li><strong>Use a saga, not 2PC</strong> — you can't two-phase-commit across external providers; orchestrate with compensating actions.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Make every payment idempotent via a client-supplied key + a dedup store, so retries are safe. Record money movements in an immutable double-entry ledger and derive balances from it. Don't store card data — delegate to a PSP and tokenize. Model the payment as a state machine driven by asynchronous webhooks, orchestrate multi-step flows with a saga (compensating actions, not 2PC), and run daily reconciliation against the provider to guarantee your books match reality.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">payment flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code> ┌────────┐  pay(idempotency_key)  ┌──────────────┐
+ │ Client │──────────────────────▶│   Payment    │
+ └────────┘                       │   Service    │
+                                  └───┬───┬───────┘
+              dedup + ledger write     │   │  charge
+            ┌───────────────┐◀─────────┘   ▼
+            │  Ledger DB    │          ┌──────────┐  ┌──────────┐
+            │ (double-entry)│          │   PSP    │─▶│   Bank   │
+            └───────────────┘          │ (Stripe) │  │  network │
+            ┌───────────────┐  webhook └──────────┘  └──────────┘
+            │ Idempotency   │◀── "captured/failed" (async)
+            │   store       │
+            └───────────────┘   nightly reconciliation vs PSP statements</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> accept a payment (pay-in) from a customer for an order; integrate with a payment service provider (PSP); track each payment's status; support refunds; (optionally) payouts to sellers. <strong>Non-functional</strong>, and these dominate: <strong>correctness/consistency</strong> above all (no double charges, no lost or phantom payments), durability, idempotency, auditability (a complete immutable history for compliance), and reasonable availability. We explicitly favor <strong>consistency over availability</strong>: if in doubt, fail safe and reconcile, rather than risk moving money twice.</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Payment volume is modest compared to a feed — say 10M payments/day (~120/sec average, higher at peak sale events). The numbers aren't the challenge; <strong>correctness under failure</strong> is. Every component must assume the network can drop a request or response at the worst moment (see <a href="/ddia/chapter-8/">the trouble with distributed systems</a>), which is precisely why idempotency and reconciliation are first-class, not afterthoughts.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API (idempotency key required)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /payments
+   Idempotency-Key: 7f3c-...-a91     <span class="cm"># client-generated, per attempt</span>
+   {order_id, amount, currency, payment_method_token}
+      → {payment_id, status}
+GET  /payments/{payment_id}          → {status, amount, ...}
+POST /payments/{payment_id}/refund   {amount}  Idempotency-Key: ...</code></pre>
+    </div>
+    <p>The <code>Idempotency-Key</code> header is the linchpin (Step 5), and the card is passed as a <strong>token</strong>, never a raw number (Step 11).</p>
+
+    <h2>Step 4 — The Payment Flow and State Machine</h2>
+    <p>A payment is not instantaneous; it moves through states as it travels to the bank and back, mostly <strong>asynchronously</strong>. The payment service calls the PSP to authorize and capture funds, but final confirmation arrives later via a <strong>webhook</strong> callback. Modeling the payment as an explicit <strong>state machine</strong> keeps this manageable:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>State</th><th>Meaning</th><th>Next</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">pending</td><td>Created, not yet sent/confirmed</td><td>authorized / failed</td></tr>
+        <tr><td class="col-b">authorized</td><td>Funds held on the card</td><td>captured / voided</td></tr>
+        <tr><td class="col-a">captured</td><td>Funds taken (charge confirmed)</td><td>settled / refunded</td></tr>
+        <tr><td class="col-b">settled</td><td>Money actually moved to your account</td><td>refunded</td></tr>
+        <tr><td class="col-a">failed / voided</td><td>Declined or cancelled</td><td>terminal</td></tr>
+      </tbody>
+    </table>
+
+    <p>Each transition is durably recorded; the webhook from the PSP drives the async transitions (authorized→captured→settled), and the system must handle webhooks arriving late, out of order, or more than once (so webhook handling is itself idempotent).</p>
+
+    <h2>Step 5 — Idempotency: Never Charge Twice</h2>
+    <p>The defining hazard: a client sends "pay $50", the request succeeds at the server, but the response is lost; the client retries; now you've charged $50 twice. The cure is an <strong>idempotency key</strong> — a unique ID the client generates <em>once per payment intent</em> and sends with every retry. The server records the key with the result of the first successful attempt; any later request with the same key returns the stored result instead of executing again.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">idempotent payment handling</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">pay</span>(key, order, amount):
+    <span class="kw">if</span> seen(key):                 <span class="cm"># retry of a prior attempt</span>
+        <span class="kw">return</span> stored_result(key)  <span class="cm"># return original outcome — no re-charge</span>
+    reserve(key)                  <span class="cm"># claim the key atomically (unique constraint)</span>
+    result = psp.charge(amount, idempotency_key=key)  <span class="cm"># PSP is idempotent too</span>
+    write_ledger(order, amount)   <span class="cm"># in the same transaction as ...</span>
+    store_result(key, result)     <span class="cm"># ... recording the result</span>
+    <span class="kw">return</span> result</code></pre>
+    </div>
+
+    <p>Crucially, the PSP itself accepts an idempotency key, so even your retry to the PSP won't double-charge at their end. This is the <a href="/ddia/chapter-12/">end-to-end argument</a> in action — dedup is enforced with one identifier threaded through every layer, not patched in any single one.</p>
+
+    <h2>Step 6 — The Double-Entry Ledger</h2>
+    <p>Money is tracked with <strong>double-entry bookkeeping</strong>, the accounting model banks have used for centuries. Every transaction produces at least two entries that sum to zero: a <strong>debit</strong> from one account and a matching <strong>credit</strong> to another. The ledger is <strong>append-only and immutable</strong> — you never edit or delete an entry; a correction is a new compensating entry. Balances are <em>derived</em> by summing entries, never stored as a mutable number you overwrite.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">double-entry: a $50 payment</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>txn 9001  customer_cash      −50.00   (debit)
+txn 9001  merchant_payable   +50.00   (credit)
+                             ───────
+                              0.00     ← every txn must balance to zero
+
+refund later = a NEW balancing txn, never edit txn 9001
+balance(account) = SUM(entries)  — derived, immutable history preserved</code></pre>
+    </div>
+
+    <p>This model makes the system <strong>auditable</strong> and <strong>self-checking</strong>: because every transaction balances to zero, money can't be silently created or destroyed, and the full history is reconstructable for compliance and dispute resolution.</p>
+
+    <h2>Step 7 — Data Model</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>payments         (payment_id, order_id, amount, currency, status,
+                  psp_ref, created_at, updated_at)
+ledger_entries   (entry_id, txn_id, account, amount, ts)   <span class="cm"># append-only</span>
+idempotency_keys (key PK, payment_id, response, created_at) <span class="cm"># dedup</span></code></pre>
+    </div>
+    <p>A relational database with ACID transactions is the right default here (see <a href="/ddia/chapter-7/">transactions</a>): writing the ledger entries, updating the payment row, and recording the idempotency result should happen in <strong>one atomic transaction</strong> so they can't partially apply.</p>
+
+    <h2>Step 8 — Exactly-Once Effect</h2>
+    <p>True exactly-once delivery is impossible over an unreliable network, so the goal is exactly-once <em>effect</em>: a payment changes money exactly once no matter how many times the request, the webhook, or the PSP call is retried. The combination that achieves it: (1) the idempotency key dedups duplicate client requests; (2) the PSP's own idempotency key dedups duplicate charge calls; (3) webhook handlers are idempotent (processing the same "captured" event twice is a no-op); and (4) the atomic ledger write ties the money movement to the dedup record so they commit together or not at all.</p>
+
+    <h2>Step 9 — Handling Failures: Sagas, Not 2PC</h2>
+    <p>A payment often spans multiple internal services and an external PSP (and you can't enroll Stripe in your distributed transaction). <strong>Two-phase commit doesn't work</strong> across external systems and blocks under failure (see <a href="/ddia/chapter-9/">consistency &amp; consensus</a>). Instead use a <strong>saga</strong>: a sequence of local steps, each with a <strong>compensating action</strong> to undo it. If a later step fails, you run the compensations for the earlier ones (e.g. void an authorization, reverse a ledger entry) to return to a consistent state. Steps are queued and retried with exponential backoff; persistently failing events go to a dead-letter queue for investigation rather than being silently dropped.</p>
+
+    <h2>Step 10 — Reconciliation</h2>
+    <p>No matter how careful the code, you must <strong>verify your books against reality</strong> — disks corrupt data, webhooks get missed, and bugs slip through. <strong>Reconciliation</strong> is a scheduled job (typically nightly) that compares your internal ledger against the settlement reports/statements from the PSP and the bank, line by line, and flags any discrepancy: a payment the PSP recorded that you didn't, an amount mismatch, a missing settlement. Discrepancies are escalated and corrected with compensating ledger entries. This embodies the <a href="/ddia/chapter-12/">"trust, but verify"</a> principle — the system is designed to detect and recover from inconsistency, not to assume it never happens.</p>
+
+    <h2>Step 11 — Security and Compliance</h2>
+    <p>Handling card data directly drags you into the full scope of <strong>PCI DSS</strong>, an expensive compliance burden. The standard move is to <strong>never let raw card numbers (PANs) touch your servers</strong>: the client sends card details straight to the PSP (or the PSP's hosted field/SDK), which returns a <strong>token</strong>; your system stores and charges only the token. Beyond that: encrypt sensitive data at rest and in transit, strictly control access, maintain audit logs (which the immutable ledger already provides), and run fraud detection on the payment stream.</p>
+
+    <h2>Step 12 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Consistency over availability.</strong> A payment system fails safe — better to reject and retry than to risk a double charge. Reconciliation is the safety net that lets you be conservative.</li>
+      <li><strong>Synchronous vs asynchronous.</strong> Authorization may be synchronous for instant UX, but capture/settlement are asynchronous via webhooks; the state machine absorbs the delay.</li>
+      <li><strong>Build vs buy.</strong> Integrating a PSP (and tokenization) slashes PCI scope and risk versus building card processing yourself — almost always the right call.</li>
+      <li><strong>Saga vs 2PC.</strong> Sagas tolerate external systems and partial failure at the cost of writing compensating logic; 2PC is simpler conceptually but unusable across a third-party PSP.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>A payment system is a correctness machine. Three mechanisms carry the design: idempotency keys threaded end-to-end so retries never double-charge, an immutable double-entry ledger so money is never silently created or lost and everything is auditable, and continuous reconciliation against the provider so any discrepancy is caught and corrected. Favor consistency, delegate card handling to a PSP, and orchestrate the multi-party flow with sagas rather than distributed transactions.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do you prevent double charges?</strong> A client-generated idempotency key recorded server-side (and passed to the PSP); any retry with the same key returns the original result instead of charging again.<br>
+      <strong>Why a double-entry ledger?</strong> Every transaction writes balanced debit/credit entries to an immutable, append-only log; balances are derived, so money can't be silently created/lost and everything is auditable.<br>
+      <strong>Why reconciliation?</strong> Code and networks fail; comparing your ledger to PSP/bank statements daily detects and fixes discrepancies — trust, but verify.<br>
+      <strong>Why a saga instead of 2PC?</strong> You can't two-phase-commit across an external PSP; a saga uses local steps with compensating actions to stay consistent under failure.<br>
+      <strong>How do you avoid PCI scope?</strong> Tokenize — card details go straight to the PSP, which returns a token; raw PANs never touch your servers.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/leaderboard/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design a Leaderboard</div>
+      </a>
+      <a href="/system-design/ticketmaster/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design Ticketmaster</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

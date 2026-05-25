@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into search autocomplete (typeahead) — the trie data structure, precomputed top-k suggestions, ranking, the offline data pipeline, sharding, caching, and real-time vs batch updates.">
+<title>Design Search Autocomplete (Typeahead) — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/typeahead/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design Search Autocomplete (Typeahead) — System Design">
+<meta property="og:description" content="The trie, precomputed top-k suggestions, ranking, the data pipeline, sharding, caching, and update strategies.">
+<meta property="og:url" content="https://updoggtech.com/system-design/typeahead/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design Search Autocomplete (Typeahead)">
+<meta name="twitter:description" content="How autocomplete works at scale: tries, top-k precomputation, ranking, and the data pipeline.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Search Autocomplete (Typeahead)","description":"The trie, precomputed top-k suggestions, ranking, the data pipeline, sharding, caching, and update strategies.","datePublished":"2023-04-11","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/typeahead/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">typeahead</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design Search Autocomplete (Typeahead)</h1>
+    <div class="article-meta">
+      <span>Apr 11, 2023</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Autocomplete (typeahead) is the dropdown of suggestions that appears as you type into a search box. It feels trivial, but it's deceptively demanding: a suggestion must come back in <strong>tens of milliseconds</strong> because the request fires on <em>every keystroke</em>, the suggestions must be the most relevant for a given prefix out of billions of possible queries, and the whole thing runs at enormous QPS. The design hinges on a single idea — <strong>precompute the top-k suggestions for every prefix</strong> so that serving is a near-instant lookup rather than a search.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Use a trie</strong> (prefix tree) — walking a prefix is O(length of prefix), independent of how many phrases exist.</li>
+        <li><strong>Precompute top-k at each node</strong> — store the best k completions at every trie node so a query is just "walk to the node, return its cached list." No per-request ranking.</li>
+        <li><strong>Rank by popularity</strong> — suggestions are ordered by historical query frequency (often time-decayed so trending terms surface).</li>
+        <li><strong>Reads and writes are decoupled</strong> — the trie is built <em>offline</em> from query logs; the serving path is read-only against an immutable snapshot.</li>
+        <li><strong>Latency is the headline</strong> — target &lt;50&nbsp;ms; client-side debouncing, caching of hot prefixes, and edge/CDN delivery all help.</li>
+        <li><strong>Shard the trie by prefix</strong> and replicate; keep it in memory for speed.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Store known phrases in a trie and precompute the top-k completions at every node, so serving a prefix is an O(prefix-length) walk plus returning a cached list — no ranking at request time. Build/update the trie offline from aggregated query logs (a batch or streaming pipeline), and serve a read-only in-memory snapshot, sharded by prefix and replicated. Debounce on the client, cache hot prefixes, and deliver from the edge to hit the sub-50&nbsp;ms latency target.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">trie with precomputed top-k</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>            (root)
+              │ c
+              ▼
+             [c]  top: cat(90), car(70), care(40)
+              │ a
+              ▼
+             [ca] top: cat(90), car(70), care(40)
+            ╱      ╲
+         t ▼        ▼ r
+       [cat]       [car] top: car(70), care(40), cargo(20)
+       top:cat        │ e
+                      ▼
+                    [care] top: care(40), career(25)
+
+  query "car" → jump to node [car] → return its cached top-k. done.</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> given a prefix, return the top <em>k</em> (say 5–10) most relevant complete suggestions; suggestions reflect what's popular and evolve over time. <strong>Non-functional:</strong> extremely low latency (&lt;50&nbsp;ms, since it fires per keystroke), very high read QPS, high availability, and scalability to a huge phrase corpus. Scope decisions to state: prefix match only (not fuzzy/typo correction, which is a bigger NLP problem — though worth mentioning), suggestions ranked by global popularity (personalization optional), and a small fixed k. We can tolerate suggestions being a little <strong>stale</strong> (rebuilt periodically) — autocomplete doesn't need to reflect the last second of activity.</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Suppose 5&nbsp;billion searches/day. Because each search is several keystrokes and each keystroke can trigger a suggest call, raw autocomplete QPS could be ~10× the search QPS — easily hundreds of thousands of QPS, with peaks higher. That read volume, multiplied by a sub-50&nbsp;ms latency target, is what forces precomputation and in-memory serving. The phrase corpus (distinct queries worth suggesting) might be tens to hundreds of millions of strings; a trie over them, with top-k lists at nodes, is large but shardable across memory on a fleet of servers.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET /suggest?prefix=car&amp;limit=5
+      → {suggestions: ["car", "care", "career", "cargo", "carpet"]}
+
+<span class="cm"># reads only. updates happen out-of-band via the data pipeline,</span>
+<span class="cm"># not through this endpoint.</span></code></pre>
+    </div>
+
+    <h2>Step 4 — The Trie</h2>
+    <p>A <strong>trie</strong> (prefix tree) stores strings character by character: each path from the root spells a prefix, and shared prefixes share nodes. Looking up a prefix is just walking down the corresponding characters — <strong>O(length of the prefix)</strong>, completely independent of how many phrases the trie contains. That property is why it's the canonical autocomplete structure. The naive version stores complete words at leaves and, to answer a prefix query, traverses the entire subtree under the prefix node to gather and rank candidates — which is too slow at request time. The fix is Step 5.</p>
+
+    <h2>Step 5 — Precompute Top-k at Each Node</h2>
+    <p>Instead of searching the subtree on every request, <strong>cache the answer at the node</strong>: each trie node stores the top-k completions of its prefix, already ranked. Now a query is "walk to the prefix node, return its stored list" — essentially O(prefix length) with no ranking or subtree traversal at request time. The cost is moved to build time (computing those lists) and storage (k entries per node), which is exactly the right trade for a read-dominated system: do the expensive work once, offline, and make every one of the billions of reads cheap. This is the classic move of pushing work from the read path to the write/build path.</p>
+
+    <h2>Step 6 — Ranking</h2>
+    <p>"Top" suggestions are ranked primarily by <strong>popularity</strong> — how often each complete query has been searched historically. Refinements:</p>
+    <ul>
+      <li><strong>Time decay</strong> — weight recent searches more so that trending terms rise and stale ones fade (an older query that was once huge shouldn't dominate forever).</li>
+      <li><strong>Personalization / context</strong> — location, language, or user history can re-rank, at the cost of breaking the simple shared precomputation (now lists vary per segment).</li>
+      <li><strong>Business rules</strong> — filtering of offensive or disallowed suggestions happens at build time.</li>
+    </ul>
+
+    <h2>Step 7 — Building and Updating the Trie (the Data Pipeline)</h2>
+    <p>The trie isn't built live; it's produced by an offline pipeline from <strong>query logs</strong>:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">offline build pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>search logs ─▶ aggregate counts per query (MapReduce / stream)
+            ─▶ filter (offensive, rare) + apply time-decay weights
+            ─▶ build trie, compute top-k at every node
+            ─▶ publish immutable snapshot ─▶ load into serving fleet</code></pre>
+    </div>
+    <p>Aggregation is a textbook <a href="/ddia/chapter-10/">batch</a> (or <a href="/ddia/chapter-11/">streaming</a>) job. The output is an <strong>immutable snapshot</strong>; serving nodes load a new snapshot periodically (e.g. hourly/daily) and atomically swap to it. This read/write decoupling is what keeps the serving path simple, fast, and lock-free.</p>
+
+    <h2>Step 8 — Serving and Sharding</h2>
+    <p>The serving tier holds the trie <strong>in memory</strong> for speed and is horizontally scaled. Since the whole trie may not fit on one machine, <strong>shard by prefix</strong>: e.g. all prefixes starting with "a"–"m" on one shard group, "n"–"z" on another (or a finer split to balance load — common prefixes like "th" get more traffic). A lightweight aggregator/router sends each request to the shard owning that prefix. Each shard is replicated for availability and to spread read load. Because the data is read-only between snapshot swaps, replicas are trivially consistent.</p>
+
+    <h2>Step 9 — Caching and Client-Side Tricks</h2>
+    <p>Several layers cut latency and load:</p>
+    <ul>
+      <li><strong>Client debouncing</strong> — wait ~100–300&nbsp;ms after the last keystroke before firing a request, so "h-e-l-l-o" sends one or two calls, not five.</li>
+      <li><strong>Client/browser caching</strong> — cache suggestions for prefixes the user already typed (typing then backspacing should hit local cache).</li>
+      <li><strong>Server cache / CDN</strong> — the most popular short prefixes ("a", "th", "you") account for a huge share of traffic; cache their top-k at the edge with a modest TTL.</li>
+    </ul>
+
+    <h2>Step 10 — Real-time vs Batch Updates</h2>
+    <p>How fresh should suggestions be? A pure batch rebuild (hourly/daily) is simple and sufficient for most terms, but misses <strong>trending</strong> spikes (breaking news). The trade-off:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Update model</th><th>Freshness</th><th>Cost / complexity</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Batch rebuild</td><td>Hours — misses trends</td><td>Simple; the default for the bulk corpus</td></tr>
+        <tr><td class="col-b">Streaming top-k</td><td>Seconds–minutes</td><td>Catches trending terms; more pipeline complexity</td></tr>
+      </tbody>
+    </table>
+    <p>A practical hybrid: a large, slowly-rebuilt base trie plus a small real-time layer that tracks trending terms via a streaming counter and merges them into results. Mention this when the interviewer pushes on "what about breaking news?"</p>
+
+    <h2>Step 11 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Precompute vs compute-on-the-fly.</strong> Storing top-k at every node makes reads O(1)-ish but costs storage and build time; computing per request saves storage but blows the latency budget. For read-dominated autocomplete, precompute wins decisively.</li>
+      <li><strong>Freshness vs cost.</strong> More frequent rebuilds (or streaming updates) surface trends faster but cost more compute; most terms tolerate hours of staleness.</li>
+      <li><strong>Personalization vs shareability.</strong> Global top-k lists are shared across all users (cheap); personalized lists multiply storage/compute and weaken caching.</li>
+      <li><strong>Trie size vs sharding overhead.</strong> Finer prefix shards balance load better but add routing complexity.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Autocomplete is the cleanest example of trading build-time work for read-time speed: a trie plus precomputed top-k turns a "search and rank billions of phrases" problem into an O(prefix-length) lookup of a cached list. Keep the serving path read-only against an immutable, sharded, in-memory snapshot, build it offline from query logs, and lean on debouncing + edge caching to hit the latency budget.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why a trie?</strong> Prefix lookup is O(length of prefix), independent of corpus size, and shared prefixes share nodes — ideal for "complete this prefix."<br>
+      <strong>Why precompute top-k at each node?</strong> It moves ranking off the hot path: a query becomes "walk to the node, return its cached list," meeting the sub-50&nbsp;ms budget at huge QPS.<br>
+      <strong>How are suggestions ranked and kept fresh?</strong> By time-decayed query popularity, rebuilt offline from logs; a small streaming layer can capture trending terms.<br>
+      <strong>How do you scale serving?</strong> Keep the trie in memory, shard by prefix, replicate each shard, and swap in immutable snapshots — reads stay lock-free.<br>
+      <strong>What cuts client load?</strong> Debounce keystrokes (~200&nbsp;ms) and cache already-typed prefixes; edge-cache hot short prefixes.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/pastebin/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design Pastebin</div>
+      </a>
+      <a href="/system-design/nearby/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design Nearby / Yelp (Proximity)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

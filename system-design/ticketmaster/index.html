@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into Ticketmaster — preventing double-booking with seat holds and locking, hold expiration, the virtual waiting room for onsale spikes, strong consistency for inventory, and payment integration.">
+<title>Design Ticketmaster — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/ticketmaster/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design Ticketmaster — System Design">
+<meta property="og:description" content="Preventing double-booking with seat holds and locking, hold expiration, virtual waiting rooms, strong consistency, and payments.">
+<meta property="og:url" content="https://updoggtech.com/system-design/ticketmaster/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design Ticketmaster">
+<meta name="twitter:description" content="How ticket booking works: seat holds, locking to prevent oversell, waiting rooms, and consistency.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Ticketmaster","description":"Preventing double-booking with seat holds and locking, hold expiration, virtual waiting rooms, strong consistency, and payments.","datePublished":"2023-04-15","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/ticketmaster/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">ticketmaster</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design Ticketmaster</h1>
+    <div class="article-meta">
+      <span>Apr 15, 2023</span>
+      <span class="separator">·</span>
+      <span>32 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A ticket-booking platform looks like e-commerce until you notice the brutal twist: when a hot concert goes on sale, <strong>millions of people try to buy a few thousand specific seats in the same instant</strong>. That combination — a tiny, contended inventory plus an enormous concurrent spike — makes two requirements collide. You must <strong>never sell the same seat twice</strong> (strong consistency on inventory), and you must <strong>survive a thundering herd</strong> without falling over. The design centers on seat <strong>holds</strong> with proper locking, and a <strong>virtual waiting room</strong> to tame the spike. It shares its inventory-locking core with our <a href="/system-design/hotel-booking/">hotel booking</a> design.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Never oversell</strong> — booking inventory needs strong consistency; the seat-claim must be an atomic operation, not a read-then-write race.</li>
+        <li><strong>Temporary holds</strong> — selecting a seat puts it in a <code>held</code> state for a few minutes while the user pays; if they don't, the hold expires and the seat returns.</li>
+        <li><strong>Lock the seat atomically</strong> — a conditional update (<code>available → held</code> only if still available), <code>SELECT ... FOR UPDATE</code>, or a Redis lock; whoever wins gets the seat, everyone else is told it's gone.</li>
+        <li><strong>Virtual waiting room</strong> — for a hot onsale, queue users and admit them in controlled batches so the booking backend sees steady load, not a tsunami.</li>
+        <li><strong>Split the paths by consistency need</strong> — browsing events/seat maps is read-heavy and cacheable (AP); the booking path is strongly consistent (CP).</li>
+        <li><strong>Holds + payment = a saga</strong> — hold the seat, take payment, confirm; release the hold if payment fails or times out.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>The hard part is selling each seat exactly once under massive contention. Model a seat as a state machine (available → held → booked) and claim it with an atomic conditional update or row lock so concurrent buyers can't both win. Hold a seat for a few minutes during checkout, releasing it on timeout. Absorb onsale spikes with a virtual waiting room that admits users in batches. Cache the read-heavy browse path; keep the booking path strongly consistent; and orchestrate hold→pay→confirm as a saga.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">booking flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code> millions ─▶ ┌────────────────┐ admit in batches ┌──────────────┐
+  at onsale  │ Virtual Waiting│─────────────────▶│   Booking    │
+             │ Room (queue)   │                  │   Service    │
+             └────────────────┘                  └──────┬───────┘
+                                       atomic claim      │
+   browse (cached, AP) ───▶ read replicas / CDN          ▼
+                                            ┌──────────────────┐
+                                            │  Inventory DB    │ seat:
+                                            │ (strong, CP)     │ available
+                                            └──────────────────┘ → held → booked
+                                  hold→pay→confirm (saga) ─▶ Payment Service</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> browse events; view an event's seat map with availability; reserve (hold) one or more specific seats; complete purchase; release holds that aren't paid for. <strong>Non-functional:</strong> <strong>no double-booking / no overselling</strong> (the headline correctness requirement), strong consistency on the booking path, very high availability and throughput for browsing, and the ability to absorb extreme traffic spikes at onsale. Fairness matters too (a chaotic free-for-all frustrates users and invites bots), which motivates the waiting room. Assume <strong>reserved seating</strong> (specific seats), which is harder than general admission (a simple counter).</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Steady-state traffic is modest, but onsales are pathological: a stadium tour might put 50K seats on sale while <strong>2–10 million</strong> people refresh simultaneously in the first minute. So the read (browse/seat-map) path must handle millions of QPS in bursts, while the write (booking) path handles a comparatively small but <strong>intensely contended</strong> volume — thousands of users fighting over each remaining seat. This asymmetry is the whole story: scale reads with caching, protect the small consistent write path with locking and a queue.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET  /events/{id}                       <span class="cm"># event details</span>
+GET  /events/{id}/seats                 <span class="cm"># seat map + availability (cached)</span>
+POST /reservations  {event_id, seat_ids}<span class="cm"># place a HOLD (returns hold + expiry)</span>
+POST /bookings      {hold_id, payment}  <span class="cm"># confirm + pay → booked</span>
+DELETE /reservations/{hold_id}          <span class="cm"># release early</span></code></pre>
+    </div>
+
+    <h2>Step 4 — The Core Challenge: No Double-Booking</h2>
+    <p>The fundamental hazard is a race: two users see seat 12A as available, both click "reserve," and a naive <em>read-then-write</em> ("check it's free, then mark it taken") lets both succeed — overselling. The fix is to make claiming a seat an <strong>atomic, conditional operation</strong> that only one concurrent request can win. This is the same lost-update / check-then-act problem covered in our <a href="/ddia/chapter-7/">DDIA transactions notes</a>; the seat is the contended resource and the database (or a lock) must serialize access to it.</p>
+
+    <h2>Step 5 — Seat Holds (Reservation State Machine)</h2>
+    <p>Buying takes time (choose seats, enter payment), so you can't simply mark a seat sold on click — but you also can't leave it available for others to grab mid-checkout. The answer is a <strong>temporary hold</strong>: selecting a seat moves it to a <code>held</code> state for a short window (e.g. 5–10 minutes) reserved for that user. A seat is a small state machine:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>State</th><th>Meaning</th><th>Transition</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">available</td><td>Anyone can claim it</td><td>→ held (on reserve)</td></tr>
+        <tr><td class="col-b">held</td><td>Reserved for one user, with an expiry</td><td>→ booked (paid) / → available (timeout)</td></tr>
+        <tr><td class="col-a">booked</td><td>Sold — terminal</td><td>(refund is a separate flow)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Step 6 — Concurrency Control: Claiming a Seat Atomically</h2>
+    <p>The hold transition must be atomic so only one of N simultaneous requests succeeds. Options:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">atomic conditional claim (optimistic)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>UPDATE seats
+   SET status = <span class="str">'held'</span>, held_by = :user, hold_expires = now()+interval <span class="str">'8 min'</span>
+ WHERE seat_id = :seat
+   AND status = <span class="str">'available'</span>;          <span class="cm"># the guard makes it atomic</span>
+
+<span class="cm"># rows_affected = 1 → you got the seat</span>
+<span class="cm"># rows_affected = 0 → someone else won; tell the user "seat gone"</span></code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Mechanism</th><th>How</th><th>Trade-off</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Conditional UPDATE (optimistic)</td><td>Update only if <code>status='available'</code></td><td>Simple, no held locks; loser just retries another seat</td></tr>
+        <tr><td class="col-b">SELECT ... FOR UPDATE (pessimistic)</td><td>Lock the row, then update</td><td>Clear, but holds DB locks under high contention</td></tr>
+        <tr><td class="col-a">Redis distributed lock</td><td>Lock per seat key with TTL</td><td>Offloads hot contention from the DB; needs care for correctness</td></tr>
+      </tbody>
+    </table>
+
+    <p>The optimistic conditional update is usually the cleanest answer: it needs no long-held lock, and under contention all but one updater simply get <code>rows_affected = 0</code> and are told the seat is taken. The <code>WHERE status='available'</code> guard is what makes the whole thing safe.</p>
+
+    <h2>Step 7 — Hold Expiration</h2>
+    <p>Holds must be released if the user abandons checkout, or seats leak and the event looks falsely sold out. Combine mechanisms (the same pattern as expiring links or pastes): <strong>lazy</strong> — when anyone reads or tries to claim a seat whose <code>hold_expires</code> has passed, treat it as available again; and <strong>scheduled</strong> — a background sweeper periodically flips expired <code>held</code> seats back to <code>available</code>. Some designs use a Redis key with a TTL per hold so expiry is automatic. The hold window is a tuning knob: long enough to comfortably pay, short enough that abandoned seats recirculate quickly during a hot onsale.</p>
+
+    <h2>Step 8 — Data Model</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>events (event_id, name, venue_id, starts_at, onsale_at)
+seats  (seat_id, event_id, section, row, number,
+        status,          <span class="cm"># available | held | booked</span>
+        held_by, hold_expires)        <span class="cm"># indexed for the sweeper</span>
+bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre>
+    </div>
+    <p>An ACID relational database is the natural fit for the inventory because the atomic conditional claim relies on transactional guarantees. Shard by <code>event_id</code> so each event's seats live together — convenient, but it means a single hot event is one shard's problem (Step 11).</p>
+
+    <h2>Step 9 — Taming the Spike: the Virtual Waiting Room</h2>
+    <p>No inventory database can take direct hits from 5 million users in the same second. The standard solution — and what Ticketmaster actually does — is a <strong>virtual waiting room</strong>. When an onsale starts, incoming users are placed in a <strong>queue</strong> (often a Redis-backed list with a position token) and shown a "you're in line" page. The system then <strong>admits users into the real booking flow in controlled batches</strong>, sized to what the backend can safely handle. This converts an unbounded spike into a steady, bounded stream — the booking path never sees more concurrency than it can serialize, and users get a fair, orderly experience instead of a crashing free-for-all.</p>
+
+    <div class="callout">
+      <div class="callout-label">why this is the key move</div>
+      <p>The waiting room decouples <em>arrival rate</em> from <em>processing rate</em>. Without it, you'd have to make the booking backend absorb millions of concurrent lock attempts on a few thousand rows — a recipe for lock contention meltdown. With it, the backend always operates within its safe envelope, and back-pressure is pushed to a cheap queue. It also blunts bots and gives you a fairness/anti-abuse control point.</p>
+    </div>
+
+    <h2>Step 10 — Consistency: Split the Paths</h2>
+    <p>Different parts of the system have opposite needs, so treat them differently:</p>
+    <ul>
+      <li><strong>Browse path</strong> (event listings, seat maps) — read-heavy and tolerant of slight staleness; serve from caches, read replicas, and a CDN (AP). It's fine if the seat map is a second or two behind; the atomic claim at booking time is the real source of truth.</li>
+      <li><strong>Booking path</strong> (hold → pay → confirm) — must be <strong>strongly consistent</strong> (CP): a seat is claimed exactly once. This path runs against the authoritative inventory store with atomic operations and accepts lower availability/throughput in exchange for correctness.</li>
+    </ul>
+    <p>This is a direct CAP-style split (see <a href="/ddia/chapter-9/">consistency &amp; consensus</a>): be available and approximate where it's harmless, be consistent and authoritative where money and oversell are on the line.</p>
+
+    <h2>Step 11 — Payment Integration</h2>
+    <p>Confirming a booking spans the inventory store and an external payment provider, so it's orchestrated as a <strong>saga</strong> (see our <a href="/system-design/payment-system/">payment system</a> design): hold the seat → take payment (idempotently) → on success, transition the seat to <code>booked</code> and record the booking; on payment failure or timeout, run the compensating action and release the hold so the seat returns to inventory. The hold's expiry is the safety net — even if a step is lost, the seat won't stay stuck in <code>held</code> forever.</p>
+
+    <h2>Step 12 — Scaling and the Hot-Event Hotspot</h2>
+    <p>The browse path scales horizontally with caching, replicas, and CDN. The booking path is sharded by event, which works well across <em>many</em> events — but a single blockbuster onsale concentrates all contention on one event's seats (a hotspot). Mitigations: the waiting room caps concurrency into that shard; seats can be partitioned within the event (by section) to spread lock contention; and an in-memory layer (Redis) can front the hottest seat-status checks. Crucially, the contention is bounded by the seat count — there are only so many seats to fight over — so once the waiting room throttles arrivals, the backend's job is finite and tractable.</p>
+
+    <h2>Step 13 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Optimistic vs pessimistic locking.</strong> Optimistic conditional updates avoid held locks and scale better under contention (losers just retry); pessimistic <code>FOR UPDATE</code> is simpler to reason about but can serialize hard on a hot seat.</li>
+      <li><strong>Hold duration.</strong> Longer holds are friendlier to buyers but lock up inventory and slow recirculation during a hot sale; shorter holds keep seats moving but risk timing out real purchases.</li>
+      <li><strong>Consistency vs availability.</strong> Browsing is AP (cached, possibly stale); booking is CP (authoritative, no oversell). Mixing them up either oversells or makes browsing fragile.</li>
+      <li><strong>Waiting-room fairness.</strong> A queue imposes order and throttles load but adds latency and a whole subsystem; it's the price of surviving onsale spikes gracefully.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Ticketmaster is two problems wearing one coat: sell each seat exactly once (solved by a seat state machine plus an atomic conditional claim), and survive millions of simultaneous buyers (solved by a virtual waiting room that throttles arrivals into the consistent booking path). Split the architecture by consistency need — cache the browse path, protect the booking path — and orchestrate hold→pay→confirm as a saga with hold expiry as the safety net.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do you prevent double-booking?</strong> Claim the seat with an atomic conditional update (<code>SET held WHERE status='available'</code>) or row lock, so only one of many concurrent requests wins.<br>
+      <strong>Why temporary holds?</strong> Checkout takes time; a hold reserves the seat for a few minutes (state available→held→booked) and expires back to available if unpaid, so seats neither double-sell nor leak.<br>
+      <strong>How do you handle an onsale spike of millions?</strong> A virtual waiting room queues users and admits them in batches, decoupling arrival rate from the booking backend's safe processing rate.<br>
+      <strong>Where's the consistency boundary?</strong> Browsing/seat-maps are cached and AP; the booking path is strongly consistent (CP) — the atomic claim is the single source of truth.<br>
+      <strong>How does payment fit in?</strong> Hold → pay (idempotently) → confirm, as a saga; on failure or timeout the hold is released, with expiry as the backstop.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/payment-system/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design a Payment System</div>
+      </a>
+      <a href="/system-design/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">System Design</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

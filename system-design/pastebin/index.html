@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into Pastebin — key generation, separating metadata from blob storage, read-heavy caching and CDN, expiration and cleanup, and abuse prevention.">
+<title>Design Pastebin — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/pastebin/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design Pastebin — System Design">
+<meta property="og:description" content="Key generation, metadata vs blob storage, read-heavy caching and CDN, expiration, and abuse prevention.">
+<meta property="og:url" content="https://updoggtech.com/system-design/pastebin/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design Pastebin">
+<meta name="twitter:description" content="How a paste service works: key generation, blob storage, caching, and expiration.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Pastebin","description":"Key generation, metadata vs blob storage, read-heavy caching and CDN, expiration, and abuse prevention.","datePublished":"2023-04-10","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/pastebin/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">pastebin</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design Pastebin</h1>
+    <div class="article-meta">
+      <span>Apr 10, 2023</span>
+      <span class="separator">·</span>
+      <span>28 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Pastebin lets a user paste a block of text and get back a short URL that anyone can open to read it. It's a close cousin of the <a href="/system-design/url-shortener/">URL shortener</a>, with one important difference: instead of storing a tiny target URL, you store a potentially large blob of <em>content</em>. That shifts the design toward the question of <strong>where the bytes live</strong>, and — because pastes are read far more than they're written — toward aggressive caching. It's a great "medium" interview problem that rewards clean separation of metadata from content.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Generate a short base-62 key</strong> per paste (random or from a counter), just like a URL shortener; check for collisions only if random.</li>
+        <li><strong>Store content in a blob store, not the DB row</strong> — keep a small metadata record (key → blob location, expiry, flags) and put the (possibly large) text in object storage.</li>
+        <li><strong>Read-heavy by ~10:1+</strong> — cache hot pastes in Redis and serve via CDN; most reads should never touch the database or blob store.</li>
+        <li><strong>Pastes are write-once, immutable</strong> — which makes them trivially cacheable (no invalidation) and CDN-friendly.</li>
+        <li><strong>Expiration is a first-class feature</strong> — support TTLs; purge with a mix of lazy deletion on read and a background sweeper.</li>
+        <li><strong>Abuse is the real operational risk</strong> — rate-limit creation, scan for malware/spam, and support unlisted/private pastes.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Mint a short base-62 key per paste. Keep a small metadata row (key, blob pointer, expiry, visibility) in a database and store the actual text in an object store (S3) — only inline tiny pastes. Because pastes are immutable and read-heavy, cache hot ones in Redis and front everything with a CDN. Expire via TTL with lazy + scheduled cleanup. Rate-limit and scan on the write path to fight abuse.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">high-level architecture</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                         ┌──────────────┐   ┌───────────────┐
+              write/read │  App / API   │──▶│  Metadata DB  │  key→blob,
+   ┌──────────┐ ────────▶│  servers     │   │  (KV / SQL)   │  expiry, flags
+   │  Client  │          └──────┬───────┘   └───────────────┘
+   └────┬─────┘                 │           ┌───────────────┐
+        │  reads (hot)          ├──────────▶│  Blob store   │  paste content
+        │                       │           │  (S3)         │
+        ▼                  ┌────▼────┐      └───────────────┘
+   ┌─────────┐   miss      │  Cache  │   hot pastes (Redis)
+   │   CDN   │◀───────────▶│ (Redis) │
+   └─────────┘             └─────────┘</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> create a paste from a block of text and receive a unique URL; read a paste by its URL; optional custom alias; optional expiration (e.g. 10 min, 1 day, never); visibility (public / unlisted). <strong>Non-functional:</strong> very read-heavy, low read latency, high availability, durability (don't lose pastes before they expire), and horizontal scalability. Constrain paste size up front — say up to a few MB of text, with a hard cap — because it drives the storage decision. Pastes are <strong>write-once and immutable</strong>: you create one and never edit it (a new edit is a new paste), which simplifies caching enormously.</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Assume 1M new pastes/day (~12 writes/sec average) and a 10:1 read:write ratio (~120 reads/sec average, far higher at peak for viral pastes). Average paste 10&nbsp;KB → ~10&nbsp;GB/day of new content, ~3.6&nbsp;TB/year before expiry reclaims space. The numbers are modest for writes but the read path must handle sharp spikes when a paste goes viral — which is exactly what the cache and CDN are for. Key space: a 7-character base-62 key gives 62⁷ ≈ 3.5&nbsp;trillion combinations, plenty.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /pastes   {content, expiry?, custom_alias?, visibility?}
+        → {key, url}
+GET  /pastes/{key}        → {content, created_at, expiry}
+DELETE /pastes/{key}      → ok            <span class="cm"># owner only</span></code></pre>
+    </div>
+    <p>The create endpoint is rate-limited and authenticated (or captcha-gated) to curb abuse; the read endpoint is public and heavily cached.</p>
+
+    <h2>Step 4 — Key Generation</h2>
+    <p>Each paste needs a short, URL-safe key. Two standard approaches, identical to the <a href="/system-design/url-shortener/">URL shortener</a>:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Approach</th><th>How</th><th>Trade-off</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Random base-62</td><td>Generate 7 random chars, check DB for collision, retry</td><td>Unguessable (good for unlisted); needs a collision check + retry</td></tr>
+        <tr><td class="col-b">Counter / ID gen</td><td>Distributed counter (e.g. range-allocated or Snowflake) → base-62 encode</td><td>No collisions by construction; but sequential keys are guessable/enumerable</td></tr>
+      </tbody>
+    </table>
+    <p>For a paste service, <strong>random keys are usually preferred</strong> because "unlisted" pastes rely on the URL being unguessable; sequential IDs would let anyone enumerate every paste. A common refinement is a <strong>pre-generated key pool</strong>: a background service mints unused keys into a table so the write path just pops one (no live collision-retry loop on the hot path).</p>
+
+    <h2>Step 5 — Storage: Separate Metadata from Content</h2>
+    <p>The defining decision. Don't stuff multi-KB/MB text into a relational row — it bloats the database, slows scans, and wastes the DB's strengths. Instead split:</p>
+    <ul>
+      <li><strong>Metadata</strong> — a small record per paste (key, pointer to the blob, size, created/expiry timestamps, visibility, owner). Lives in a database (a key-value store or sharded SQL), which is fast to look up by key.</li>
+      <li><strong>Content</strong> — the actual text, stored in an <strong>object store</strong> (S3) addressed by the key (or a content hash). Object stores are cheap, durable, and built for large blobs.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">optimization</div>
+      <p>For <strong>tiny</strong> pastes (a few hundred bytes), the round-trip to the blob store can cost more than the read itself. A common refinement is to <strong>inline</strong> small content directly in the metadata row and only spill to the blob store above a size threshold — best of both worlds.</p>
+    </div>
+
+    <h2>Step 6 — Data Model</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">metadata schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>pastes (
+   key         PK,          <span class="cm"># base-62 short key</span>
+   blob_url,                <span class="cm"># pointer into S3 (null if inlined)</span>
+   inline_text,             <span class="cm"># small pastes stored here directly</span>
+   size, visibility, owner_id,
+   created_at, expires_at   <span class="cm"># indexed for cleanup</span>
+)</code></pre>
+    </div>
+    <p>Shard by <code>key</code> (hash partitioning) so lookups stay single-shard and the table scales horizontally. An index on <code>expires_at</code> supports the cleanup sweep.</p>
+
+    <h2>Step 7 — Read and Write Paths</h2>
+    <p><strong>Write:</strong> validate + rate-limit → obtain a key (from the pool) → store content (inline if small, else PUT to blob store) → insert the metadata row → return the URL. <strong>Read:</strong> look up the key in the cache; on a hit, return immediately; on a miss, read metadata, fetch content (inline or from blob store), populate the cache, and return. Because content is immutable, a cached entry never needs invalidation — it only needs to expire when the paste does.</p>
+
+    <h2>Step 8 — Caching and CDN</h2>
+    <p>This is the heart of a read-heavy service. Put a <strong>Redis cache</strong> in front of the metadata + blob lookups, keyed by paste key, so popular pastes are served from memory. Because pastes are immutable, also front the read path with a <strong>CDN</strong>: a paste's rendered/raw content can be cached at edge locations with a long TTL (bounded by the paste's own expiry), so a viral paste is served almost entirely from the edge and never melts the origin. Use an eviction policy like LRU so the cache holds the currently-hot set.</p>
+
+    <h2>Step 9 — Expiration and Cleanup</h2>
+    <p>Expired pastes must stop being served and eventually be reclaimed. Three complementary mechanisms (same playbook as the URL shortener):</p>
+    <ul>
+      <li><strong>Lazy deletion</strong> — on read, if <code>expires_at</code> has passed, treat it as gone (404) and optionally delete it then. Cheap, but expired-yet-unread pastes linger.</li>
+      <li><strong>Scheduled sweeper</strong> — a background job periodically scans the <code>expires_at</code> index and bulk-deletes expired metadata + their blobs, reclaiming storage.</li>
+      <li><strong>Object-store TTL</strong> — let the blob store auto-expire objects via lifecycle rules, so content cleanup is handled by the storage layer.</li>
+    </ul>
+
+    <h2>Step 10 — Scaling and Fault Tolerance</h2>
+    <p>The app/API tier is stateless and scales horizontally behind a load balancer. The metadata store is sharded by key and replicated for availability; the blob store (S3) already provides ~11 nines of durability and effectively unlimited scale. The cache tier scales by sharding (consistent hashing) across Redis nodes. Since each layer scales independently and the content layer is immutable, the system grows almost linearly — the main capacity concern is read spikes, fully absorbed by cache + CDN.</p>
+
+    <h2>Step 11 — Security and Abuse Prevention</h2>
+    <p>A public "paste anything" endpoint is catnip for abuse, so this deserves explicit attention:</p>
+    <ul>
+      <li><strong>Rate limiting</strong> on the create endpoint (per IP / per user) to stop spam and storage-exhaustion attacks.</li>
+      <li><strong>Content scanning</strong> for malware, phishing, and spam; honor takedown requests.</li>
+      <li><strong>Visibility controls</strong> — unlisted pastes rely on unguessable random keys; truly private pastes need auth and access checks.</li>
+      <li><strong>Size caps</strong> and input validation to prevent oversized uploads.</li>
+    </ul>
+
+    <h2>Step 12 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Random vs sequential keys.</strong> Random keys are unguessable (needed for unlisted pastes) but require collision handling; sequential keys avoid collisions but are enumerable. Paste services lean random.</li>
+      <li><strong>Inline vs blob storage.</strong> Inlining small pastes saves a round-trip; blob storage keeps the database lean for large content. A size threshold gets both.</li>
+      <li><strong>Cache/CDN TTL.</strong> Longer edge caching means fewer origin hits but coarser control; bound it by paste expiry and accept slight delete latency.</li>
+      <li><strong>Consistency.</strong> Pastes are immutable and write-once, so eventual consistency of the cache is harmless — a freshly created paste just needs its first read to hit the origin.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Pastebin is a lesson in two ideas: separate small metadata from large content (DB for the pointer, object store for the bytes), and exploit immutability to cache hard. Once those click, the rest — key generation, expiration, abuse handling — is standard. The read path's spike-tolerance via cache + CDN is what turns a simple CRUD app into a scalable service.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How is Pastebin different from a URL shortener?</strong> It stores large content, not a tiny target URL — so the key decision is metadata-vs-blob storage, and caching matters far more.<br>
+      <strong>Where does the paste content live?</strong> In an object store (S3), with only a small pointer + metadata row in the database; tiny pastes may be inlined to skip the round-trip.<br>
+      <strong>Why is caching so effective here?</strong> Pastes are immutable and read-heavy, so cached/CDN entries never need invalidation — perfect for absorbing viral read spikes.<br>
+      <strong>Random or sequential keys?</strong> Random, because unlisted pastes depend on unguessable URLs; sequential IDs would let anyone enumerate all pastes.<br>
+      <strong>How do pastes expire?</strong> TTL with lazy deletion on read plus a background sweeper (and object-store lifecycle rules) to reclaim storage.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/key-value-store/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design a Distributed Key-Value Store</div>
+      </a>
+      <a href="/system-design/typeahead/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design Search Autocomplete (Typeahead)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

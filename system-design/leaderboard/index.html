@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into a real-time leaderboard — why SQL ORDER BY doesn't scale, Redis sorted sets for O(log n) rank queries, persistence, sharding, and exact vs approximate global rank.">
+<title>Design a Leaderboard — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/leaderboard/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design a Leaderboard — System Design">
+<meta property="og:description" content="Redis sorted sets for O(log n) rank, persistence, sharding, and exact vs approximate global rank at scale.">
+<meta property="og:url" content="https://updoggtech.com/system-design/leaderboard/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design a Leaderboard">
+<meta name="twitter:description" content="How real-time leaderboards work: Redis sorted sets, rank queries, persistence, and sharding.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Leaderboard","description":"Redis sorted sets for O(log n) rank, persistence, sharding, and exact vs approximate global rank at scale.","datePublished":"2023-04-13","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/leaderboard/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">leaderboard</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Leaderboard</h1>
+    <div class="article-meta">
+      <span>Apr 13, 2023</span>
+      <span class="separator">·</span>
+      <span>28 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A leaderboard ranks players by score in real time: show the global top 10, tell me my rank, and show the players just above and below me — all updating instantly as scores change, for millions of players. It looks like a one-line SQL query (<code>ORDER BY score</code>), and that's exactly the trap. The interesting part is that computing a <strong>rank</strong> efficiently, at scale, under constant updates, is something a naive database does terribly — and a single specialized data structure (the sorted set) does beautifully.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>SQL ORDER BY + COUNT doesn't scale</strong> — computing a player's rank means counting everyone above them, an O(n) scan per query, hopeless under heavy reads.</li>
+        <li><strong>Redis sorted sets are the answer</strong> — a skip-list + hash give O(log n) score updates, top-k, and rank queries out of the box.</li>
+        <li><strong>Core operations map 1:1</strong> — <code>ZADD</code>/<code>ZINCRBY</code> to update, <code>ZREVRANGE</code> for top-k, <code>ZREVRANK</code> for a player's rank, <code>ZRANGE</code> for neighbors.</li>
+        <li><strong>Redis is the hot store; a DB is the source of truth</strong> — persist scores durably and rebuild the sorted set on restart.</li>
+        <li><strong>Sharding breaks exact global rank</strong> — once the set spans nodes, you can't get a precise cross-shard rank cheaply; use approximation.</li>
+        <li><strong>Time-based boards</strong> (daily/weekly) are just separate sorted sets with a reset/expiry.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Don't compute rank with SQL — counting everyone above a player is O(n). Use a <strong>Redis sorted set</strong>, which keeps members ordered by score in a skip list and supports O(log n) updates, top-k, and rank queries. Back it with a durable database as the system of record. A single sorted set handles tens of millions of entries; beyond that you must shard, which sacrifices exact global rank — so switch to bucketed/approximate ranking. Periodic boards are just additional sorted sets.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">a sorted set, ordered by score</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>rank  member     score
+  0    alice      9820      ◀ ZREVRANGE 0 2  → top 3
+  1    bob        9650
+  2    carol      9510
+  ...
+ 41    you        7300      ◀ ZREVRANK "you" → 41
+ 42    dave       7295      ◀ ZREVRANGE 40 44 → players around you
+  ...
+       skip-list keeps order; all ops O(log n)</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p><strong>Functional:</strong> update a player's score (set or increment); get the global top-k; get a specific player's rank; get the players immediately around a player ("you're #42, here are #40–44"). <strong>Non-functional:</strong> updates and reads should reflect near-real-time standings, low latency, high availability, and scale to millions of players and high write volume (every game action can change a score). Clarify whether scores only increase (simpler) or can go up and down, and whether ranking is global, per-region, or time-windowed — these change the design.</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Say 50M players and 10M daily active. If each active player triggers ~10 score updates/day, that's ~100M writes/day (~1–2K writes/sec average, much higher during peak events) plus heavy reads (everyone refreshing the board). A sorted set entry is small (member id + score), so 50M entries is on the order of a few GB — comfortably in memory on a single large Redis node, which is an important sizing insight: you often don't need to shard at all.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /scores            {user_id, delta}     <span class="cm"># add points</span>
+GET  /leaderboard/top?limit=10                <span class="cm"># top-k</span>
+GET  /rank/{user_id}                          <span class="cm"># this player's rank + score</span>
+GET  /leaderboard/around/{user_id}?range=5    <span class="cm"># neighbors</span></code></pre>
+    </div>
+
+    <h2>Step 4 — Why the Naive Database Approach Fails</h2>
+    <p>Store <code>(user_id, score)</code> in SQL and serve the top-k with <code>SELECT ... ORDER BY score DESC LIMIT 10</code>. With an index on <code>score</code>, top-k is actually fine. The killer is <strong>rank</strong>: "what is player X's position?" requires <code>SELECT COUNT(*) WHERE score &gt; X.score</code> — counting every player ahead of them. That's an O(n) operation per query, recomputed constantly as scores change, and it collapses under millions of players and frequent "show me my rank" requests. Rank is the operation that demands a better structure.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Operation</th><th>SQL (indexed score)</th><th>Redis sorted set</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Update score</td><td class="col-a">O(log n) index update</td><td class="col-b">O(log n) — ZADD/ZINCRBY</td></tr>
+        <tr><td>Top-k</td><td class="col-a">O(k) with index</td><td class="col-b">O(log n + k) — ZREVRANGE</td></tr>
+        <tr><td>Player's rank</td><td class="col-a">O(n) COUNT scan ✗</td><td class="col-b">O(log n) — ZREVRANK ✓</td></tr>
+        <tr><td>Neighbors</td><td class="col-a">Hard (need rank first)</td><td class="col-b">O(log n + range) — ZRANGE</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Step 5 — Redis Sorted Sets</h2>
+    <p>A Redis <strong>sorted set (ZSET)</strong> stores members each with a score, kept ordered by a <strong>skip list</strong> (plus a hash map from member to score). This gives exactly the operations a leaderboard needs, all in O(log n):</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">Redis operations</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>ZINCRBY  board  50  "user42"     <span class="cm"># add 50 points (or ZADD to set)</span>
+ZREVRANGE board  0  9  WITHSCORES <span class="cm"># top 10 (highest first)</span>
+ZREVRANK board  "user42"          <span class="cm"># player's 0-based rank</span>
+ZREVRANGE board  40 44            <span class="cm"># players ranked 40..44 (neighbors)</span>
+ZSCORE   board  "user42"          <span class="cm"># a player's current score</span></code></pre>
+    </div>
+    <p>Every leaderboard query maps directly to one command, and the skip list keeps everything ordered as scores change — no scans, no recomputation.</p>
+
+    <h2>Step 6 — Persistence and the Source of Truth</h2>
+    <p>Redis is the fast, in-memory <strong>serving</strong> layer, but you shouldn't treat it as the only copy of the data. Keep a durable database (SQL or a KV store) as the <strong>system of record</strong> for scores. On every update, write to the database and update the sorted set (write-through), or stream score events and apply them to both. If Redis restarts or a node is lost, rebuild its sorted set from the database. Redis persistence (RDB snapshots / AOF) helps recovery speed, but the durable DB is the authoritative backup.</p>
+
+    <h2>Step 7 — Top-k, Rank, and Neighbors</h2>
+    <p>With the sorted set in place, the three core reads are trivial: <strong>top-k</strong> is <code>ZREVRANGE 0 k-1</code>; a player's <strong>rank</strong> is <code>ZREVRANK</code> (O(log n) — the structure tracks subtree sizes so it counts predecessors without scanning); <strong>neighbors</strong> are a <code>ZREVRANK</code> to find the position followed by a <code>ZREVRANGE</code> over the surrounding window. The top-k list is also extremely cacheable — it changes slowly relative to how often it's viewed, so cache it with a short TTL to shield Redis from read spikes during big events.</p>
+
+    <h2>Step 8 — Scaling: When One Node Isn't Enough</h2>
+    <p>A single Redis node holds tens of millions of entries in a few GB, so for many leaderboards you never shard. When you must (memory or write throughput limits), you <strong>shard the sorted set</strong> across nodes — and this is where it gets hard, because rank is inherently a global property:</p>
+    <ul>
+      <li><strong>Shard by score range</strong> (e.g. node A: 0–1000, node B: 1001–5000…). Top-k and rank become "ask the top shard(s) and add up counts," but score ranges are skewed and a player crossing a boundary must move shards.</li>
+      <li><strong>Shard by user (hash)</strong> spreads writes evenly, but now <em>every</em> rank/top-k query must fan out to all shards and merge — expensive.</li>
+    </ul>
+
+    <h2>Step 9 — Exact vs Approximate Global Rank</h2>
+    <p>Across shards, computing an <em>exact</em> global rank for an arbitrary player is costly (you'd query every shard for "how many of yours beat this score?"). At very large scale, the standard move is to <strong>approximate</strong>:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">bucketed approximate rank</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>maintain a count of players per score bucket:
+   [9000-9999] → 1,203
+   [8000-8999] → 4,560
+   [7000-7999] → 12,800   ← your bucket
+   ...
+approx_rank(you) = sum(counts of higher buckets)
+                 + your position within your bucket
+→ "top ~3%" instead of "rank 41,233"  (cheap, good enough)</code></pre>
+    </div>
+    <p>Most products only need an exact rank for the top-k (a single, cheap, unsharded "leaderboard of leaders") and an approximate percentile for everyone else ("you're in the top 5%"), which buckets deliver cheaply.</p>
+
+    <h2>Step 10 — Time-Based and Segmented Leaderboards</h2>
+    <p>Daily, weekly, or seasonal boards are simply <strong>separate sorted sets</strong> keyed by period (e.g. <code>board:2023-W15</code>), each with a TTL so it expires automatically when the period ends; updates write to the current period's set (and possibly an all-time set). The same pattern gives per-region or per-friend-group boards — just more sorted sets, or a <code>ZINTERSTORE</code> with a set of friend IDs for a "friends only" view.</p>
+
+    <h2>Step 11 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Sorted set vs database.</strong> The sorted set makes rank O(log n) instead of O(n); the cost is running and persisting an in-memory store alongside your DB.</li>
+      <li><strong>Single node vs sharded.</strong> One node keeps exact global rank trivial; sharding scales further but forces fan-out queries or approximation.</li>
+      <li><strong>Exact vs approximate rank.</strong> Exact rank is feasible unsharded; at massive scale, bucketed percentiles are far cheaper and usually sufficient outside the top-k.</li>
+      <li><strong>Freshness vs caching.</strong> Caching the top-k shields Redis during spikes at the cost of a few seconds of staleness — almost always acceptable.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>The leaderboard is a one-data-structure problem: a Redis sorted set turns the expensive parts (rank, neighbors, top-k under constant updates) into O(log n) operations that a naive SQL approach can't match. Persist to a durable store as the source of truth, cache the top-k, and only reach for sharding — and the approximate ranking it forces — when a single node truly can't hold the set.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why not just SQL ORDER BY?</strong> Top-k is fine, but a player's rank needs COUNT of everyone above them — O(n) per query, which collapses at scale.<br>
+      <strong>Why a Redis sorted set?</strong> Its skip-list gives O(log n) score updates, top-k (ZREVRANGE), and rank (ZREVRANK) — exactly the leaderboard operations.<br>
+      <strong>Is Redis the source of truth?</strong> No — it's the hot serving layer; a durable DB holds authoritative scores so you can rebuild the set after a restart.<br>
+      <strong>What breaks when you shard?</strong> Exact global rank — it spans all shards. Use score-bucket counts to compute an approximate rank/percentile cheaply.<br>
+      <strong>How do daily/weekly boards work?</strong> Separate sorted sets keyed by period with a TTL; write to the current period (and optionally an all-time set).</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/nearby/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design Nearby / Yelp (Proximity)</div>
+      </a>
+      <a href="/system-design/payment-system/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Payment System</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>
