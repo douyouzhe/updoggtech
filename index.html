@@ -742,17 +742,17 @@
     </div>
   </div>
 
-  <a href="/tech-stacks/graphql-rest-comparison/" class="featured-post" style="text-decoration:none;color:inherit;">
+  <a href="/ai-coding/harness-engineering/" class="featured-post" style="text-decoration:none;color:inherit;">
     <div>
-      <span class="featured-tag">Tech Stacks</span>
-      <h2 class="featured-title">GraphQL vs REST Comparison</h2>
+      <span class="featured-tag">AI Coding</span>
+      <h2 class="featured-title">Harness Engineering</h2>
       <p class="featured-excerpt">
-        GraphQL and REST are not as dissimilar as they first appear — but GraphQL introduces subtle modifications that greatly enhance the developer experience. A deep technical breakdown.
+        An LLM is just text in, text out. Everything that makes it an agent — context, tools, the loop, memory, verification, and guardrails — lives in the harness around it. Why the scaffolding now matters as much as the model.
       </p>
       <div class="featured-meta">
-        <span>Sep 08, 2023</span>
+        <span>May 21, 2026</span>
         <span>·</span>
-        <span>15 min read</span>
+        <span>26 min read</span>
         <span>·</span>
         <span style="color:var(--accent)">Read article →</span>
       </div>
@@ -762,18 +762,16 @@
         <div class="code-dot" style="background:#ff5f57"></div>
         <div class="code-dot" style="background:#febc2e"></div>
         <div class="code-dot" style="background:#28c840"></div>
-        <span style="color:var(--muted);margin-left:8px;font-size:11px">comparison.graphql</span>
+        <span style="color:var(--muted);margin-left:8px;font-size:11px">agent_loop.py</span>
       </div>
-      <div class="code-line"><span class="ln">1</span><span class="cm"># GraphQL schema</span></div>
-      <div class="code-line"><span class="ln">2</span><span class="kw">type </span><span class="ty">Query</span><span style="color:#e2e8f0"> {</span></div>
-      <div class="code-line"><span class="ln">3</span><span style="color:#e2e8f0">&nbsp;&nbsp;<span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span></span></div>
-      <div class="code-line"><span class="ln">4</span><span style="color:#e2e8f0">&nbsp;&nbsp;<span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span></span></div>
-      <div class="code-line"><span class="ln">5</span><span style="color:#e2e8f0">}</span></div>
-      <div class="code-line"><span class="ln">6</span></div>
-      <div class="code-line"><span class="ln">7</span><span class="cm"># vs REST endpoint</span></div>
-      <div class="code-line"><span class="ln">8</span><span class="kw">GET </span><span class="str">/api/movies/:id</span></div>
-      <div class="code-line"><span class="ln">9</span><span class="kw">GET </span><span class="str">/api/director/:id</span></div>
-      <div class="code-line"><span class="ln">10</span><span class="kw">GET </span><span class="str">/api/movies/:id/review</span></div>
+      <div class="code-line"><span class="ln">1</span><span class="cm"># the agent loop = the harness</span></div>
+      <div class="code-line"><span class="ln">2</span><span class="kw">while </span><span style="color:#e2e8f0">not done and steps &lt; budget:</span></div>
+      <div class="code-line"><span class="ln">3</span><span style="color:#e2e8f0">&nbsp;&nbsp;reply = <span class="fn">model</span>(state)</span><span class="cm">  # only LLM call</span></div>
+      <div class="code-line"><span class="ln">4</span><span style="color:#e2e8f0">&nbsp;&nbsp;</span><span class="kw">if </span><span style="color:#e2e8f0">reply.tool_calls:</span></div>
+      <div class="code-line"><span class="ln">5</span><span style="color:#e2e8f0">&nbsp;&nbsp;&nbsp;&nbsp;state += <span class="fn">execute</span>(call)</span><span class="cm">  # act</span></div>
+      <div class="code-line"><span class="ln">6</span><span style="color:#e2e8f0">&nbsp;&nbsp;</span><span class="kw">else</span><span style="color:#e2e8f0">:</span></div>
+      <div class="code-line"><span class="ln">7</span><span style="color:#e2e8f0">&nbsp;&nbsp;&nbsp;&nbsp;done = </span><span class="ty">True</span></div>
+      <div class="code-line"><span class="ln">8</span><span style="color:#e2e8f0">&nbsp;&nbsp;state = <span class="fn">compact</span>(state)</span><span class="cm">  # fit window</span></div>
     </div>
   </a>
 
@@ -808,7 +806,7 @@
       <div class="cat-icon">🤖</div>
       <div class="cat-name">AI Coding</div>
       <p class="cat-desc">AI coding tools, prompt engineering, agents, building on LLM APIs, and what it all means for interviews.</p>
-      <span class="cat-count">8 articles</span>
+      <span class="cat-count">9 articles</span>
     </a>
   </div>
 
