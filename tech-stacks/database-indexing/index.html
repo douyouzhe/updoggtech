@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into database indexing — why indexes exist, B-tree vs LSM-tree structures, clustered vs secondary indexes, composite and covering indexes, the leftmost-prefix rule, and when not to index.">
+<title>Database Indexing — B-Tree vs LSM-Tree | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/database-indexing/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Database Indexing — B-Tree vs LSM-Tree">
+<meta property="og:description" content="Why indexes exist, B-tree vs LSM-tree, clustered vs secondary, composite and covering indexes, and when not to index.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/database-indexing/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Database Indexing — B-Tree vs LSM-Tree">
+<meta name="twitter:description" content="How database indexes work: B-tree vs LSM-tree, clustered vs secondary, composite and covering indexes.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Database Indexing — B-Tree vs LSM-Tree","description":"Why indexes exist, B-tree vs LSM-tree, clustered vs secondary, composite and covering indexes, and when not to index.","datePublished":"2023-09-16","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/database-indexing/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">database-indexing</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">Database Indexing</h1>
+    <div class="article-meta">
+      <span>Sep 16, 2023</span>
+      <span class="separator">·</span>
+      <span>24 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>An index is the single biggest lever on database performance, and "why is this query slow?" almost always comes down to indexing. The idea is simple — keep an auxiliary structure that lets you find rows without scanning the whole table — but the engineering has depth: the two dominant structures (<strong>B-tree</strong> and <strong>LSM-tree</strong>) make opposite trade-offs between read and write speed, and how you compose indexes (clustered, secondary, composite, covering) decides whether a query flies or crawls. This is the practical companion to our <a href="/ddia/chapter-3/">DDIA notes on storage &amp; retrieval</a>.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>An index trades write speed and space for read speed</strong> — it turns an O(n) table scan into an O(log n) lookup, but every write must also update the index.</li>
+        <li><strong>B-trees</strong> are read-optimized, sorted, balanced, updated in place — the default for relational databases (PostgreSQL, MySQL/InnoDB).</li>
+        <li><strong>LSM-trees</strong> are write-optimized — buffer writes in memory, flush to immutable sorted files, compact in the background (Cassandra, RocksDB).</li>
+        <li><strong>Clustered vs secondary</strong> — a clustered index <em>is</em> the table sorted by key; a secondary index is a separate structure pointing back to rows.</li>
+        <li><strong>Composite indexes obey the leftmost-prefix rule</strong> — an index on (a, b, c) helps queries on a, a+b, a+b+c — not on b alone.</li>
+        <li><strong>A covering index</strong> answers a query from the index alone, skipping the table lookup entirely.</li>
+        <li><strong>Don't over-index</strong> — each index slows writes and costs space; useless indexes are pure overhead.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Indexes make reads fast by avoiding full scans, at the cost of slower writes and more storage. B-trees (sorted, in-place, read-optimized) power most relational databases; LSM-trees (in-memory buffer + immutable SSTables + compaction, write-optimized) power many NoSQL stores. Beyond the structure, design matters: clustered vs secondary, composite indexes (leftmost-prefix rule), and covering indexes (answer from the index alone). Index the columns your queries filter/sort on — and no more.</p>
+    </div>
+
+    <h2>Why Index at All</h2>
+    <p>Without an index, finding rows matching <code>WHERE email = 'x'</code> means a <strong>full table scan</strong> — read every row, O(n). At a thousand rows that's fine; at a hundred million it's catastrophic. An index is a sorted (or otherwise organized) auxiliary structure that lets the database jump to matching rows in <strong>O(log n)</strong>. The cost is real and worth stating clearly: the index consumes storage, and every <code>INSERT</code>/<code>UPDATE</code>/<code>DELETE</code> must update <em>every</em> index on the table. So indexing is a deliberate trade — faster reads for slower writes and more space.</p>
+
+    <h2>B-Tree Indexes</h2>
+    <p>The <strong>B-tree</strong> (specifically B+tree) is the workhorse of relational databases. It's a balanced tree of fixed-size <strong>pages</strong> (typically 4–16 KB) where keys are kept sorted; internal pages route you down to leaf pages holding the actual keys/pointers. Because it's balanced, lookups, insertions, and range scans are all <strong>O(log n)</strong>, and the sorted leaves make range queries and ordered reads efficient.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">B+tree: balanced, sorted, range-friendly</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                 [ 30 | 70 ]            ◀ root (routing keys)
+                /     |      \
+        [10|20]   [40|50|60]   [80|90]   ◀ internal
+        /  |  \    ...           ...
+   leaves: sorted keys → row pointers, linked for range scans
+
+  lookup 50: root(→mid) → internal(→50) → leaf   = O(log n), few page reads</code></pre>
+    </div>
+
+    <p>B-trees update <strong>in place</strong>: changing a value rewrites the page that holds it. This makes reads fast and predictable, but writes incur random I/O (find and modify the right page) and a write-ahead log is needed for crash safety. B-trees are what you get by default in PostgreSQL, MySQL/InnoDB, SQL Server, and Oracle.</p>
+
+    <h2>LSM-Tree Indexes</h2>
+    <p>The <strong>Log-Structured Merge-tree</strong> optimizes for <em>writes</em>. Instead of updating pages in place, it buffers writes in an in-memory sorted structure (the <strong>memtable</strong>); when that fills, it's flushed to disk as an immutable sorted file (an <strong>SSTable</strong>). Writes are therefore fast sequential appends — no random I/O. Over time many SSTables accumulate, so a background process <strong>compacts</strong> them — merging sorted files and discarding overwritten/deleted keys.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">LSM-tree: buffer → flush → compact</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>writes → memtable (in-memory, sorted)
+              │ full? flush (sequential write)
+              ▼
+         SSTable_1  SSTable_2  SSTable_3 ...   (immutable, sorted)
+              └──────── compaction ────────┘ → merged SSTable
+                                              (drops overwritten/deleted keys)
+
+  read: check memtable, then newest→oldest SSTables
+        (Bloom filters skip SSTables that can't contain the key)</code></pre>
+    </div>
+
+    <p>The downside: a read may have to check the memtable and several SSTables, so LSM reads can be slower (mitigated by <strong>Bloom filters</strong> that quickly rule out SSTables lacking a key — the same trick used in our <a href="/system-design/url-shortener/">URL shortener</a>). LSM-trees power Cassandra, RocksDB, LevelDB, and the storage engines behind many NoSQL systems.</p>
+
+    <h2>B-Tree vs LSM-Tree</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>B-Tree</th><th>LSM-Tree</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Optimized for</td><td class="col-a">Reads</td><td class="col-b">Writes</td></tr>
+        <tr><td>Writes</td><td class="col-a">In-place (random I/O)</td><td class="col-b">Append + flush (sequential)</td></tr>
+        <tr><td>Reads</td><td class="col-a">Fast, predictable</td><td class="col-b">May check several SSTables</td></tr>
+        <tr><td>Amplification</td><td class="col-a">Write amplification (page rewrites)</td><td class="col-b">Read &amp; compaction amplification</td></tr>
+        <tr><td>Used by</td><td class="col-a">PostgreSQL, MySQL, Oracle</td><td class="col-b">Cassandra, RocksDB, LevelDB</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Clustered vs Secondary Indexes</h2>
+    <p>A <strong>clustered index</strong> determines the physical order of the table's rows on disk — the table <em>is</em> the index, sorted by the clustering key (usually the primary key). There's only one per table, and looking up by that key returns the full row immediately. A <strong>secondary (non-clustered) index</strong> is a separate structure whose leaves point back to the row (by primary key or row location); using it requires a second hop to fetch the full row. The implication: looking up by the clustered key is the cheapest possible read, while a secondary-index lookup costs an extra step.</p>
+
+    <h2>Composite Indexes and the Leftmost-Prefix Rule</h2>
+    <p>An index can span multiple columns — a <strong>composite index</strong> on <code>(country, city, name)</code>. The key insight is that it's sorted by those columns <em>in order</em>, so it only helps queries that use a <strong>leftmost prefix</strong> of the columns:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">leftmost-prefix rule — index (country, city, name)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>WHERE country=?                         ✓ uses index
+WHERE country=? AND city=?              ✓ uses index
+WHERE country=? AND city=? AND name=?   ✓ fully uses index
+WHERE city=?                            ✗ skips the leftmost col → no use
+WHERE name=?                            ✗ no use
+
+  column ORDER matters: put the most selective / most-filtered column
+  considerations first, and match your query patterns.</code></pre>
+    </div>
+
+    <p>This is one of the most common real-world indexing mistakes: a composite index in the wrong column order, or a query that filters on a non-leading column, silently falls back to a scan.</p>
+
+    <h2>Covering Indexes</h2>
+    <p>If an index contains <em>all</em> the columns a query needs (both the filter columns and the selected columns), the database can answer the query from the index alone — no trip to the table. This is a <strong>covering index</strong>, and it's a big win for hot queries: <code>SELECT name WHERE country=?</code> served by an index on <code>(country, name)</code> never touches the table rows. The trade-off is a wider index (more storage, slower writes), so reserve covering indexes for your highest-traffic queries.</p>
+
+    <h2>When NOT to Index</h2>
+    <p>Indexes aren't free, and over-indexing is a real anti-pattern:</p>
+    <ul>
+      <li><strong>Write-heavy tables</strong> — every index multiplies write cost; a logging table with ten indexes will crawl.</li>
+      <li><strong>Low-cardinality columns</strong> — indexing a boolean or a status with three values rarely helps; the database may scan anyway.</li>
+      <li><strong>Small tables</strong> — a full scan of a few hundred rows is faster than index overhead.</li>
+      <li><strong>Unused indexes</strong> — pure cost (space + write slowdown) with no benefit; audit and drop them.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">reading the plan</div>
+      <p>The way to know whether an index is used is the query planner: run <code>EXPLAIN</code> (or <code>EXPLAIN ANALYZE</code>) and look for an <em>index scan</em> vs a <em>sequential/full scan</em>. A surprise full scan on a big table is the classic "missing or unusable index" signal — often a non-leftmost composite column, a function applied to the column, or a type mismatch defeating the index.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Indexing is a trade: reads get O(log n) at the cost of write speed and space. Know your storage engine (B-tree = read-optimized in-place; LSM = write-optimized append+compact), and design indexes around your actual query patterns — clustered key for the cheapest reads, composite indexes obeying the leftmost-prefix rule, covering indexes for hot paths — while resisting the urge to index everything.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What does an index cost?</strong> Storage plus write slowdown — every write updates every index. It buys O(log n) reads instead of an O(n) scan.<br>
+      <strong>B-tree vs LSM-tree?</strong> B-tree = sorted, in-place, read-optimized (relational DBs); LSM = memtable + immutable SSTables + compaction, write-optimized (Cassandra, RocksDB).<br>
+      <strong>Clustered vs secondary index?</strong> Clustered defines the table's physical order (the table is the index); secondary is a separate structure that points back to the row (extra hop).<br>
+      <strong>Leftmost-prefix rule?</strong> A composite index on (a,b,c) serves queries on a, a+b, a+b+c — not b or c alone. Column order must match query patterns.<br>
+      <strong>What's a covering index?</strong> One that contains every column a query needs, so it's answered from the index without reading the table.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/elasticsearch/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Elasticsearch</div>
+      </a>
+      <a href="/tech-stacks/vector-databases/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Vector Databases</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

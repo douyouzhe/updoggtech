@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into Elasticsearch — the inverted index, analyzers and tokenization, BM25 relevance scoring, shards and replicas, the distributed scatter-gather query path, near-real-time search, and queries vs filters.">
+<title>Elasticsearch — Search &amp; Analytics Engine | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/elasticsearch/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Elasticsearch — Search &amp; Analytics Engine">
+<meta property="og:description" content="The inverted index, analyzers, BM25 relevance, shards and replicas, scatter-gather, near-real-time, and queries vs filters.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/elasticsearch/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Elasticsearch — Search &amp; Analytics Engine">
+<meta name="twitter:description" content="How full-text search works: inverted index, analyzers, relevance scoring, and distributed shards.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Elasticsearch — Search & Analytics Engine","description":"The inverted index, analyzers, BM25 relevance, shards and replicas, scatter-gather, near-real-time, and queries vs filters.","datePublished":"2023-09-14","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/elasticsearch/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">elasticsearch</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">Elasticsearch</h1>
+    <div class="article-meta">
+      <span>Sep 14, 2023</span>
+      <span class="separator">·</span>
+      <span>24 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>When a product needs real search — typo-tolerant, ranked-by-relevance, fast over millions of documents — a relational <code>WHERE text LIKE '%query%'</code> falls apart, because it scans every row and can't rank results. <strong>Elasticsearch</strong> (built on Apache Lucene) solves this with a fundamentally different data structure, the <strong>inverted index</strong>, and a distributed engine on top for scale. It powers full-text search, log analytics (the "E" in the ELK stack), and <a href="/tech-stacks/observability/">observability</a> backends. Understanding it is mostly understanding the inverted index and relevance scoring.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>The inverted index</strong> maps each term → the list of documents containing it, so a search is a fast lookup, not a full scan.</li>
+        <li><strong>Analyzers</strong> turn text into tokens (lowercasing, stemming, stop-word removal) at index <em>and</em> query time — that's why "Running" matches "run".</li>
+        <li><strong>Relevance, not just matching</strong> — results are scored (BM25) and ranked, so the best matches come first.</li>
+        <li><strong>Documents → indices → shards → replicas</strong> — JSON docs in an index, split into shards spread across nodes, each shard replicated.</li>
+        <li><strong>Near-real-time, not instant</strong> — newly indexed docs become searchable after a refresh (default ~1s).</li>
+        <li><strong>Filters vs queries</strong> — filters are yes/no and cacheable (fast); queries compute a relevance score.</li>
+        <li><strong>Not your primary store</strong> — it's a search index alongside your source-of-truth database, not a replacement.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Elasticsearch flips the data model: instead of "for each doc, scan its text," it builds an inverted index ("for each term, which docs?"), making full-text search a lookup. Analyzers tokenize and normalize text so searches are flexible; BM25 ranks results by relevance. Data is sharded and replicated across nodes, and a query scatters to all shards and gathers the top results. It's near-real-time, distinguishes cacheable filters from scored queries, and complements — never replaces — your primary database.</p>
+    </div>
+
+    <h2>The Inverted Index</h2>
+    <p>A normal database index (or a brute-force scan) is organized <em>by document</em>: given a row, find its text. Full-text search needs the opposite: given a <em>word</em>, find all documents that contain it. The <strong>inverted index</strong> does exactly that — it's a map from each distinct term to a <strong>posting list</strong> of the documents (and positions) where that term appears.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">inverted index: term → docs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>docs:  1="the quick fox"   2="quick brown dog"   3="lazy fox"
+
+inverted index:
+   "quick" → [1, 2]
+   "fox"   → [1, 3]
+   "brown" → [2]
+   "lazy"  → [3]
+
+search "quick fox" → intersect [1,2] ∩ [1,3] = doc 1 ranks highest
+                     (both terms) ; docs 2,3 match one term each</code></pre>
+    </div>
+
+    <p>A search for "quick fox" looks up each term's posting list and combines them — instant, regardless of corpus size, because there's no scanning of document bodies. This is the same idea behind the <a href="/system-design/typeahead/">typeahead</a> trie, generalized to arbitrary words anywhere in a document.</p>
+
+    <h2>Analysis: Tokenization and Analyzers</h2>
+    <p>For search to feel smart, raw text must be normalized before it's indexed. An <strong>analyzer</strong> runs a pipeline: a <em>tokenizer</em> splits text into terms, then <em>token filters</em> transform them — lowercasing ("Fox" → "fox"), <strong>stemming</strong> ("running"/"ran" → "run"), removing <strong>stop words</strong> ("the", "a"), and more. Crucially, the <em>same</em> analyzer runs at both index time and query time, so the query is normalized to match the indexed terms. That's why searching "Running" finds a document containing "ran" — both reduce to the stem "run". Choosing analyzers (per language, with synonyms, etc.) is most of the art of good search quality.</p>
+
+    <h2>Relevance Scoring</h2>
+    <p>Search isn't just "which docs match" but "which match <em>best</em>." Elasticsearch scores each matching document and returns them ranked. The default algorithm, <strong>BM25</strong> (a refinement of TF-IDF), rewards documents where the query terms appear often (<em>term frequency</em>) but discounts terms that are common across the whole corpus (<em>inverse document frequency</em>) and normalizes for document length. The result: a rare, specific word the user searched for counts for more than a common one, and a short doc packed with the term outranks a long one that mentions it once. Relevance ranking is the feature that distinguishes a search engine from a database filter.</p>
+
+    <h2>Documents, Indices, Shards, and Replicas</h2>
+    <p>The data model is layered. A <strong>document</strong> is a JSON object. An <strong>index</strong> is a collection of similar documents (like a table). Because an index can be huge, it's split into <strong>shards</strong> — each shard is a self-contained Lucene index holding a subset of the documents — and shards are distributed across nodes. Each shard has a <strong>primary</strong> plus one or more <strong>replicas</strong> for fault tolerance and read scaling.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">scatter-gather across shards</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>index "logs"  →  shard 0 | shard 1 | shard 2   (each on a node, + replicas)
+
+query → coordinating node
+        ├─ scatter to shard 0, 1, 2  (search in parallel)
+        ├─ each returns its local top-k
+        └─ gather + merge + re-rank → global top-k → client</code></pre>
+    </div>
+
+    <p>A search is <strong>scatter-gather</strong>: a coordinating node sends the query to every shard, each finds its local top results, and the coordinator merges them into the global ranking. Note a key trade-off: the shard count is largely <strong>fixed at index creation</strong> (resharding means reindexing), so you size shards up front based on expected data volume.</p>
+
+    <h2>Near-Real-Time Search</h2>
+    <p>Elasticsearch is <strong>near-real-time</strong>, not instant. Indexed documents are first written to an in-memory buffer; a periodic <strong>refresh</strong> (default ~1 second) turns that buffer into a searchable Lucene <em>segment</em>. So a document you just indexed becomes searchable about a second later, not immediately. Segments are immutable and periodically merged in the background; durability is provided by a translog (write-ahead log). This refresh delay is the price of the indexing efficiency, and it's tunable (faster refresh = more overhead).</p>
+
+    <h2>Queries vs Filters</h2>
+    <p>A crucial performance distinction: a <strong>query</strong> asks "how well does this match?" and computes a relevance score; a <strong>filter</strong> asks "does this match, yes or no?" with no scoring. Filters are cheaper and their results are <strong>cacheable</strong>, so structured constraints (status = "active", date range, category) should be filters, while the free-text part is a scored query.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Query (must)</th><th>Filter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Question</td><td class="col-a">"How relevant?" (scored)</td><td class="col-b">"Match? yes/no" (no score)</td></tr>
+        <tr><td>Cacheable</td><td class="col-a">No</td><td class="col-b">Yes</td></tr>
+        <tr><td>Use for</td><td class="col-a">Free-text relevance</td><td class="col-b">Exact constraints (status, range, tag)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Beyond search, Elasticsearch also does <strong>aggregations</strong> — fast group-by/metrics over matching documents (counts per category, histograms over time) — which is what makes it a real-time analytics engine for dashboards and logs.</p>
+
+    <h2>What It's Used For</h2>
+    <ul>
+      <li><strong>Full-text search</strong> — product catalogs, documentation, content sites with ranking and typo tolerance.</li>
+      <li><strong>Log &amp; event analytics</strong> — the ELK / Elastic stack (Elasticsearch + Logstash/Beats + Kibana) for centralized logs.</li>
+      <li><strong>Observability</strong> — searching and aggregating metrics, logs, and traces (see <a href="/tech-stacks/observability/">observability</a>).</li>
+      <li><strong>Autocomplete &amp; suggestions</strong> — edge-ngram analyzers or completion suggesters.</li>
+    </ul>
+
+    <h2>Elasticsearch vs Alternatives</h2>
+    <p>Versus a <strong>relational database</strong>: a SQL DB is your source of truth with transactions and joins; Elasticsearch is a denormalized, eventually-consistent search index you populate <em>from</em> that DB (often via change data capture). Versus a <a href="/tech-stacks/vector-databases/">vector database</a>: classic Elasticsearch does <em>lexical</em> search (matching terms), while vector DBs do <em>semantic</em> search (matching meaning via embeddings) — modern Elasticsearch supports vector/kNN search too, and <strong>hybrid</strong> search combining both is increasingly common.</p>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>Not a primary datastore</strong> — it's a search index; keep your authoritative data in a real database and reindex into ES.</li>
+      <li><strong>Mapping explosions</strong> — dynamically indexing every field of arbitrary JSON can blow up the index; define mappings deliberately.</li>
+      <li><strong>Deep pagination</strong> — "page 10,000" is expensive (scatter-gather must rank everything before); use <code>search_after</code> / scroll instead.</li>
+      <li><strong>Shard sizing</strong> — too many tiny shards waste overhead; too few limits parallelism. Size up front since resharding means reindexing.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Elasticsearch is the inverted index made distributed and ranked. The inverted index turns search into a lookup; analyzers make matching flexible; BM25 ranks by relevance; and shards/replicas plus scatter-gather make it scale and stay available. Treat it as a search/analytics layer fed from your primary database — use filters for exact constraints, queries for relevance, and remember it's near-real-time.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why not just SQL LIKE?</strong> LIKE scans every row and can't rank; the inverted index (term → docs) makes search a lookup and BM25 ranks by relevance.<br>
+      <strong>What does an analyzer do?</strong> Tokenizes and normalizes text (lowercase, stem, stop-words) at index and query time, so "Running" matches "ran".<br>
+      <strong>Query vs filter?</strong> Query computes a relevance score (not cacheable); filter is a yes/no match (cacheable). Use filters for exact constraints, queries for free text.<br>
+      <strong>How does a distributed search run?</strong> Scatter-gather: the coordinator queries every shard in parallel, each returns local top-k, the coordinator merges into the global ranking.<br>
+      <strong>Is it real-time?</strong> Near-real-time — new docs are searchable after a refresh (~1s), not instantly; and it's a search index, not your primary store.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/object-storage/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Object Storage &amp; S3</div>
+      </a>
+      <a href="/tech-stacks/database-indexing/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Database Indexing</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

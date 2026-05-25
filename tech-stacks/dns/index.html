@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into DNS — how names resolve to IPs through recursive and authoritative servers, the hierarchy, record types, caching and TTL, GeoDNS and anycast for load balancing, and DNS reliability and security.">
+<title>DNS — The Internet's Name System | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/dns/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DNS — The Internet's Name System">
+<meta property="og:description" content="How names resolve to IPs, the DNS hierarchy, record types, caching and TTL, GeoDNS and anycast, and DNS reliability.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/dns/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DNS — The Internet's Name System">
+<meta name="twitter:description" content="How DNS works: resolution flow, record types, caching/TTL, GeoDNS, and anycast.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DNS — The Internet's Name System","description":"How names resolve to IPs, the DNS hierarchy, record types, caching and TTL, GeoDNS and anycast, and DNS reliability.","datePublished":"2023-09-28","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/dns/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">dns</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">DNS</h1>
+    <div class="article-meta">
+      <span>Sep 28, 2023</span>
+      <span class="separator">·</span>
+      <span>21 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Every connection on the internet starts with a question: "what's the IP address for this name?" The Domain Name System answers it. DNS is the internet's distributed, hierarchical, heavily-cached phone book that turns <code>updoggtech.com</code> into an IP a machine can connect to. It looks like plumbing, but it's also a powerful infrastructure tool — it's how <a href="/tech-stacks/cdn/">CDNs</a> route you to the nearest edge, how traffic is balanced and failed over across regions, and a frequent (often overlooked) single point of failure.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>DNS maps names → IPs</strong> through a hierarchy: root → TLD (<code>.com</code>) → authoritative nameserver for the domain.</li>
+        <li><strong>A recursive resolver does the legwork</strong> — your client asks it; it walks the hierarchy and caches the answer.</li>
+        <li><strong>Caching + TTL are everything</strong> — answers are cached at every level for their TTL; "DNS propagation" is just waiting for old TTLs to expire.</li>
+        <li><strong>Record types</strong> encode different answers — A/AAAA (IPv4/IPv6), CNAME (alias), MX (mail), TXT, NS.</li>
+        <li><strong>DNS is an infra tool</strong> — GeoDNS returns location-based IPs and round-robin/weighted records balance load and do failover.</li>
+        <li><strong>Anycast</strong> lets one IP be served from many locations, the basis for resilient root servers and CDNs.</li>
+        <li><strong>It's a SPOF and attack surface</strong> — DNS outages take down "everything"; DNSSEC and DoH/DoT add integrity and privacy.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>DNS resolves a hostname to an IP by walking a hierarchy (root → TLD → authoritative), with a recursive resolver doing the work and caching results by TTL. Records (A, CNAME, MX…) hold the answers. Beyond lookups, DNS is a routing tool: GeoDNS and weighted/round-robin records steer and balance traffic, and anycast serves one IP from many sites. Because nearly everything depends on it, DNS is a notorious single point of failure — secure it (DNSSEC, DoH/DoT) and design TTLs deliberately.</p>
+    </div>
+
+    <h2>The Problem: Names to Addresses</h2>
+    <p>Humans remember <code>github.com</code>; machines route packets to <code>140.82.x.x</code>. DNS is the indirection layer between them — and that indirection is valuable beyond convenience: because the name→IP mapping is resolved fresh (subject to caching), you can <em>change</em> where a name points without changing the name, which is what enables migrations, failover, and geo-routing.</p>
+
+    <h2>The Resolution Flow</h2>
+    <p>When your browser needs <code>updoggtech.com</code>, it asks a <strong>recursive resolver</strong> (run by your ISP, or 1.1.1.1 / 8.8.8.8). If the answer isn't cached, the resolver walks the hierarchy on your behalf:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">resolving updoggtech.com (cache miss)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>client ─▶ recursive resolver
+            ├─▶ root server      : "ask the .com TLD servers → here"
+            ├─▶ .com TLD server  : "ask updoggtech.com's nameservers → here"
+            ├─▶ authoritative NS : "updoggtech.com A = 203.0.113.10"  ✓
+            └─ cache the answer (for its TTL), return to client
+
+  client connects to 203.0.113.10
+  next lookup within TTL → served instantly from the resolver's cache</code></pre>
+    </div>
+
+    <p>The resolver's queries are <em>iterative</em> (each server refers it one step further down), while the client's single query to the resolver is <em>recursive</em> (the resolver returns the final answer). The first lookup touches several servers; every subsequent one within the TTL is a cache hit.</p>
+
+    <h2>The Hierarchy</h2>
+    <p>DNS is a tree, which is what lets it scale to billions of names without any single authority:</p>
+    <ul>
+      <li><strong>Root servers</strong> (the <code>.</code> at the top) — know where the TLD servers are. There are 13 root server <em>identities</em>, each massively replicated via anycast.</li>
+      <li><strong>TLD servers</strong> — manage top-level domains (<code>.com</code>, <code>.org</code>, <code>.io</code>, country codes); they know which nameservers are authoritative for each domain under them.</li>
+      <li><strong>Authoritative nameservers</strong> — hold the actual records for a specific domain (often run by your DNS provider — Route 53, Cloudflare, etc.).</li>
+    </ul>
+
+    <h2>Record Types</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Record</th><th>Maps</th><th>Example use</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">A / AAAA</td><td>Name → IPv4 / IPv6</td><td>The core hostname → address mapping</td></tr>
+        <tr><td class="col-b">CNAME</td><td>Name → another name (alias)</td><td>www → apex; pointing at a CDN hostname</td></tr>
+        <tr><td class="col-a">MX</td><td>Domain → mail servers</td><td>Email routing</td></tr>
+        <tr><td class="col-b">NS</td><td>Domain → its nameservers</td><td>Delegation</td></tr>
+        <tr><td class="col-a">TXT</td><td>Arbitrary text</td><td>Domain verification, SPF/DKIM</td></tr>
+      </tbody>
+    </table>
+    <p>A common gotcha: a <strong>CNAME can't coexist with other records</strong> at the same name and isn't allowed at the zone apex (<code>example.com</code> itself) — which is why providers offer "ALIAS/ANAME" flattening to point an apex at a CDN.</p>
+
+    <h2>Caching and TTL</h2>
+    <p>DNS scales because answers are cached aggressively at every layer — the OS, the recursive resolver, sometimes the browser. Each record carries a <strong>TTL</strong> (time to live) telling caches how long to keep it. This is the single most important operational lever:</p>
+
+    <div class="callout">
+      <div class="callout-label">"propagation" is just TTL</div>
+      <p>When you change a DNS record and it "takes hours to propagate," nothing is actively propagating — caches around the world are simply still serving the <em>old</em> answer until its TTL expires. The fix when planning a change: <strong>lower the TTL ahead of time</strong> (e.g. to 60s) so caches refresh quickly, make the change, then raise it again. High TTLs mean fast lookups but slow changes; low TTLs mean the opposite.</p>
+    </div>
+
+    <h2>DNS as an Infrastructure Tool</h2>
+    <p>Because the resolver asks "what IP for this name?", the authoritative server can <em>answer differently</em> depending on who's asking or current conditions — turning DNS into a routing and load-balancing layer:</p>
+    <ul>
+      <li><strong>Round-robin / weighted DNS</strong> — return multiple A records (or rotate/weight them) to spread clients across servers, a crude but real load balancer (see <a href="/tech-stacks/load-balancing/">load balancing</a>).</li>
+      <li><strong>GeoDNS</strong> — return a different IP based on the resolver's location, sending users to the nearest datacenter/edge — one way <a href="/tech-stacks/cdn/">CDNs</a> route traffic.</li>
+      <li><strong>DNS failover</strong> — health-check endpoints and stop returning the IP of a dead region, steering traffic away (bounded by TTL — which is why low TTLs matter for failover).</li>
+    </ul>
+
+    <h2>Anycast</h2>
+    <p><strong>Anycast</strong> is the technique that lets a single IP address be announced from many physical locations at once; internet routing delivers each client to the topologically nearest one. It's how the 13 root servers actually run on hundreds of machines worldwide, and how CDNs and big DNS providers achieve both low latency and resilience — if one location goes down, routing simply sends clients to the next-nearest. (Contrast with GeoDNS, which returns different <em>answers</em>; anycast uses the <em>same</em> IP and lets the network pick the site.)</p>
+
+    <h2>Reliability and Security</h2>
+    <p>Because virtually everything begins with a DNS lookup, DNS is a high-impact <strong>single point of failure</strong>: the 2016 Dyn attack took down major sites not by attacking them but by DDoSing their DNS provider. Mitigations: use multiple/redundant DNS providers, anycast, and sensible TTLs. On security: plain DNS is unauthenticated and unencrypted, so <strong>DNSSEC</strong> adds cryptographic signatures to prevent forged/spoofed answers (cache poisoning), and <strong>DoH/DoT</strong> (DNS over HTTPS/TLS) encrypt the query for privacy so intermediaries can't see or tamper with your lookups.</p>
+
+    <h2>In System Design</h2>
+    <p>DNS shows up in most designs as the very first hop: it routes users to a CDN edge or a regional load balancer, enables blue-green/region failover (repoint a name), and underlies service discovery (internal services resolve each other by name, often via the platform's DNS). The recurring interview point is to remember TTL: anything you want to change <em>quickly</em> (failover, cutover) needs a low TTL set in advance.</p>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>TTL too high for changes</strong> — you can't fail over or migrate fast if the world caches the old IP for a day; pre-lower TTLs.</li>
+      <li><strong>DNS as an unguarded SPOF</strong> — single provider, no redundancy; a DNS outage looks like a total outage.</li>
+      <li><strong>CNAME at the apex</strong> — not allowed; use ALIAS/ANAME flattening.</li>
+      <li><strong>Stale negative caching</strong> — failures (NXDOMAIN) are cached too; a misconfiguration can linger.</li>
+      <li><strong>Ignoring DNS in latency budgets</strong> — a cold lookup adds round trips; <code>dns-prefetch</code>/preconnect help on the web.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>DNS is a hierarchical, cached lookup from names to IPs — root → TLD → authoritative, fronted by a recursive resolver — and TTL governs the trade between fast lookups and fast changes. Beyond resolution it's a routing layer (GeoDNS, weighted records, anycast) used for load balancing, geo-routing, and failover. Treat it as critical infrastructure: redundant providers, deliberate TTLs, and DNSSEC/encrypted DNS.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Walk through a DNS lookup.</strong> Client → recursive resolver → (cache miss) root → TLD (.com) → authoritative nameserver → A record; resolver caches by TTL and returns the IP.<br>
+      <strong>Recursive vs authoritative?</strong> The recursive resolver does the legwork and caches; authoritative servers hold the real records for a domain. Root/TLD servers delegate downward.<br>
+      <strong>What is "DNS propagation"?</strong> Not active propagation — caches serving the old record until its TTL expires. Lower TTL before a planned change.<br>
+      <strong>GeoDNS vs anycast?</strong> GeoDNS returns a different IP based on location; anycast announces one IP from many sites and lets routing pick the nearest.<br>
+      <strong>Why is DNS a reliability concern?</strong> Everything starts with a lookup, so a DNS outage looks total (cf. the Dyn attack); use redundant providers, anycast, and DNSSEC.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/observability/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Observability</div>
+      </a>
+      <a href="/tech-stacks/api-gateway/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">API Gateway &amp; Service Mesh</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

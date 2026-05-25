@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into object storage (S3) — object vs block vs file storage, the flat namespace, the HTTP API and multipart/presigned uploads, durability via erasure coding, consistency, storage tiers, and scaling.">
+<title>Object Storage &amp; S3 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/object-storage/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Object Storage &amp; S3">
+<meta property="og:description" content="Object vs block vs file storage, the flat namespace, multipart/presigned uploads, erasure coding, consistency, and tiers.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/object-storage/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Object Storage &amp; S3">
+<meta name="twitter:description" content="How object storage works: flat namespace, HTTP API, durability via erasure coding, and tiering.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Object Storage & S3","description":"Object vs block vs file storage, the flat namespace, multipart/presigned uploads, erasure coding, consistency, and tiers.","datePublished":"2023-09-12","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/object-storage/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">object-storage</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">Object Storage &amp; S3</h1>
+    <div class="article-meta">
+      <span>Sep 12, 2023</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Object storage is the quiet workhorse behind half the internet: every uploaded photo, video, backup, and static asset almost certainly lives in an object store like Amazon S3, Google Cloud Storage, or Azure Blob. It's the durable, effectively-infinite bucket our <a href="/system-design/google-drive/">Google Drive</a> and <a href="/system-design/pastebin/">Pastebin</a> designs offload their bytes to. What makes it different from a database or a filesystem is a deliberate set of constraints — a <strong>flat namespace</strong>, <strong>immutable objects</strong>, and an <strong>HTTP API</strong> — that trade convenience for near-limitless scale and durability.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Objects, not files or blocks</strong> — each object is a blob + a key + metadata, stored in a flat namespace (no real directories), accessed over HTTP.</li>
+        <li><strong>Built for durability</strong> — ~11 nines via replication across AZs and erasure coding; you offload "never lose this" to the storage layer.</li>
+        <li><strong>Effectively infinite + cheap</strong> — scale to exabytes with no capacity planning; pay per GB stored and per request.</li>
+        <li><strong>Immutable objects</strong> — you replace a whole object, not edit in place; there's no cheap "rename" or "append."</li>
+        <li><strong>Big files use multipart upload; clients transfer directly via presigned URLs</strong> so app servers never proxy the bytes.</li>
+        <li><strong>Storage classes / lifecycle</strong> tier data from hot to archive to cut cost; pair with a <a href="/tech-stacks/cdn/">CDN</a> for fast global reads.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Object storage keeps immutable blobs addressed by key in a flat namespace, exposed over an HTTP API. It achieves ~11 nines of durability with erasure coding and cross-AZ replication, scales to exabytes with no provisioning, and is cheap. Upload big files with multipart and let clients transfer directly via presigned URLs. It's not a filesystem (no rename, listing is paginated and not free) and not a database (no queries) — it's the durable bucket you put bytes in and front with a CDN.</p>
+    </div>
+
+    <h2>Object vs Block vs File Storage</h2>
+    <p>There are three storage paradigms, and choosing object storage means accepting its model on purpose:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Object (S3)</th><th>Block (EBS)</th><th>File (NFS)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Unit</td><td class="col-a">Object (blob + metadata)</td><td class="col-b">Fixed-size blocks</td><td>Files in directories</td></tr>
+        <tr><td>Access</td><td class="col-a">HTTP API by key</td><td class="col-b">Attached as a disk</td><td>Mounted, POSIX paths</td></tr>
+        <tr><td>Mutation</td><td class="col-a">Replace whole object</td><td class="col-b">Edit any block</td><td>Edit in place</td></tr>
+        <tr><td>Scale</td><td class="col-a">Effectively unlimited</td><td class="col-b">Per-volume limits</td><td>Limited by server</td></tr>
+        <tr><td>Best for</td><td class="col-a">Blobs: media, backups, assets</td><td class="col-b">Databases, OS disks</td><td>Shared app files</td></tr>
+      </tbody>
+    </table>
+
+    <p>Block storage is a raw disk (great for a database's files); file storage is a shared, mountable hierarchy (great for legacy apps). Object storage gives up in-place edits and a real directory tree in exchange for limitless scale and a simple network API — ideal for write-once, read-many blobs.</p>
+
+    <h2>Anatomy of an Object and the Flat Namespace</h2>
+    <p>An object is three things: the <strong>data</strong> (the bytes), a unique <strong>key</strong> (its name within a bucket), and <strong>metadata</strong> (content type, size, custom tags). Crucially, the namespace is <strong>flat</strong> — there are no real folders. A key like <code>2023/09/photo.jpg</code> looks hierarchical, but the slashes are just characters in the key; "folders" are a UI convenience produced by listing keys with a common <em>prefix</em>. This flatness is what lets the system scale: there's no directory tree to traverse or lock, just a giant distributed key→blob map.</p>
+
+    <h2>The HTTP API</h2>
+    <p>You interact with object storage over plain HTTP verbs against a key:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">object storage API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>PUT    /my-bucket/2023/09/photo.jpg     <span class="cm"># upload (replaces if exists)</span>
+GET    /my-bucket/2023/09/photo.jpg     <span class="cm"># download</span>
+DELETE /my-bucket/2023/09/photo.jpg     <span class="cm"># remove</span>
+GET    /my-bucket?prefix=2023/09/       <span class="cm"># list keys under a prefix (paginated)</span>
+
+<span class="cm"># big files: multipart upload (parallel, resumable)</span>
+initiate → upload part 1..N (in parallel) → complete</code></pre>
+    </div>
+
+    <p>Two patterns matter at scale. <strong>Multipart upload</strong> splits a large object into parts uploaded in parallel and reassembled server-side — resumable and fast for multi-GB files. <strong>Presigned URLs</strong> are time-limited, signed links that let a client <code>PUT</code>/<code>GET</code> an object <em>directly</em> to/from the store without routing the bytes through your application servers — essential for keeping bulk traffic off your backend (exactly how the Drive design moves chunks).</p>
+
+    <h2>Durability via Replication and Erasure Coding</h2>
+    <p>The headline feature is durability — providers advertise ~<strong>11 nines</strong> (99.999999999%), meaning the probability of losing an object is vanishingly small. Two techniques get there. <strong>Replication</strong> stores copies across multiple <strong>availability zones</strong> (physically separate datacenters), so a fire or flood in one doesn't lose data. <strong>Erasure coding</strong> is cleverer and cheaper than full replication: it splits an object into <em>k</em> data fragments plus <em>m</em> parity fragments, and can reconstruct the object from <em>any k</em> of the <em>k+m</em> total. With (say) 10 data + 4 parity, you tolerate losing any 4 fragments while using only 1.4× storage instead of 3× for triple replication.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">erasure coding: durability without 3x cost</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>object → split into k=10 data + m=4 parity = 14 fragments
+         spread across 14 disks / zones
+
+  rebuild from ANY 10 of 14   → tolerate losing up to 4
+  storage overhead = 14/10 = 1.4x   (vs 3x for triple replication)</code></pre>
+    </div>
+
+    <h2>Consistency Model</h2>
+    <p>Historically S3 was <em>eventually</em> consistent for some operations — a freshly written object might briefly 404 on read. Modern object stores now offer <strong>strong read-after-write consistency</strong>: once a <code>PUT</code> succeeds, a subsequent <code>GET</code> returns the new data. This matters for pipelines that write then immediately read. Listing, however, may still lag slightly, and there are no multi-object transactions — each object operation is independent and atomic on its own.</p>
+
+    <h2>Storage Classes and Lifecycle</h2>
+    <p>Not all data is accessed equally, so object stores offer <strong>storage classes</strong> at different price/latency points, and <strong>lifecycle rules</strong> to move objects between them automatically:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Class</th><th>Use</th><th>Trade-off</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Standard (hot)</td><td>Frequently accessed</td><td>Highest storage cost, instant access</td></tr>
+        <tr><td class="col-b">Infrequent access</td><td>Accessed monthly</td><td>Cheaper storage, retrieval fee</td></tr>
+        <tr><td class="col-a">Archive (cold)</td><td>Backups, compliance</td><td>Very cheap, minutes-to-hours to restore</td></tr>
+      </tbody>
+    </table>
+    <p>A lifecycle policy might keep an object in Standard for 30 days, move it to Infrequent Access, then to Archive after a year, and finally expire it — all automatically, slashing cost for aging data.</p>
+
+    <h2>Scaling and Performance</h2>
+    <p>Because the namespace is flat, the store partitions the keyspace and scales nearly linearly — there's no directory tree to bottleneck. Historically performance was tied to key <strong>prefixes</strong> (the store partitioned by prefix, so many keys sharing one prefix could create a hotspot), which is why advice used to be to randomize prefixes; modern S3 auto-scales prefixes, but spreading load across keys still helps for extreme throughput. For read-heavy public content, you put a <a href="/tech-stacks/cdn/">CDN</a> in front so most reads are served from the edge and never hit the origin bucket.</p>
+
+    <h2>What It's Used For</h2>
+    <ul>
+      <li><strong>Static assets &amp; media</strong> — images, video, JS/CSS bundles, served via CDN.</li>
+      <li><strong>Backups &amp; archives</strong> — durable, cheap, lifecycle-tiered cold storage.</li>
+      <li><strong>Data lake</strong> — raw data for batch/analytics jobs to read directly (schema-on-read).</li>
+      <li><strong>Application blobs</strong> — user uploads, file-sync chunks, generated artifacts (Drive, Pastebin).</li>
+    </ul>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>No rename / move</strong> — "renaming" means copy-to-new-key + delete-old; moving a big "folder" is many operations.</li>
+      <li><strong>Listing isn't free</strong> — large buckets list in paginated batches and per-request costs add up; don't use listing as a query engine.</li>
+      <li><strong>Not a database</strong> — no queries, joins, or partial updates; pair it with a metadata DB (as the Drive design does).</li>
+      <li><strong>Request costs</strong> — millions of tiny objects can cost more in requests than in storage; batch small items.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Object storage trades the conveniences of a filesystem (rename, in-place edit, cheap listing) and a database (queries) for three superpowers: limitless scale via a flat namespace, ~11 nines durability via erasure coding and cross-AZ replication, and a dead-simple HTTP API. Use it for immutable blobs, move bytes directly with presigned URLs and multipart, tier with lifecycle rules, and front it with a CDN.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Object vs block vs file?</strong> Object = blobs by key over HTTP, flat namespace, limitless (S3); block = raw disk for databases (EBS); file = mountable POSIX hierarchy (NFS).<br>
+      <strong>How does it get 11 nines?</strong> Cross-AZ replication plus erasure coding (k data + m parity, rebuild from any k) — durability far cheaper than 3x replication.<br>
+      <strong>Why presigned URLs and multipart?</strong> Clients upload/download directly to the store (bytes never touch your servers); multipart parallelizes and resumes large uploads.<br>
+      <strong>Is it a filesystem?</strong> No — flat namespace, immutable objects, no cheap rename, paginated non-free listing. "Folders" are just key prefixes.<br>
+      <strong>Why front it with a CDN?</strong> Reads are bulk and cacheable; the edge serves hot content so the origin bucket isn't hammered.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/redis/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Redis</div>
+      </a>
+      <a href="/tech-stacks/elasticsearch/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Elasticsearch</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 Redis——内存数据结构存储:为什么单线程却很快、它的数据类型、RDB 与 AOF 持久化、淘汰策略、复制与集群,以及让它不止是缓存的各种用途。">
+<title>Redis — 内存数据结构存储 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/redis/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/redis/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/redis/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/redis/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Redis — 内存数据结构存储">
+<meta property="og:description" content="为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/redis/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Redis — 内存数据结构存储">
+<meta name="twitter:description" content="Redis 原理与用途:数据结构、持久化、淘汰、复制与集群。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Redis — 内存数据结构存储","description":"为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。","datePublished":"2023-09-10","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/redis/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="lang-switch">
+        <a href="/tech-stacks/redis/">EN</a>
+        <a href="/zh/tech-stacks/redis/" class="active">中</a>
+      </div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">redis</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">Redis</h1>
+    <div class="article-meta">
+      <span>2023年9月10日</span>
+      <span class="separator">·</span>
+      <span>24 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>大多数人初次接触 Redis 时把它当作"一个缓存",但这低估了它。Redis 是一个<strong>内存数据结构存储</strong>:它把丰富的数据类型——字符串、哈希、列表、集合、有序集合、流——保存在内存里,并通过网络对外暴露针对这些结构的原子操作。<em>数据结构</em>加<em>微秒级延迟</em>的组合,正是为什么缓存、会话存储、限流器、排行榜、队列、发布/订阅常常都落在 Redis 上,甚至同一个系统里全都用它。这就是我们在<a href="/zh/tech-stacks/caching/">缓存</a>和<a href="/zh/system-design/leaderboard/">排行榜</a>文章里反复用到的技术,下面讲讲它到底怎么工作。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>不只是缓存,而是数据结构服务器。</strong>字符串、哈希、列表、集合、有序集合、流、位图、HyperLogLog、地理位置,各自带有原子的 O(1)/O(log n) 操作。</li>
+        <li><strong>内存 + 单线程</strong>执行命令——内存速度加上无锁,意味着操作简单、可预测、极快(单节点约每秒 10 万+ 操作)。</li>
+        <li><strong>持久化是可选且可调的</strong>——RDB 快照(紧凑、重启快、可能丢最近的写)对比 AOF 追加日志(更持久、文件更大);常常两者都开。</li>
+        <li><strong>淘汰策略让它成为缓存</strong>——设置 <code>maxmemory</code> 和策略(LRU/LFU/TTL),内存压力下 Redis 自动淘汰。</li>
+        <li><strong>高可用靠复制 + Sentinel;扩展靠 Cluster</strong>——Cluster 把键空间分散到 16384 个哈希槽。</li>
+        <li><strong>当心大 key、热 key 和阻塞命令</strong>——一条慢的 O(n) 命令会卡住单线程,殃及所有客户端。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Redis 把带类型的数据结构放在内存里,在单线程上执行命令,所以操作天然原子且飞快。根据能容忍多少数据丢失,用 RDB(快照)和/或 AOF(写日志)持久化。用淘汰策略把它当缓存跑,用复制 + Sentinel 做高可用,用 Cluster(哈希槽)做横向扩展。它的数据类型解锁的远不止缓存:排行榜(有序集合)、限流、队列、发布/订阅、分布式锁。</p>
+    </div>
+
+    <h2>为什么是内存 + 单线程</h2>
+    <p>两个设计选择解释了 Redis 的速度。第一,数据放在<strong>内存(RAM)</strong>里,读写完全不碰磁盘——延迟是微秒级而非毫秒级。第二,命令执行是<strong>单线程</strong>的:一次只在一个核上跑一条命令,通过事件循环处理。这听起来像限制,其实是特性:没有锁、命令之间没有竞态,每个操作天然<strong>原子</strong>。你永远不会拿到一个执行了一半的自增。对内存存储来说 CPU 很少是瓶颈——网络和内存带宽才是——所以单线程也能轻松扛住每秒 10 万+ 操作。(现代 Redis 确实用线程做 I/O 和后台任务,但核心命令执行仍是单线程。)</p>
+
+    <div class="callout">
+      <div class="callout-label">关键推论</div>
+      <p>因为一个线程服务所有人,一条<strong>慢命令</strong>会阻塞其他所有客户端。在一百万元素的集合上跑 <code>KEYS *</code> 或大 <code>SMEMBERS</code>,会让服务器卡住整段时间。运维 Redis 的第一准则就是:让单条命令保持快速,避免在热路径上对大结构做 O(n) 操作。</p>
+    </div>
+
+    <h2>数据结构</h2>
+    <p>Redis 与 Memcached 这类纯键值缓存的区别,在于它的<strong>带类型的值</strong>以及在服务端执行的操作:</p>
+    <ul>
+      <li><strong>字符串(String)</strong>——字节、整数(原子 <code>INCR</code>)或二进制块。最基本的缓存值。</li>
+      <li><strong>哈希(Hash)</strong>——字段→值的映射;不必序列化整个对象就能存对象。</li>
+      <li><strong>列表(List)</strong>——链表;<code>LPUSH</code>/<code>RPOP</code> 可做简单的队列和栈。</li>
+      <li><strong>集合(Set)</strong>——无序去重成员;成员判断、并集/交集(如共同好友)。</li>
+      <li><strong>有序集合(ZSET)</strong>——按分数排序的成员;<a href="/zh/system-design/leaderboard/">排行榜</a>和限流器背后的引擎。</li>
+      <li><strong>流(Stream)</strong>——带消费者组的追加日志;一个轻量的类 Kafka 原语。</li>
+      <li><strong>位图 / HyperLogLog / 地理位置</strong>——省空间的计数器、近似基数统计、地理查询。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">服务端、原子的数据结构操作</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>SET   session:42 "..."  EX 3600     <span class="cm"># 字符串 + 1 小时 TTL</span>
+INCR  views:home                    <span class="cm"># 原子计数器</span>
+HSET  user:42 name "Ada" tier gold  <span class="cm"># 用哈希存对象</span>
+ZADD  board 9820 alice              <span class="cm"># 有序集合 → 排行榜</span>
+ZREVRANK board alice                <span class="cm"># O(log n) 求排名</span>
+LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></code></pre>
+    </div>
+
+    <h2>持久化:RDB 对比 AOF</h2>
+    <p>内存存储不一定意味着易失。Redis 提供两种持久化机制,让它能在重启后存活:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>RDB(快照)</th><th>AOF(追加文件)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>存什么</td><td class="col-a">数据集的某个时间点完整转储</td><td class="col-b">每条写命令,启动时重放</td></tr>
+        <tr><td>持久性</td><td class="col-a">可能丢上次快照以来的写</td><td class="col-b">最多丢约 1 秒(everysec fsync)</td></tr>
+        <tr><td>文件大小/重启</td><td class="col-a">紧凑;重启快</td><td class="col-b">较大;重放较慢</td></tr>
+        <tr><td>成本</td><td class="col-a">周期性 fork 可能让内存陡增</td><td class="col-b">持续写入 + 重写/压实</td></tr>
+      </tbody>
+    </table>
+
+    <p>RDB 适合备份和快速重启;AOF 在你无法容忍丢超过一秒的写时更合适。常见的生产配置是<strong>两者都开</strong>——AOF 保证持久性,RDB 做快速备份——很多还用混合格式。如果纯把 Redis 当缓存用,可以完全关掉持久化,把数据当作可重新计算的。</p>
+
+    <h2>淘汰与过期</h2>
+    <p>要把 Redis 当缓存用,你用 <code>maxmemory</code> 给它的内存设上限,并选一个内存满时的<strong>淘汰策略</strong>:<code>allkeys-lru</code>(淘汰最久未用)、<code>allkeys-lfu</code>(淘汰最少使用——对倾斜访问更好)、<code>volatile-ttl</code>(在设了 TTL 的键里淘汰最快到期的),或 <code>noeviction</code>(拒绝写)。另外,键可以通过 <code>EXPIRE</code> 带上 <strong>TTL</strong>。Redis 同时用<strong>惰性</strong>(访问时)和<strong>主动</strong>(后台采样删除过期键)两种方式过期,在 CPU 与内存间权衡。淘汰(注意:Redis 用采样来近似 LRU/LFU,不是完美的全局排序)正是它能充当我们<a href="/zh/tech-stacks/caching/">缓存深入讲解</a>里那一层缓存的原因。</p>
+
+    <h2>复制与高可用</h2>
+    <p>单个 Redis 节点是单点故障。<strong>复制</strong>增加一个或多个副本,异步拷贝主节点的数据——可用于读扩展和热备。要做自动故障转移,<strong>Redis Sentinel</strong> 监控主从;主挂了,Sentinel 达成法定多数,提升一个副本为主并重新配置客户端。由于复制是异步的,故障转移可能丢失尚未到达被提升副本的最后几条写——这正是分布式系统里普遍存在的持久性与可用性权衡(见我们的 <a href="/zh/ddia/chapter-5/">DDIA 复制笔记</a>)。</p>
+
+    <h2>Redis Cluster:横向扩展</h2>
+    <p>当数据集或写吞吐超出单节点,<strong>Redis Cluster</strong> 把键空间分片到多个主节点。它把键空间划分为 <strong>16384 个哈希槽</strong>;每个键通过 <code>CRC16(key) mod 16384</code> 映射到一个槽,每个主节点拥有一段槽区间。加一个节点意味着把一部分槽迁移过去——只有受影响的键迁移,而不是整个键空间。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">集群:键 → 16384 哈希槽 → 节点</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>slot(key) = CRC16(key) mod 16384
+
+  节点 A: 槽    0 – 5460      (+ 副本)
+  节点 B: 槽 5461 – 10922     (+ 副本)
+  节点 C: 槽 10923 – 16383    (+ 副本)
+
+  多键操作必须落在同一个槽 → 用 {hash tag}:
+     MGET {cart:42}:items {cart:42}:total   <span class="cm"># 两者都对 "cart:42" 取哈希</span></code></pre>
+    </div>
+
+    <p>有个坑:多键操作(以及事务)只有在所有键落在<em>同一个</em>槽时才有效,你用<strong>哈希标签(hash tag)</strong>来强制这一点——<code>{}</code> 里的部分才是用来取哈希的。这也是让应用代码必须"感知 Cluster"的主要原因。</p>
+
+    <h2>Redis 实际拿来干什么</h2>
+    <p>这些数据结构直接对应了一大批用途:</p>
+    <ul>
+      <li><strong>缓存</strong>——最经典的:数据库前面的 cache-aside。</li>
+      <li><strong>会话存储</strong>——快速、带 TTL 的用户会话,在无状态应用服务器间共享。</li>
+      <li><strong>限流器</strong>——原子 <code>INCR</code> 配 <code>EXPIRE</code>,或用有序集合做滑动窗口。</li>
+      <li><strong>排行榜</strong>——有序集合给出 O(log n) 的排名和 top-k(见<a href="/zh/system-design/leaderboard/">排行榜设计</a>)。</li>
+      <li><strong>队列</strong>——列表(<code>LPUSH</code>/<code>BRPOP</code>)或带消费者组的流。</li>
+      <li><strong>发布/订阅</strong>——为实时功能做轻量的扇出消息。</li>
+      <li><strong>分布式锁</strong>——<code>SET key val NX EX</code> 当作租约;Redlock 算法把它扩展到多节点(虽有争议——单实例锁配合 fencing 往往就够了)。</li>
+    </ul>
+
+    <h2>Redis 对比 Memcached</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>Redis</th><th>Memcached</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>数据类型</td><td class="col-a">丰富(列表、集合、ZSET、流……)</td><td class="col-b">仅字符串/二进制块</td></tr>
+        <tr><td>持久化</td><td class="col-a">RDB + AOF</td><td class="col-b">无(纯缓存)</td></tr>
+        <tr><td>复制/高可用</td><td class="col-a">有(副本、Sentinel、Cluster)</td><td class="col-b">无内建复制</td></tr>
+        <tr><td>线程模型</td><td class="col-a">核心单线程</td><td class="col-b">多线程</td></tr>
+        <tr><td>最适合</td><td class="col-a">多样数据结构、需要持久化</td><td class="col-b">简单的大型多核键值缓存</td></tr>
+      </tbody>
+    </table>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>大 key</strong>——单个巨大的值(百万元素的列表)会让对它的每个操作都变慢并卡住线程;拆分或重构。</li>
+      <li><strong>热 key</strong>——某个键流量畸高会把负载集中到它所在的节点;客户端缓存或拆 key 可缓解。</li>
+      <li><strong>阻塞命令</strong>——生产中避免 <code>KEYS</code>、大 <code>SMEMBERS</code>/<code>HGETALL</code>;遍历用 <code>SCAN</code>。</li>
+      <li><strong>内存与持久化的相互作用</strong>——RDB 的 fork 会瞬时让内存翻倍;预留相应余量。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>把 Redis 理解成一个单线程、内存的数据结构服务器最为贴切——这个框架解释了它的速度(内存 + 无锁 + 原子操作)、它的主要风险(一条慢命令卡住所有人)以及它的多才多艺(选对数据类型,Redis 就变成缓存、队列、排行榜或锁)。需要持久性时上 RDB/AOF,需要故障转移时上 Sentinel,单节点不够时上 Cluster(哈希槽)。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>单线程的 Redis 为什么快?</strong>数据在内存里、一次只跑一条命令,所以操作原子且无锁;瓶颈是网络/内存而非 CPU。<br>
+      <strong>RDB 对比 AOF?</strong>RDB = 紧凑的时间点快照,重启快,可能丢最近的写;AOF = 追加每条写,约 1 秒持久性,文件更大、重放更慢。常常两者都开。<br>
+      <strong>Redis Cluster 怎么分片?</strong>16384 个哈希槽;键经 CRC16 mod 16384 映射到槽;每个主拥有一段槽区间。多键操作需要用 {hash tag} 落到同一个槽。<br>
+      <strong>Redis 对比 Memcached?</strong>Redis 有丰富数据类型、持久化和复制;Memcached 是更简单的多线程块缓存。除非只要纯缓存,否则选 Redis。<br>
+      <strong>最大的运维风险?</strong>一条慢的 O(n) 命令(KEYS、大集合读)阻塞单线程,殃及所有客户端。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/tech-stacks/graphql-rest-comparison/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">GraphQL 与 REST 对比</div>
+      </a>
+      <a href="/zh/tech-stacks/object-storage/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">对象存储与 S3</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

@@ -33,6 +33,19 @@
   <url><loc>https://updoggtech.com/tech-stacks/oauth/</loc><lastmod>2023-06-17</lastmod><priority>0.7</priority></url>
   <url><loc>https://updoggtech.com/tech-stacks/spark-joins/</loc><lastmod>2023-07-15</lastmod><priority>0.7</priority></url>
   <url><loc>https://updoggtech.com/tech-stacks/graphql-rest-comparison/</loc><lastmod>2023-09-08</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/redis/</loc><lastmod>2023-09-10</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/object-storage/</loc><lastmod>2023-09-12</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/elasticsearch/</loc><lastmod>2023-09-14</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/database-indexing/</loc><lastmod>2023-09-16</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/vector-databases/</loc><lastmod>2023-09-18</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/cdn/</loc><lastmod>2023-09-20</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/docker/</loc><lastmod>2023-09-22</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/ci-cd/</loc><lastmod>2023-09-24</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/observability/</loc><lastmod>2023-09-26</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/dns/</loc><lastmod>2023-09-28</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/api-gateway/</loc><lastmod>2023-09-30</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/grpc/</loc><lastmod>2023-10-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/websockets/</loc><lastmod>2023-10-04</lastmod><priority>0.7</priority></url>
 
   <url><loc>https://updoggtech.com/ddia/chapter-1/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
   <url><loc>https://updoggtech.com/ddia/chapter-2/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>

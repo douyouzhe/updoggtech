@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into WebSockets and real-time communication — why HTTP isn't enough, polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex connections, and scaling stateful connections with a pub/sub backplane.">
+<title>WebSockets &amp; Realtime | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/websockets/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="WebSockets &amp; Realtime">
+<meta property="og:description" content="Polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex, and scaling with a pub/sub backplane.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/websockets/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="WebSockets &amp; Realtime">
+<meta name="twitter:description" content="How real-time works: WebSockets vs SSE vs long-polling, the handshake, and scaling connections.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"WebSockets & Realtime","description":"Polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex, and scaling with a pub/sub backplane.","datePublished":"2023-10-04","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/websockets/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">websockets</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">WebSockets &amp; Realtime</h1>
+    <div class="article-meta">
+      <span>Oct 04, 2023</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chat, live notifications, collaborative editing, multiplayer games, trading dashboards — all need the <em>server</em> to push data to the client the instant something happens. Plain HTTP can't: it's request/response, always initiated by the client. <strong>WebSockets</strong> solve this with a persistent, full-duplex connection over which either side can send at any time. Understanding the options — polling, long-polling, SSE, and WebSockets — and how to <em>scale</em> stateful connections is the core of any real-time design, like our <a href="/system-design/chat-app/">chat app</a>.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>HTTP is client-initiated request/response</strong> — the server can't push, so real-time needs another approach.</li>
+        <li><strong>WebSockets give a persistent, full-duplex connection</strong> — after an HTTP upgrade handshake, both sides send freely over one long-lived TCP connection.</li>
+        <li><strong>The handshake</strong> starts as HTTP with an <code>Upgrade</code> header → <code>101 Switching Protocols</code> → the connection becomes <code>ws://</code>/<code>wss://</code>.</li>
+        <li><strong>Know the alternatives</strong> — long-polling (hacky push), and <strong>SSE</strong> (server→client only, simpler) — and pick by whether you need bidirectional.</li>
+        <li><strong>Scaling is the hard part</strong> — connections are stateful and long-lived; you need many open sockets, sticky routing, and a <strong>pub/sub backplane</strong> to fan out across servers.</li>
+        <li><strong>Heartbeats + reconnection</strong> keep connections healthy and recover from drops.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>WebSockets upgrade an HTTP connection into a persistent, full-duplex channel so the server can push to clients in real time. For one-way server→client streams, SSE is simpler; for true bidirectional, use WebSockets; long-polling is the fallback. The real engineering challenge is scale: connections are stateful and long-lived, so you need sticky routing, capacity for huge numbers of idle sockets, and a pub/sub backplane (e.g. Redis) to deliver a message to clients connected to <em>other</em> servers. Add heartbeats and reconnection for resilience.</p>
+    </div>
+
+    <h2>The Problem: HTTP Is One-Way</h2>
+    <p>HTTP's model is simple and scalable: a client sends a request, the server responds, done. But it means the server has <strong>no way to initiate</strong> — it can only answer. For anything where the server needs to tell the client "a new message arrived" or "the price changed," that's a fundamental mismatch. The naive workaround is <strong>polling</strong> (the client asks "anything new?" every few seconds), which is wasteful — mostly empty responses — and laggy. The history of real-time on the web is a series of increasingly better answers to this.</p>
+
+    <h2>The Evolution: Polling → Long-Polling → SSE → WebSockets</h2>
+    <ul>
+      <li><strong>Short polling</strong> — client requests on a timer. Simple, but wastes requests and adds latency up to the poll interval.</li>
+      <li><strong>Long polling</strong> — the client requests and the server <em>holds</em> the request open until it has data (or a timeout), then the client immediately re-requests. Near-real-time, works everywhere, but it's a hack with connection churn and overhead.</li>
+      <li><strong>Server-Sent Events (SSE)</strong> — a standardized one-way stream: the server pushes a continuous event stream over a single long-lived HTTP response. Simple, auto-reconnects, but <strong>server→client only</strong>.</li>
+      <li><strong>WebSockets</strong> — a persistent, <strong>full-duplex</strong> connection where both sides push freely. The most capable, and the right tool when the client also needs to send frequently.</li>
+    </ul>
+
+    <h2>What WebSockets Are</h2>
+    <p>A WebSocket is a single, long-lived TCP connection that supports <strong>full-duplex</strong> communication — both client and server can send messages at any time, independently, with low overhead per message (no HTTP headers per message). It begins life as an ordinary HTTP request so it works through existing web infrastructure, then <em>upgrades</em>: once established, it's a bare bidirectional message pipe (<code>ws://</code>, or <code>wss://</code> over TLS).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the upgrade handshake</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># client → server (looks like HTTP)</span>
+GET /chat HTTP/1.1
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+
+<span class="cm"># server → client</span>
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+
+<span class="cm"># → connection is now a full-duplex WebSocket; either side sends anytime</span></code></pre>
+    </div>
+
+    <h2>WebSockets vs SSE vs Long-Polling</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Long-Polling</th><th>SSE</th><th>WebSockets</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Direction</td><td class="col-a">Server→client (faked)</td><td class="col-b">Server→client only</td><td>Full-duplex</td></tr>
+        <tr><td>Connection</td><td class="col-a">Repeated requests</td><td class="col-b">One long-lived HTTP</td><td>One persistent socket</td></tr>
+        <tr><td>Overhead</td><td class="col-a">High (re-connect churn)</td><td class="col-b">Low</td><td>Lowest per message</td></tr>
+        <tr><td>Complexity</td><td class="col-a">Low</td><td class="col-b">Low (built into browsers)</td><td>Higher</td></tr>
+        <tr><td>Use for</td><td class="col-a">Legacy fallback</td><td class="col-b">Feeds, notifications, tickers</td><td>Chat, collab, games</td></tr>
+      </tbody>
+    </table>
+    <p>The decision rule: if the client only needs to <em>receive</em> updates, <strong>SSE</strong> is simpler and rides on plain HTTP. If the client also sends frequently (typing in a chat, moving in a game), use <strong>WebSockets</strong>. Long-polling is the universal fallback when neither is available.</p>
+
+    <h2>Scaling WebSockets: the Real Challenge</h2>
+    <p>Anyone can open a WebSocket; the hard part is operating millions of them. Unlike stateless HTTP requests that any server can handle, a WebSocket is a <strong>stateful, long-lived connection</strong> pinned to one specific server. That creates several problems:</p>
+    <ul>
+      <li><strong>Many idle connections</strong> — a chat service may hold millions of mostly-idle sockets; each consumes memory and a file descriptor, so connection density per server matters.</li>
+      <li><strong>Sticky routing</strong> — the load balancer must keep a client pinned to the server holding its connection (and must support the WebSocket upgrade in the first place — see <a href="/tech-stacks/load-balancing/">load balancing</a>).</li>
+      <li><strong>The fan-out problem</strong> — the killer issue, below.</li>
+    </ul>
+
+    <h3>The Fan-Out Problem and the Backplane</h3>
+    <p>Suppose Alice and Bob are in the same chat room but their WebSockets are connected to <em>different</em> servers. When Alice sends a message, the server holding her connection has no direct way to reach Bob's connection on another server. The solution is a <strong>pub/sub backplane</strong>: servers publish incoming messages to a shared bus (commonly <a href="/tech-stacks/redis/">Redis pub/sub</a> or Kafka), and every server subscribed to that room receives the message and pushes it down to its own connected clients.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">fan-out across servers via a pub/sub backplane</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>Alice ──ws──▶ WS-server-1 ──publish "room42"──▶ ┌───────────────┐
+                                                │ Redis pub/sub │
+Bob   ──ws──▶ WS-server-2 ◀──subscribe "room42"─┤  (backplane)  │
+                  │                             └───────────────┘
+                  └──push──▶ Bob   (server-2 delivers to its own client)
+
+  every WS server subscribes to the rooms its clients are in;
+  the backplane bridges connections that live on different servers</code></pre>
+    </div>
+
+    <p>This backplane is the defining piece of WebSocket scaling — without it, horizontal scaling breaks because messages can't cross server boundaries.</p>
+
+    <h2>Heartbeats and Reconnection</h2>
+    <p>Long-lived connections die silently — a laptop sleeps, a network blips, a proxy times out an idle connection — often without a clean close. Two mechanisms keep things healthy. <strong>Heartbeats</strong> (WebSocket ping/pong frames at intervals) detect dead connections so the server can reclaim resources and the client knows to reconnect. <strong>Reconnection logic</strong> on the client re-establishes the socket after a drop, ideally with exponential backoff (to avoid a thundering herd when a server restarts) and a way to <strong>resume</strong> — replaying missed messages since the last received ID so nothing is lost across the gap.</p>
+
+    <h2>Use Cases</h2>
+    <ul>
+      <li><strong>Chat &amp; messaging</strong> — the canonical bidirectional case (see <a href="/system-design/chat-app/">chat app design</a>).</li>
+      <li><strong>Live notifications &amp; presence</strong> — "user is typing," online status, alerts (SSE often suffices if one-way).</li>
+      <li><strong>Collaborative editing</strong> — shared cursors and edits (Google Docs-style), needing low-latency two-way sync.</li>
+      <li><strong>Live dashboards, gaming, trading</strong> — continuous, latency-sensitive updates in both directions.</li>
+    </ul>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>Infrastructure support</strong> — load balancers, proxies, and gateways must explicitly support the WebSocket upgrade and long-lived connections.</li>
+      <li><strong>Connection limits</strong> — OS file-descriptor and memory limits cap connections per server; tune and plan capacity for idle sockets.</li>
+      <li><strong>No backplane</strong> — forgetting the pub/sub layer means messages can't reach clients on other servers; the classic scaling miss.</li>
+      <li><strong>State on the connection</strong> — pinning users to servers complicates deploys (draining connections on restart) and failover.</li>
+      <li><strong>Overkill</strong> — if updates are infrequent or one-way, SSE or even polling is simpler and cheaper than a full WebSocket stack.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>WebSockets turn HTTP's one-way request/response into a persistent, full-duplex channel for true real-time. Choose SSE when you only push server→client, WebSockets when the client also sends, long-polling as the fallback. The hard part isn't opening a socket — it's scaling stateful connections: sticky routing, capacity for millions of idle sockets, and above all a pub/sub backplane to fan messages out across servers, plus heartbeats and reconnection for resilience.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why not just HTTP for real-time?</strong> HTTP is client-initiated request/response — the server can't push; polling is wasteful and laggy.<br>
+      <strong>WebSocket vs SSE?</strong> SSE is one-way (server→client) over plain HTTP and simpler; WebSockets are full-duplex for when the client also sends frequently.<br>
+      <strong>How does the handshake work?</strong> An HTTP request with <code>Upgrade: websocket</code> → <code>101 Switching Protocols</code> → the connection becomes a persistent bidirectional socket.<br>
+      <strong>How do you scale WebSockets?</strong> Sticky routing to the server holding the connection, capacity for many idle sockets, and a pub/sub backplane (Redis/Kafka) to fan messages out to clients on other servers.<br>
+      <strong>How do you keep connections healthy?</strong> Ping/pong heartbeats to detect dead sockets, and client reconnection with backoff and message resume.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/grpc/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">gRPC &amp; Protobuf</div>
+      </a>
+      <a href="/tech-stacks/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">Tech Stacks</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

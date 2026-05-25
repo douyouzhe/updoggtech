@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into CI/CD — continuous integration vs delivery vs deployment, the pipeline stages, build-once immutable artifacts, deployment strategies (rolling, blue-green, canary), rollback, and quality gates.">
+<title>CI/CD — Continuous Integration &amp; Delivery | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/ci-cd/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="CI/CD — Continuous Integration &amp; Delivery">
+<meta property="og:description" content="CI vs delivery vs deployment, pipeline stages, immutable artifacts, deployment strategies (rolling, blue-green, canary), and rollback.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/ci-cd/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CI/CD — Continuous Integration &amp; Delivery">
+<meta name="twitter:description" content="How CI/CD works: pipeline stages, immutable artifacts, and deployment strategies.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"CI/CD — Continuous Integration & Delivery","description":"CI vs delivery vs deployment, pipeline stages, immutable artifacts, deployment strategies (rolling, blue-green, canary), and rollback.","datePublished":"2023-09-24","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/ci-cd/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">ci-cd</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">CI/CD</h1>
+    <div class="article-meta">
+      <span>Sep 24, 2023</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>CI/CD is the automation that lets teams ship code many times a day instead of once a quarter — safely. It replaces the error-prone ritual of manual builds and hand-deployed servers with a pipeline that builds, tests, and releases on every change. The payoff isn't just speed: smaller, more frequent releases are <em>less</em> risky, because each carries fewer changes and is easier to reverse. It pairs naturally with <a href="/tech-stacks/docker/">containers</a> (the artifact) and <a href="/tech-stacks/kubernetes/">Kubernetes</a> (the deploy target).</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>CI = Continuous Integration</strong> — merge to main often and run an automated build + test on every commit, catching breakage immediately.</li>
+        <li><strong>CD = Continuous Delivery</strong> (always deployable, release on a button) <strong>or Continuous Deployment</strong> (every green build auto-ships to prod).</li>
+        <li><strong>Build once, promote the same artifact</strong> — an immutable image moves through dev → staging → prod unchanged, so you test exactly what you ship.</li>
+        <li><strong>The pipeline is staged with gates</strong> — source → build → test → security scan → deploy, each a gate that must pass.</li>
+        <li><strong>Deployment strategies limit blast radius</strong> — rolling, blue-green, and canary trade speed/cost for safety.</li>
+        <li><strong>Fast rollback is the safety net</strong> — immutable artifacts make reverting a tag switch, not a rebuild.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Continuous Integration runs an automated build and test suite on every commit so problems surface early. Continuous Delivery keeps every green build deployable; Continuous Deployment ships it automatically. The pipeline builds an immutable artifact once and promotes that same artifact through environments behind quality gates. Release safely with rolling/blue-green/canary strategies, and keep rollback to a single fast step. Smaller, more frequent releases are safer than big-bang ones.</p>
+    </div>
+
+    <h2>Why CI/CD</h2>
+    <p>Manual releases fail for predictable reasons: integration is painful when branches diverge for weeks, builds differ between machines, and a human running deploy steps at midnight makes mistakes. Automating the path from commit to production makes releases <strong>repeatable, fast, and reversible</strong>. The deeper insight is counterintuitive but well-established: deploying <em>more</em> often reduces risk, because each deploy contains a small, understandable change and a problem is easy to trace and undo — the opposite of a quarterly release with thousands of changes.</p>
+
+    <h2>Continuous Integration</h2>
+    <p><strong>CI</strong> is the practice of integrating everyone's work into a shared mainline frequently — ideally many times a day — with an automated build and test suite running on <em>every</em> push. The point is to catch integration problems and regressions within minutes of the commit that caused them, while the change is fresh in the author's mind, rather than discovering a tangle of conflicts during a big merge weeks later. CI depends on a solid, fast, reliable test suite; without it, a "green" pipeline means nothing.</p>
+
+    <h2>The Pipeline Stages</h2>
+    <p>A CI/CD pipeline is a sequence of stages, each a <strong>gate</strong> that must pass before the next runs:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">a typical pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>commit ─▶ [ source ] ─▶ [ build ] ─▶ [ test ] ─▶ [ scan ] ─▶ [ deploy ]
+                          │            │           │            │
+                       compile +    unit +      security/    rolling /
+                       build image  integration  lint/SAST    canary
+                          │            │           │            │
+                          └── any stage fails → stop, notify ───┘
+
+  build ONCE → produce artifact (e.g. image:sha) → promote it forward</code></pre>
+    </div>
+
+    <p>Tools like GitHub Actions, GitLab CI, Jenkins, and CircleCI define these stages declaratively (usually in a YAML file in the repo). The pipeline runs automatically on triggers — a push, a pull request, a merge to main, or a tag.</p>
+
+    <h2>Continuous Delivery vs Continuous Deployment</h2>
+    <p>"CD" is two related-but-distinct ideas, and the distinction is a classic interview point:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Continuous Delivery</th><th>Continuous Deployment</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>End state</td><td class="col-a">Every build is <em>deployable</em></td><td class="col-b">Every green build <em>is deployed</em></td></tr>
+        <tr><td>To production</td><td class="col-a">Manual approval (a button)</td><td class="col-b">Fully automatic, no human</td></tr>
+        <tr><td>Use when</td><td class="col-a">You want a human/business gate</td><td class="col-b">You trust your tests fully</td></tr>
+      </tbody>
+    </table>
+
+    <p>Both require the same disciplined pipeline; the only difference is whether a human presses "release." Continuous Deployment is the more advanced end state and demands very high confidence in automated testing.</p>
+
+    <h2>Build Once, Promote the Same Artifact</h2>
+    <p>A foundational principle: <strong>build the artifact once</strong> and promote that <em>identical</em> artifact through every environment. If you rebuild for staging and again for prod, you're shipping something you never tested. With containers this is natural — the pipeline builds <code>myapp:&lt;git-sha&gt;</code>, runs tests against it, and the very same immutable image is what reaches production. The artifact is versioned and immutable, which is also what makes rollback trivial.</p>
+
+    <h2>Deployment Strategies</h2>
+    <p>How you replace the running version controls the blast radius of a bad deploy:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">rolling vs blue-green vs canary</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>rolling   : replace instances a few at a time   v1 v1 v1 → v2 v1 v1 → v2 v2 v2
+blue-green: stand up full v2 ("green"), flip traffic, keep v1 ("blue") to revert
+canary    : send 1% → 5% → 50% → 100% of traffic to v2, watching metrics</code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>How</th><th>Trade-off</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Rolling</td><td>Replace instances gradually</td><td>No extra capacity; mixed versions briefly; slower rollback</td></tr>
+        <tr><td class="col-b">Blue-green</td><td>Full parallel env, flip traffic</td><td>Instant cutover &amp; rollback; doubles infra during deploy</td></tr>
+        <tr><td class="col-a">Canary</td><td>Shift a small % first, watch</td><td>Smallest blast radius; needs good metrics + automation</td></tr>
+      </tbody>
+    </table>
+
+    <p>Canary is the safest for high-stakes services because a bad release only hits a sliver of users before automated monitoring catches it and halts the rollout — which is why it pairs tightly with <a href="/tech-stacks/observability/">observability</a>.</p>
+
+    <h2>Rollback</h2>
+    <p>The single most important safety property is being able to <strong>get back to a known-good state fast</strong>. Because artifacts are immutable and versioned, rollback is usually just "redeploy the previous image tag" — seconds, not a rebuild. Blue-green makes it a traffic flip; canary makes it "stop the rollout." The corollary: a deploy you can't quickly roll back is a deploy you shouldn't make. (Database migrations are the exception that needs care — make schema changes backward-compatible so old and new code can coexist during the transition; see <a href="/ddia/chapter-4/">encoding &amp; evolution</a>.)</p>
+
+    <h2>Quality Gates and Practices</h2>
+    <ul>
+      <li><strong>Automated tests</strong> — unit, integration, end-to-end — the backbone; the pipeline is only as trustworthy as them.</li>
+      <li><strong>Static analysis &amp; security scans</strong> — linting, SAST, dependency/CVE and image scanning fail the build on issues.</li>
+      <li><strong>Approvals</strong> — a manual gate before prod for delivery (or for sensitive changes).</li>
+      <li><strong>Trunk-based development</strong> — short-lived branches merged frequently keep integration cheap.</li>
+      <li><strong>Feature flags</strong> — decouple <em>deploy</em> from <em>release</em>: ship code dark, then turn it on (or off) without a redeploy.</li>
+    </ul>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>Flaky tests</strong> — non-deterministic failures erode trust until people ignore red builds; quarantine and fix them.</li>
+      <li><strong>Slow pipelines</strong> — if CI takes an hour, people batch changes and stop integrating often; parallelize and cache.</li>
+      <li><strong>Snowflake environments</strong> — staging that differs from prod hides bugs; use the same images and infra-as-code.</li>
+      <li><strong>No rollback plan</strong> — especially around irreversible migrations; always have a tested way back.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>CI/CD turns shipping into a repeatable, automated, reversible pipeline: integrate and test on every commit, build an immutable artifact once and promote it, and release with a strategy (rolling/blue-green/canary) that limits blast radius — with fast rollback as the safety net. The cultural payoff is that small, frequent deploys are safer than rare big ones.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>CI vs CD?</strong> CI = automated build+test on every commit to catch breakage early; CD = Continuous Delivery (always deployable, manual release) or Continuous Deployment (auto-ship every green build).<br>
+      <strong>Why build the artifact once?</strong> Promoting the same immutable artifact through environments means you ship exactly what you tested; rebuilding per environment risks drift.<br>
+      <strong>Rolling vs blue-green vs canary?</strong> Rolling replaces gradually (no extra capacity); blue-green flips between two full environments (instant rollback, double infra); canary shifts a small % first while watching metrics (smallest blast radius).<br>
+      <strong>How do you roll back fast?</strong> Redeploy the previous immutable artifact/tag (or flip traffic). Make DB migrations backward-compatible so code versions can coexist.<br>
+      <strong>Deploy vs release?</strong> Feature flags separate them — deploy code dark, then enable the feature without another deploy.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/docker/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Docker &amp; Containers</div>
+      </a>
+      <a href="/tech-stacks/observability/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Observability</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

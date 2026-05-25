@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into vector databases — embeddings, similarity metrics, approximate nearest neighbor (HNSW, IVF, quantization), what a vector DB adds over a library, retrieval-augmented generation (RAG), and hybrid search.">
+<title>Vector Databases — Embeddings &amp; ANN Search | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/vector-databases/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Vector Databases — Embeddings &amp; ANN Search">
+<meta property="og:description" content="Embeddings, similarity metrics, approximate nearest neighbor (HNSW/IVF), RAG, and hybrid search.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/vector-databases/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Vector Databases — Embeddings &amp; ANN Search">
+<meta name="twitter:description" content="How vector search works: embeddings, similarity, approximate nearest neighbor, and RAG.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Vector Databases — Embeddings & ANN Search","description":"Embeddings, similarity metrics, approximate nearest neighbor (HNSW/IVF), RAG, and hybrid search.","datePublished":"2023-09-18","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/vector-databases/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">vector-databases</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">Vector Databases</h1>
+    <div class="article-meta">
+      <span>Sep 18, 2023</span>
+      <span class="separator">·</span>
+      <span>24 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Vector databases went from niche to ubiquitous on the back of the LLM boom, because they answer a question keyword search can't: "find me things that <em>mean</em> the same, not just things that share the same words." They store high-dimensional <strong>embeddings</strong> and find the nearest ones to a query vector fast, which is the retrieval half of <strong>RAG</strong> (retrieval-augmented generation) — the pattern behind most production LLM apps, including the context assembly we discussed in <a href="/ai-coding/harness-engineering/">harness engineering</a> and <a href="/ai-coding/building-with-llm-apis/">building with LLM APIs</a>.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Embeddings turn meaning into geometry</strong> — a model maps text/images to vectors so that semantically similar items land close together.</li>
+        <li><strong>Search = nearest neighbors</strong> — embed the query, then find the closest stored vectors by cosine/dot-product similarity.</li>
+        <li><strong>Exact kNN is too slow at scale</strong> (O(n·d)), so vector DBs use <strong>approximate nearest neighbor (ANN)</strong> — trading a little recall for huge speed.</li>
+        <li><strong>HNSW and IVF</strong> are the dominant ANN indexes; quantization (PQ) compresses vectors to save memory.</li>
+        <li><strong>A vector DB adds</strong> metadata filtering, persistence, CRUD, and scaling on top of a raw ANN library (Pinecone, Weaviate, Milvus, pgvector, Qdrant).</li>
+        <li><strong>RAG is the killer use case</strong> — retrieve relevant chunks by similarity and stuff them into the LLM's context window.</li>
+        <li><strong>Hybrid search</strong> (semantic + lexical) usually beats either alone.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>An embedding model converts text/images into vectors where distance ≈ semantic similarity. A vector database stores these and answers "what's nearest to this query vector?" Because exact nearest-neighbor search is O(n·d), it uses approximate algorithms (HNSW, IVF) that get ~99% recall at a fraction of the cost. On top of the index it adds filtering, persistence, and scaling. The dominant application is RAG: embed a query, retrieve the most similar chunks, and feed them to an LLM as context.</p>
+    </div>
+
+    <h2>Embeddings: Meaning as Geometry</h2>
+    <p>An <strong>embedding</strong> is a fixed-length vector (say 768 or 1536 numbers) produced by a model from a piece of content. The model is trained so that <em>semantically similar</em> inputs map to <em>nearby</em> vectors: "dog" and "puppy" land close together; "dog" and "tax form" land far apart. This works across modalities — text, images, audio — and it's what lets you search by <em>meaning</em> rather than exact words. The vector itself is opaque (no single dimension "means" anything human-readable), but distances between vectors are meaningful, and that's all search needs.</p>
+
+    <h2>Similarity Metrics</h2>
+    <p>"Nearest" requires a distance measure. The common ones:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Metric</th><th>Measures</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Cosine similarity</td><td>Angle between vectors</td><td>Ignores magnitude; the default for text embeddings</td></tr>
+        <tr><td class="col-b">Dot product</td><td>Angle &amp; magnitude</td><td>Fast; equals cosine if vectors are normalized</td></tr>
+        <tr><td class="col-a">Euclidean (L2)</td><td>Straight-line distance</td><td>Sensitive to magnitude; used in some models</td></tr>
+      </tbody>
+    </table>
+    <p>For most text use cases the vectors are normalized and cosine/dot-product are effectively equivalent. The key point for interviews: similarity search ranks by one of these metrics, returning the <em>k</em> closest vectors.</p>
+
+    <h2>The Core Problem: Approximate Nearest Neighbor</h2>
+    <p>The naive way to find the nearest vectors is to compute the distance from the query to <em>every</em> stored vector and keep the top <em>k</em> — <strong>O(n·d)</strong> where n is the number of vectors and d the dimensions. At millions or billions of vectors, with d in the hundreds, that's far too slow for interactive search. So vector databases use <strong>approximate nearest neighbor (ANN)</strong> algorithms that find <em>almost</em> the true nearest neighbors in sublinear time. The trade is <strong>recall</strong> (what fraction of the true top-k you actually return) for speed — and well-tuned ANN reaches ~95–99% recall while being orders of magnitude faster.</p>
+
+    <div class="callout">
+      <div class="callout-label">the central trade-off</div>
+      <p>Vector search is fundamentally <strong>recall vs latency vs memory</strong>. Exact search is 100% recall but slow; ANN sacrifices a sliver of recall for massive speedups, and tuning the index (and quantization) trades memory against both. "How approximate can you afford to be?" is the defining design question.</p>
+    </div>
+
+    <h2>ANN Algorithms: HNSW and IVF</h2>
+    <p>Two families dominate:</p>
+    <ul>
+      <li><strong>HNSW (Hierarchical Navigable Small World)</strong> — builds a multi-layer graph where each vector links to its near neighbors. Search starts at a sparse top layer and "greedily" hops toward the query, descending layers to refine. It gives excellent recall and speed, and is the default in most vector DBs; the cost is higher memory and build time.</li>
+      <li><strong>IVF (Inverted File Index)</strong> — clusters vectors (e.g. via k-means) into buckets; a query only searches the few clusters nearest its vector instead of all of them. Cheaper memory, slightly lower recall, tunable by how many clusters you probe.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">HNSW: greedy hops through a layered graph</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>layer 2 (sparse):   ●───────────●          start here, hop toward query
+                    │           │
+layer 1:        ●──●──●─────●───●──●        descend, refine
+                │  │  │     │   │  │
+layer 0 (all):  ●●●●●●●●●●●●●●●●●●●●●        finest neighbors → top-k
+
+  each step: move to the neighbor closest to the query vector
+  → finds ~nearest neighbors in O(log n)-ish hops, not O(n)</code></pre>
+    </div>
+
+    <p>To cut memory, vectors are often <strong>quantized</strong> — e.g. <em>product quantization (PQ)</em> compresses each vector into a compact code, trading a bit more recall loss for a large memory reduction. Real systems combine these (IVF + PQ, or HNSW + PQ).</p>
+
+    <h2>What a Vector Database Adds</h2>
+    <p>You can run an ANN library (FAISS, hnswlib) in-process, so why a database? Because production needs more than the index:</p>
+    <ul>
+      <li><strong>Metadata filtering</strong> — "nearest vectors <em>where</em> tenant = X and date &gt; Y." Combining filters with ANN correctly is non-trivial and a core vector-DB feature.</li>
+      <li><strong>Persistence &amp; CRUD</strong> — durably store, update, and delete vectors (re-indexing on change), not just a static in-memory index.</li>
+      <li><strong>Scaling &amp; availability</strong> — sharding across nodes, replication, and horizontal scale.</li>
+      <li><strong>Operations</strong> — backups, monitoring, access control.</li>
+    </ul>
+    <p>Options span dedicated systems (Pinecone, Weaviate, Milvus, Qdrant) and extensions to existing databases (<code>pgvector</code> for PostgreSQL, vector search in Elasticsearch/Redis) — the latter attractive when you don't want a new datastore.</p>
+
+    <h2>RAG: the Killer Use Case</h2>
+    <p>Retrieval-augmented generation is why vector DBs exploded. An LLM has a fixed context window and no knowledge of your private data, so RAG retrieves the relevant pieces and puts them in front of the model:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">RAG pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>INDEX (offline):
+   docs → chunk → embed each chunk → store vectors + metadata
+
+QUERY (online):
+   user question → embed → ANN search → top-k relevant chunks
+                → stuff chunks into the LLM prompt as context
+                → LLM answers grounded in the retrieved text</code></pre>
+    </div>
+
+    <p>This is exactly the "context assembly" job from <a href="/ai-coding/harness-engineering/">harness engineering</a>: the vector DB is how the harness finds the <em>right</em> chunks to put in a finite context window. Chunking strategy and retrieval quality matter as much as the model.</p>
+
+    <h2>Hybrid Search and vs Elasticsearch</h2>
+    <p>Pure semantic search can miss exact matches (a specific product code, a rare name) that lexical search nails, and vice versa. <strong>Hybrid search</strong> combines vector similarity with keyword (BM25) scoring and fuses the rankings, usually beating either alone. This is where vector DBs and <a href="/tech-stacks/elasticsearch/">Elasticsearch</a> converge: classic Elasticsearch is lexical, vector DBs are semantic, and both are adding the other so that hybrid is becoming the norm.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Vector DB (semantic)</th><th>Elasticsearch (lexical)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Matches on</td><td class="col-a">Meaning (embeddings)</td><td class="col-b">Terms (inverted index)</td></tr>
+        <tr><td>Great at</td><td class="col-a">Paraphrase, concepts, cross-lingual</td><td class="col-b">Exact terms, codes, names</td></tr>
+        <tr><td>Weak at</td><td class="col-a">Exact/rare tokens</td><td class="col-b">Synonyms, intent</td></tr>
+        <tr><td>Best together</td><td class="col-a" colspan="2">Hybrid search fuses semantic + lexical rankings</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>Recall tuning</strong> — ANN parameters trade recall for speed/memory; the defaults aren't always right for your accuracy needs.</li>
+      <li><strong>Embedding consistency</strong> — query and documents must use the <em>same</em> embedding model; changing models means re-embedding everything.</li>
+      <li><strong>Cost &amp; dimensions</strong> — high-dimensional vectors at scale are memory-hungry; quantization and dimension choice matter.</li>
+      <li><strong>Freshness &amp; deletes</strong> — graph indexes like HNSW handle deletes/updates awkwardly; heavy churn may need periodic rebuilds.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>A vector database is "search by meaning": embed content into vectors, then find the nearest ones with an approximate-nearest-neighbor index (HNSW/IVF) that trades a sliver of recall for huge speed. On top of the index it adds filtering, persistence, and scale. Its defining use is RAG — retrieving the right context for an LLM — and in practice hybrid (semantic + lexical) search wins.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What's an embedding?</strong> A vector from a model where distance ≈ semantic similarity, so similar meanings are nearby points.<br>
+      <strong>Why approximate nearest neighbor?</strong> Exact kNN is O(n·d) — too slow at millions of vectors; ANN (HNSW/IVF) gets ~99% recall far faster by trading a little accuracy.<br>
+      <strong>HNSW vs IVF?</strong> HNSW = navigable small-world graph, high recall/speed, more memory; IVF = cluster into buckets, probe a few, cheaper but slightly lower recall.<br>
+      <strong>What does a vector DB add over a library?</strong> Metadata filtering, persistence/CRUD, scaling, and ops — not just the raw ANN index.<br>
+      <strong>What's RAG?</strong> Embed a query, retrieve the most similar chunks, and feed them into the LLM's context so answers are grounded in your data.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/database-indexing/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Database Indexing</div>
+      </a>
+      <a href="/tech-stacks/cdn/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">CDN</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

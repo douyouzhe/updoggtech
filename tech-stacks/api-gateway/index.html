@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into API gateways and service meshes — handling cross-cutting concerns in microservices, north-south vs east-west traffic, the BFF pattern, the sidecar proxy model, mTLS, and gateway vs mesh.">
+<title>API Gateway &amp; Service Mesh | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/api-gateway/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="API Gateway &amp; Service Mesh">
+<meta property="og:description" content="Cross-cutting concerns in microservices, north-south vs east-west traffic, the BFF pattern, sidecars, mTLS, and gateway vs mesh.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/api-gateway/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="API Gateway &amp; Service Mesh">
+<meta name="twitter:description" content="How API gateways and service meshes handle routing, auth, and service-to-service traffic.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"API Gateway & Service Mesh","description":"Cross-cutting concerns in microservices, north-south vs east-west traffic, the BFF pattern, sidecars, mTLS, and gateway vs mesh.","datePublished":"2023-09-30","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/api-gateway/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">api-gateway</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">API Gateway &amp; Service Mesh</h1>
+    <div class="article-meta">
+      <span>Sep 30, 2023</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Break a monolith into microservices and a new problem appears: every service now needs the same boring-but-critical machinery — authentication, rate limiting, TLS, routing, retries, metrics. Re-implementing that in every service is wasteful and inconsistent. Two patterns extract it into infrastructure: the <strong>API gateway</strong> handles traffic coming <em>into</em> the system from clients, and the <strong>service mesh</strong> handles traffic <em>between</em> services. Together they let your service code focus on business logic.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Both solve cross-cutting concerns</strong> — auth, rate limiting, TLS, routing, retries, observability — so individual services don't each reimplement them.</li>
+        <li><strong>API gateway = the front door</strong> — a single entry point for clients that routes to backend services and handles auth, rate limiting, TLS termination, and aggregation.</li>
+        <li><strong>North-south vs east-west</strong> — the gateway governs client↔system (north-south) traffic; the mesh governs service↔service (east-west) traffic.</li>
+        <li><strong>Service mesh = a sidecar proxy per service</strong> — it transparently adds mTLS, retries, load balancing, and metrics to internal calls, with a control plane configuring all the proxies.</li>
+        <li><strong>BFF (Backend for Frontend)</strong> — a gateway tailored per client type (web, mobile) to shape responses.</li>
+        <li><strong>The cost is a hop + complexity</strong> — meshes especially add latency and operational overhead; don't add one before you need it.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>An API gateway is the single entry point for external clients: it routes requests to services and centralizes auth, rate limiting, TLS termination, and request aggregation (north-south traffic). A service mesh pushes service-to-service concerns (mTLS, retries, load balancing, tracing) into a sidecar proxy deployed next to every service, configured by a control plane (east-west traffic). Both move cross-cutting logic out of application code — at the cost of an extra network hop and operational complexity.</p>
+    </div>
+
+    <h2>The Problem: Cross-Cutting Concerns</h2>
+    <p>In a microservices architecture, a set of concerns applies to <em>every</em> service: verifying who's calling (authn/authz), limiting abusive traffic, terminating TLS, routing requests, retrying transient failures, and emitting metrics/traces. If each team bakes these into their service, you get duplicated effort and — worse — inconsistency: ten slightly different rate limiters, five auth implementations, uneven observability. The fix is to lift these concerns into a shared layer. <em>Where</em> that layer sits depends on the direction of the traffic.</p>
+
+    <h2>North-South vs East-West Traffic</h2>
+    <p>A useful mental model from networking:</p>
+    <ul>
+      <li><strong>North-south</strong> traffic crosses the boundary of your system — external clients calling in (and responses going out). The <strong>API gateway</strong> sits here, at the edge.</li>
+      <li><strong>East-west</strong> traffic flows <em>between</em> your internal services. The <strong>service mesh</strong> governs this.</li>
+    </ul>
+    <p>The gateway is the guarded front door; the mesh is the internal road network. They're complementary, not competing.</p>
+
+    <h2>The API Gateway</h2>
+    <p>An <strong>API gateway</strong> is a single entry point that sits in front of your backend services. Clients talk only to the gateway, which authenticates and routes each request to the right service and applies edge policies. Its responsibilities:</p>
+    <ul>
+      <li><strong>Routing</strong> — map incoming paths/hosts to backend services.</li>
+      <li><strong>Authentication &amp; authorization</strong> — validate tokens/keys once at the edge (often with <a href="/tech-stacks/oauth/">OAuth/JWT</a>) so services trust the gateway.</li>
+      <li><strong>Rate limiting &amp; throttling</strong> — protect backends from abuse and overload.</li>
+      <li><strong>TLS termination</strong> — handle HTTPS at the edge.</li>
+      <li><strong>Request aggregation</strong> — combine calls to several services into one client response (reducing chatty mobile round-trips).</li>
+      <li><strong>Protocol translation</strong> — e.g. expose REST externally while talking <a href="/tech-stacks/grpc/">gRPC</a> internally.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">API gateway: the single front door</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>clients ─▶ ┌─────────────── API GATEWAY ───────────────┐
+           │ TLS term · authn · rate limit · routing   │
+           └───┬──────────────┬──────────────┬─────────┘
+               ▼              ▼              ▼
+          order-svc      user-svc       payment-svc
+   (services trust the gateway; they don't each re-auth the client)</code></pre>
+    </div>
+
+    <h3>The BFF Pattern</h3>
+    <p>A web app, a mobile app, and a partner API often want different shapes of data from the same backends. The <strong>Backend for Frontend (BFF)</strong> pattern runs a <em>separate</em> gateway per client type, each tailoring aggregation and response shaping to that client's needs — so the mobile BFF can return a compact, battery-friendly payload while the web BFF returns a richer one, without bloating the backend services.</p>
+
+    <h2>The Service Mesh</h2>
+    <p>The gateway handles the edge, but inside a large system, services call each other constantly, and those calls need the same reliability and security features. A <strong>service mesh</strong> provides them <em>without</em> changing application code, using the <strong>sidecar</strong> pattern: a small proxy (e.g. Envoy) is deployed alongside every service instance, and <em>all</em> the service's network traffic flows through its sidecar. The sidecars (the <strong>data plane</strong>) are configured centrally by a <strong>control plane</strong> (e.g. Istio, Linkerd).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">service mesh: sidecar proxies + control plane</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>          ┌── control plane (config, policy, certs) ──┐
+          │              Istio / Linkerd               │
+          ▼                                             ▼
+   ┌─ service A ─┐   mTLS, retries, LB, metrics   ┌─ service B ─┐
+   │  app  │ proxy│◀══════════════════════════════▶│ proxy │ app │
+   └───────┴──────┘   (all A↔B traffic via sidecars)└──────┴─────┘
+
+   app code makes a plain call to "B"; the sidecar does the rest</code></pre>
+    </div>
+
+    <p>Because every call goes through a sidecar, the mesh transparently provides: <strong>mutual TLS</strong> (encrypt + authenticate service-to-service automatically), <strong>retries, timeouts, and circuit breaking</strong>, <strong>client-side load balancing</strong>, traffic shifting (for <a href="/tech-stacks/ci-cd/">canary deploys</a>), and uniform <strong>observability</strong> (every hop is traced/measured — see <a href="/tech-stacks/observability/">observability</a>). The application stays oblivious; it just calls "service B" and the sidecar handles encryption, retries, and routing.</p>
+
+    <h2>Gateway vs Mesh</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>API Gateway</th><th>Service Mesh</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Traffic</td><td class="col-a">North-south (client ↔ system)</td><td class="col-b">East-west (service ↔ service)</td></tr>
+        <tr><td>Form</td><td class="col-a">Central edge service</td><td class="col-b">Sidecar proxy per service + control plane</td></tr>
+        <tr><td>Main jobs</td><td class="col-a">Auth, rate limit, routing, aggregation</td><td class="col-b">mTLS, retries, LB, traffic shifting</td></tr>
+        <tr><td>Client-facing?</td><td class="col-a">Yes — external clients</td><td class="col-b">No — internal only</td></tr>
+        <tr><td>Examples</td><td class="col-a">Kong, NGINX, AWS API Gateway</td><td class="col-b">Istio, Linkerd (Envoy data plane)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Trade-offs and When to Use Which</h2>
+    <p>Both add an extra network hop and moving parts, so they're not free. An <strong>API gateway</strong> is almost always worth it once you have more than a couple of services exposed to clients — centralizing auth and rate limiting alone justifies it (just don't let it become a bloated monolith of business logic; keep it to cross-cutting concerns). A <strong>service mesh</strong> is heavier: the sidecar adds latency to every internal call and the control plane is real operational complexity. It pays off at <em>scale</em> — dozens-plus services where you want uniform mTLS, retries, and observability without touching every codebase — but for a handful of services it's overkill, and a few good libraries plus the gateway suffice. The honest interview answer: adopt a mesh when the cross-cutting needs across many services outweigh its operational cost, not by default.</p>
+
+    <div class="callout">
+      <div class="callout-label">the sidecar trade-off</div>
+      <p>The sidecar's superpower — intercepting all traffic transparently — is also its cost: every request now traverses two extra proxies (caller's sidecar → callee's sidecar), adding latency and CPU. Newer "sidecar-less"/ambient mesh designs aim to reduce this overhead, but the fundamental tension between transparency and an extra hop remains.</p>
+    </div>
+
+    <h2>Pitfalls</h2>
+    <ul>
+      <li><strong>Gateway as a monolith</strong> — stuffing business logic into the gateway recreates the monolith you split up; keep it to cross-cutting concerns.</li>
+      <li><strong>Gateway as a SPOF</strong> — it's on the critical path for all traffic; run it highly available and behind <a href="/tech-stacks/load-balancing/">load balancers</a>.</li>
+      <li><strong>Premature mesh</strong> — adopting a service mesh for five services adds more complexity than it removes.</li>
+      <li><strong>Latency blindness</strong> — extra hops (gateway + two sidecars) add up; measure the tail latency they introduce.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>API gateways and service meshes both extract cross-cutting concerns out of services — the gateway at the north-south edge (auth, rate limiting, routing, aggregation for external clients) and the mesh on east-west internal traffic (mTLS, retries, load balancing, observability via sidecars). Add a gateway early; add a mesh only when many services make its uniformity worth the latency and operational cost.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>API gateway vs service mesh?</strong> Gateway handles north-south (client→system) traffic as a central edge; mesh handles east-west (service→service) traffic via sidecar proxies.<br>
+      <strong>What does a gateway do?</strong> Single entry point: routing, authentication, rate limiting, TLS termination, request aggregation, protocol translation.<br>
+      <strong>What's the sidecar pattern?</strong> A proxy deployed next to each service that intercepts all its traffic, adding mTLS/retries/LB/metrics without changing app code; a control plane configures all sidecars.<br>
+      <strong>What's a BFF?</strong> A gateway per client type (web, mobile) that tailors aggregation and response shape to that client.<br>
+      <strong>When NOT to use a mesh?</strong> With few services — the per-call latency and operational overhead of sidecars outweigh the benefit; a gateway plus libraries is enough.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/dns/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">DNS</div>
+      </a>
+      <a href="/tech-stacks/grpc/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">gRPC &amp; Protobuf</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

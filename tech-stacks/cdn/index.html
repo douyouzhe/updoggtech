@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into CDNs — why edge caching cuts latency and offloads the origin, how PoPs and anycast routing work, cache-control and TTLs, push vs pull, invalidation strategies, and dynamic acceleration.">
+<title>CDN — Content Delivery Networks | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/cdn/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="CDN — Content Delivery Networks">
+<meta property="og:description" content="Edge caching, PoPs and anycast, cache-control and TTLs, push vs pull, invalidation, and dynamic acceleration.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/cdn/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CDN — Content Delivery Networks">
+<meta name="twitter:description" content="How CDNs work: edge PoPs, anycast, cache-control, push vs pull, and invalidation.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"CDN — Content Delivery Networks","description":"Edge caching, PoPs and anycast, cache-control and TTLs, push vs pull, invalidation, and dynamic acceleration.","datePublished":"2023-09-20","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/cdn/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">cdn</span>
+    </div>
+    <span class="article-tag">Tech Stacks</span>
+    <h1 class="article-title">CDN</h1>
+    <div class="article-meta">
+      <span>Sep 20, 2023</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">Tech Stacks</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A Content Delivery Network is the reason a website feels instant whether you load it from Tokyo or Toronto. It's a globally distributed fleet of caching servers that keep copies of your content physically close to users, so requests are served from a nearby <strong>edge</strong> instead of crossing oceans to your origin. CDNs appear in nearly every system design on this site — <a href="/system-design/google-drive/">Drive</a>, <a href="/system-design/video-streaming/">video streaming</a>, <a href="/system-design/pastebin/">Pastebin</a> — as the layer that absorbs read traffic. Here's how they actually work.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Two wins: latency and offload</strong> — content served from a nearby edge is faster (less distance), and most requests never reach your origin (less load).</li>
+        <li><strong>Edge PoPs + anycast/GeoDNS</strong> route each user to the closest point of presence automatically.</li>
+        <li><strong>Cache behavior is controlled by HTTP</strong> — <code>Cache-Control</code>/TTL decide what's cacheable and for how long; the cache key decides what counts as "the same" object.</li>
+        <li><strong>Hit vs miss</strong> — a hit is served at the edge; a miss is pulled from origin, cached, then served.</li>
+        <li><strong>Pull (lazy) vs push</strong> — pull CDNs fetch on first request; push CDNs pre-load content.</li>
+        <li><strong>Invalidation is the hard part</strong> — use TTLs, explicit purges, or versioned/fingerprinted URLs (cache busting).</li>
+        <li><strong>Bonus: security</strong> — CDNs absorb DDoS, terminate TLS, and host a WAF at the edge.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>A CDN caches your content on edge servers worldwide and routes each user to the nearest one (anycast/GeoDNS), cutting latency and shielding the origin. HTTP <code>Cache-Control</code> headers and the cache key govern caching; a cache hit is served from the edge, a miss is pulled from origin and cached. The hard problem is invalidation — solved with TTLs, purges, or versioned URLs. Static assets are trivial to cache; dynamic content uses edge compute and route optimization.</p>
+    </div>
+
+    <h2>Why a CDN: Latency and Offload</h2>
+    <p>Two physics-and-economics facts drive the whole design. First, <strong>distance is latency</strong>: data travels at a finite speed, so a round trip from Sydney to a server in Virginia is fundamentally slow no matter how fast that server is. Putting a copy 20 km from the user instead of 16,000 km away slashes round-trip time. Second, <strong>offload</strong>: if the edge serves most requests from cache, your origin sees a fraction of the traffic — a viral page or a popular video is served almost entirely from edges, so the origin doesn't melt. Latency for users, survival for your origin — that's the pitch.</p>
+
+    <h2>How It Works: Edge PoPs and Routing</h2>
+    <p>A CDN operates <strong>points of presence (PoPs)</strong> — clusters of caching servers — in data centers around the world. The trick is getting each user to the <em>nearest</em> PoP automatically, done two main ways: <strong>anycast</strong> (many PoPs announce the <em>same</em> IP address, and internet routing naturally delivers the user to the topologically closest one) and <strong>GeoDNS</strong> (DNS resolves the CDN hostname to a different edge IP based on the resolver's location — see our <a href="/tech-stacks/dns/">DNS</a> article). Either way, the user connects to a close edge without knowing it.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">edge cache hit vs miss</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>user → nearest edge PoP
+         ├─ HIT  → serve from edge cache         (fast, origin untouched)
+         └─ MISS → fetch from origin → cache it → serve
+                   (subsequent requests in this region are now HITs)
+
+  goal: maximize hit ratio → most traffic served at the edge</code></pre>
+    </div>
+
+    <h2>Cache Behavior: Control, TTL, and Keys</h2>
+    <p>What the edge caches, and for how long, is governed by HTTP headers from the origin. <code>Cache-Control: max-age=3600</code> says "cacheable for an hour"; <code>no-store</code> says "never cache"; <code>private</code> means browser-only (not shared caches). <code>stale-while-revalidate</code> lets the edge serve a slightly stale copy while it refreshes in the background — great for keeping responses fast.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">cache-control headers</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>Cache-Control: public, max-age=31536000, immutable   <span class="cm"># fingerprinted asset, cache 1y</span>
+Cache-Control: public, max-age=60, stale-while-revalidate=300
+Cache-Control: no-store                              <span class="cm"># never cache (user-specific)</span></code></pre>
+    </div>
+
+    <p>Equally important is the <strong>cache key</strong> — what the CDN uses to decide whether two requests are "the same object." By default it's the URL, but it can include query strings, headers, or cookies. Get this wrong and you either cache too coarsely (serve the wrong variant) or too finely (every request is a unique key → near-zero hit ratio). High cache-key cardinality is a classic CDN footgun.</p>
+
+    <h2>Push vs Pull CDNs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Pull CDN</th><th>Push CDN</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>How content arrives</td><td class="col-a">Lazily, on first request (miss → origin)</td><td class="col-b">You upload/pre-load it to the CDN</td></tr>
+        <tr><td>First request</td><td class="col-a">Slower (cache miss)</td><td class="col-b">Fast (already at edge)</td></tr>
+        <tr><td>Best for</td><td class="col-a">Large, frequently-changing catalogs</td><td class="col-b">Big files, predictable hot content</td></tr>
+        <tr><td>Effort</td><td class="col-a">Low — just point DNS at the CDN</td><td class="col-b">Higher — manage uploads/expiry</td></tr>
+      </tbody>
+    </table>
+    <p>Pull is the common default (set it and forget it); push makes sense for large media you know will be hot and don't want a slow first miss on.</p>
+
+    <h2>Invalidation: the Hard Part</h2>
+    <p>"There are only two hard things in computer science: cache invalidation and naming things." Once content is cached at hundreds of edges, updating it is genuinely tricky. Three strategies, in increasing precision:</p>
+    <ul>
+      <li><strong>TTL expiry</strong> — just wait for <code>max-age</code> to lapse. Simple, but you tolerate staleness up to the TTL.</li>
+      <li><strong>Explicit purge</strong> — tell the CDN to evict a URL (or tag/prefix) now. Precise but propagation across all edges isn't instant.</li>
+      <li><strong>Versioned / fingerprinted URLs (cache busting)</strong> — the best pattern for static assets: include a content hash in the filename (<code>app.3f9a1c.js</code>) and cache it forever; a change produces a <em>new</em> URL, so there's nothing to invalidate.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">the pattern that wins</div>
+      <p>For static assets, combine <strong>immutable + fingerprinted URLs</strong>: cache <code>app.&lt;hash&gt;.js</code> for a year, and reference the new hash from a short-TTL HTML page. You get maximal caching with zero invalidation — deploys just point to new filenames. This is why build tools hash asset names.</p>
+    </div>
+
+    <h2>Static vs Dynamic Content</h2>
+    <p>Static content — images, CSS/JS, video segments, downloads — is the CDN's bread and butter: it's identical for everyone and cacheable for a long time. <strong>Dynamic</strong> content (personalized pages, API responses) is harder because it varies per user, but CDNs still help via <strong>dynamic acceleration</strong>: keeping warm, optimized connections from edge to origin (TLS already negotiated, better routes over the CDN backbone), and increasingly <strong>edge compute</strong> — running code at the PoP to personalize, assemble, or cache fragments close to the user. The line between "CDN" and "edge platform" is blurring for exactly this reason.</p>
+
+    <h2>Security Bonus</h2>
+    <p>Because the CDN sits in front of your origin and absorbs all inbound traffic, it's a natural security layer: it <strong>absorbs DDoS</strong> attacks across its enormous capacity before they reach you, <strong>terminates TLS</strong> at the edge (faster handshakes near the user), and often hosts a <strong>WAF</strong> (web application firewall) and bot mitigation. For many sites the DDoS protection alone justifies the CDN.</p>
+
+    <h2>Use Cases and Pitfalls</h2>
+    <ul>
+      <li><strong>Static asset &amp; media delivery</strong> — the classic; pair with <a href="/tech-stacks/object-storage/">object storage</a> as origin.</li>
+      <li><strong>Video streaming</strong> — cache segments at the edge for scale (see <a href="/system-design/video-streaming/">video streaming design</a>).</li>
+      <li><strong>Pitfall — cache stampede</strong>: when a popular object expires, many edges miss at once and hammer the origin; mitigate with staggered TTLs, <code>stale-while-revalidate</code>, or origin request coalescing.</li>
+      <li><strong>Pitfall — caching the wrong thing</strong>: caching personalized or auth'd responses leaks data between users; mark them <code>private</code>/<code>no-store</code> and key carefully.</li>
+      <li><strong>Pitfall — low hit ratio</strong> from high cache-key cardinality (unnecessary query strings/cookies in the key).</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>A CDN trades a little complexity (cache headers, invalidation) for two big wins: lower latency (content near users) and origin offload (most requests never reach you). Route users to the nearest edge with anycast/GeoDNS, control caching with <code>Cache-Control</code> and good cache keys, prefer fingerprinted immutable URLs to dodge invalidation, and lean on the edge for security too.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What does a CDN buy you?</strong> Lower latency (serve from a nearby edge) and origin offload (most reads served from cache, so the origin survives spikes).<br>
+      <strong>How are users routed to the nearest edge?</strong> Anycast (many PoPs share one IP; routing picks the closest) or GeoDNS (DNS returns a region-specific edge IP).<br>
+      <strong>Push vs pull CDN?</strong> Pull caches lazily on first request (easy, slow first miss); push pre-loads content (fast first hit, more management).<br>
+      <strong>How do you invalidate cached content?</strong> TTL expiry, explicit purge, or — best for static — fingerprinted immutable URLs so a change is a new URL with nothing to invalidate.<br>
+      <strong>What's a cache stampede?</strong> Many edges miss simultaneously when a hot object expires and overload the origin; fix with stale-while-revalidate, jittered TTLs, or request coalescing.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/vector-databases/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Vector Databases</div>
+      </a>
+      <a href="/tech-stacks/docker/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Docker &amp; Containers</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>
