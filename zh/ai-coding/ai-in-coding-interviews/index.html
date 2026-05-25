@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:在编码面试中使用 AI——三类面试形式(现场编码/带回家/系统设计)、公司政策差异、允许 vs 禁止决策表、AI 被允许时如何正确使用、监考与反作弊、用 AI 高效备考(题目生成/解法讲解/模拟面试/系统设计/STAR)、面试官在找什么、诚信线,以及不依赖 AI 的技能。">
+<title>在编码面试中用 AI — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/ai-in-coding-interviews/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/ai-in-coding-interviews/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/ai-in-coding-interviews/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/ai-in-coding-interviews/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="在编码面试中用 AI">
+<meta property="og:description" content="在编码面试中用 AI:何处禁用、何处灰色、如何正确使用、如何用 AI 高效备考、诚信线在哪。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/ai-in-coding-interviews/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="在编码面试中用 AI">
+<meta name="twitter:description" content="编码面试中的 AI:现场禁用、带回家可商量、备考阶段不受限——测试永远是你能否解释并辩护。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "在编码面试中用 AI", "description": "AI 编程:在编码面试中使用 AI——三类面试形式(现场编码/带回家/系统设计)、公司政策差异、允许 vs 禁止决策表、AI 被允许时如何正确使用、监考与反作弊、用 AI 高效备考(题目生成/解法讲解/模拟面试/系统设计/STAR)、面试官在找什么、诚信线,以及不依赖 AI 的技能。", "datePublished": "2026-05-22", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/ai-in-coding-interviews/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/ai-in-coding-interviews/">EN</a>
+        <a href="/zh/ai-coding/ai-in-coding-interviews/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">ai-in-coding-interviews</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">在编码面试中用 AI</h1>
+    <div class="article-meta">
+      <span>2026年5月22日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>今天每个为求职面试做准备的软件工程师,都面对一个五年前还不存在的问题:<em>面试期间我能用 AI 工具吗?</em>答案几乎从来不是简单的“能”或“不能”。它取决于公司、面试形式、流程的具体阶段,而——最重要的是——候选人能否清楚区分“把 AI 当工具”和“用 AI 替代自己的思考”。本指南厘清这种含糊:哪里 AI 明确禁用、哪里是灰色地带、公司如何演进其政策,以及——关键的——如何用 AI 做出比此前任何一代候选人都更高效的准备。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>现场编码环节几乎一律禁用 AI</strong>——整个意义就是实时观察你的推理。没有一家正经公司允许在现场算法面里用 Copilot 或 ChatGPT。</li>
+        <li><strong>带回家项目处于灰色地带</strong>——许多公司默许 AI 作为生产力工具;它们不能原谅的,是提交你无法解释或辩护的成果。</li>
+        <li><strong>准备阶段是 AI 最闪光之处</strong>——模拟面试、个性化题集、解法讲解、行为面准备,都受益于一个随时在线的 AI 导师。</li>
+        <li><strong>诚信线关乎理解,而非工具使用</strong>——提交你不理解的 AI 生成代码,在求职市场就是学术不诚信;用 AI 学习则不是。</li>
+        <li><strong>面试形式正在转变</strong>——更多公司转向系统设计、代码评审、调试任务,正因为这些更难单靠 AI 作假。</li>
+        <li><strong>谈论 AI 熟练度如今是预期之内的</strong>——多数 SDE 岗位默认你每天用 AI 工具;能清楚讨论你的工作流本身就是资深度的信号。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>现场编码或算法面里别用 AI——它被禁止,且违背初衷。带回家作业里先看规则;若允许 AI 就用,但要准备好解释每一行。所有准备阶段里,AI 是你最强大的工具:用它生成题目、走解法、按需跑模拟面试。永远不可越过的线,是提交你无法理解和辩护的成果。</p>
+    </div>
+
+    <h2>全景:三类面试形式</h2>
+
+    <p>要清晰地推理 AI 的使用,你得把编码面试分成不同形式。每种都有自己的规范、风险与机会。</p>
+
+    <h3>现场编码环节</h3>
+
+    <p>这是经典形式:候选人与面试官实时共享屏幕(CoderPad、HackerRank、Google Docs 或白板)。面试官看你打字、问追问、观察你如何应对卡壳。<strong>这里禁用 AI 辅助,普遍且毫不含糊。</strong>这不是技术细节——整个评估就是一扇实时窥探你如何思考的窗。如果是 AI 在替你思考,那就没有面试在发生。面试官只是看你转述输出。</p>
+
+    <p>话虽如此,有些实践层面的微妙之处。多数现场环境不阻止你开另一个浏览器标签页,但在屏幕共享设置里这会被立刻察觉,几乎必然终结面试和你的候选资格。一些有监考的在线编码平台(HackerRank、Codility、Karat)主动阻止或标记切换标签页、用浏览器 focus API、录你的屏幕。另一些靠诚信制度——但相对任何短期收益,现场作弊的声誉与职业风险都极其巨大。</p>
+
+    <p>不在现场环节用 AI 的更深层理由是它自我挫败:如果你靠蒙混过关拿到 offer,你将身处一个你干不了的岗位,而败露对所有人都痛苦。现场面试存在的意义,正是把真懂材料的人,与只有通往其表面的捷径的人区分开。</p>
+
+    <h3>带回家作业</h3>
+
+    <p>带回家项目——“构建一个小 REST API”“实现一个限流器”“给这个现有代码库加个 feature”——是灰色地带。公司用它们来看你在以小时计(而非以分钟计)的时间里如何工作,更接近真实工作条件。政策差异很大:</p>
+
+    <ul>
+      <li><strong>明确允许:</strong>一些公司(尤其是初创和有前瞻性的大公司)已开始明确告诉候选人,用你平时工作中会用的任何工具,包括 AI。它们已调整评估准则,聚焦于结果质量和候选人在后续对话中解释、辩护选择的能力。</li>
+      <li><strong>明确禁止:</strong>仍有数量较少但真实存在的公司要求带回家作业在无 AI 辅助下完成,有时附带诚信承诺。如果说明里这么写,这就是一条清晰的线——别越。</li>
+      <li><strong>未表态:</strong>多数带回家说明对 AI 只字未提。这是真正的灰色地带。最稳妥的解读是合理的生产力工具被默许——真实工作中你会用 IDE 自动补全、Stack Overflow、文档。AI 占据类似空间。关键约束:在后续复盘中你必须能讨论你代码里的每个决策。如果你解释不了你提交的某个函数,无论工具政策如何,你都越线了。</li>
+    </ul>
+
+    <h3>系统设计与架构环节</h3>
+
+    <p>系统设计面试——设计一个 URL 短链、一个分布式消息队列、一个共享出行后端——几乎总是对话式、实时的。即便异步进行(你提交一份书面设计文档),后续也是一场现场讨论,面试官探究你的推理。AI 无法替代“阐明权衡、在质询下辩护决策、就对话中途引入的陌生约束临场思考”的能力。不过,AI 能让你为这些环节做的准备效率大增——稍后细说。</p>
+
+    <h2>公司政策差异:你实际看到的是什么</h2>
+
+    <p>公司对面试中 AI 的态度落在一个谱系上,且变动很快。基于截至 2026 年中广泛的公开报道与行业讨论,这是不同类型雇主目前所处位置的现实图景:</p>
+
+    <h3>大型科技公司(FAANG 及同类)</h3>
+
+    <p>主要科技公司仍跑高度结构化、有监考的流程。Google、Meta、Amazon、Microsoft 的现场算法面在受控环境里进行——CoderPad 或自有平台——有真人面试官实时观看。这些环节中的 AI 辅助不被允许,且会立刻显形。它们的带回家部分(在某些团队或资深岗位更常见)正在演进,但多数仍期望独立完成,因为随后的复盘经过校准,能揭示代码是否真是你写的。</p>
+
+    <p>一个重要数据点:大型科技公司已同时开始明确面试 AI 熟练度。你可能被问及你的 AI 工具使用、你用 Copilot 或 Claude Code 的工作流、以及你如何评估 AI 生成的代码。在资深层级答不上来,本身就是个缺口。其信息是:我们期望你在日常工作中用 AI;我们不希望你用它来蒙混过我们的面试。</p>
+
+    <h3>初创与扩张期公司</h3>
+
+    <p>较小的公司更可能已调整面试流程以反映现代工作条件。许多已彻底从纯算法面转向实操任务——评审一个 pull request、调试一个失败的测试、扩展一个现有服务——因为这些任务更直接地映射真实工作。在这种语境下,带回家时用 AI 不只被容忍;甚至可能是预期,因为公司想看你怎么用它。评估从“你会不会写代码”转为“你构建出什么、你如何判断质量、你能否带我走一遍你的思路”。</p>
+
+    <h3>企业与政府</h3>
+
+    <p>更保守的组织——有正式 HR 流程的大型企业、政府承包商——倾向于维持严格的传统面试形式,不允许任何 AI 辅助。它们的合规、安全、采购流程让政策变更很慢。如果你在这些语境里面试,假设所有 AI 工具都禁用,除非另有明确告知。</p>
+
+    <h2>“允许 vs. 禁止”决策表</h2>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>面试语境</th><th>允许 AI 工具?</th><th>理由与备注</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>现场算法 / 编码面(共享屏幕、实时)</td>
+          <td>否——普遍禁止</td>
+          <td>违背初衷;立刻可察觉;在线平台靠监考强制</td>
+        </tr>
+        <tr>
+          <td>有监考的在线测评(HackerRank、Codility、Karat)</td>
+          <td>否——技术性强制</td>
+          <td>切换标签页被标记;监测浏览器 focus;部分平台有摄像头监考</td>
+        </tr>
+        <tr>
+          <td>白板编码(线下)</td>
+          <td>否——物理上不可能 / 不合适</td>
+          <td>与现场面同样的评估逻辑;用手机会立刻可见</td>
+        </tr>
+        <tr>
+          <td>带回家:说明明确禁止 AI</td>
+          <td>否——涉及诚信承诺</td>
+          <td>清晰的伦理线;后续复盘会揭示代码是否你写</td>
+        </tr>
+        <tr>
+          <td>带回家:说明明确允许 AI</td>
+          <td>是——但需完全担责</td>
+          <td>复盘时必须解释所有代码;用 AI 体现现代工作流意识</td>
+        </tr>
+        <tr>
+          <td>带回家:说明对 AI 未表态</td>
+          <td>灰色地带——谨慎使用</td>
+          <td>当作专业工具;绝不提交你解释不了的代码;不确定就主动披露</td>
+        </tr>
+        <tr>
+          <td>系统设计面试(实时口头)</td>
+          <td>否——评估的是口头推理</td>
+          <td>AI 无法在现场对话里替你推理;准备阶段才是 AI 帮忙之处</td>
+        </tr>
+        <tr>
+          <td>异步设计文档提交</td>
+          <td>视情况——查说明</td>
+          <td>AI 能帮忙组织与润色;你必须拥有全部技术内容并现场辩护</td>
+        </tr>
+        <tr>
+          <td>行为 / HR 面试</td>
+          <td>过程中无实际作用;准备时可用</td>
+          <td>实时对话;AI 对提前准备 STAR 故事极有价值</td>
+        </tr>
+        <tr>
+          <td>面试准备(练习,而非面试本身)</td>
+          <td>是——强烈推荐</td>
+          <td>模拟面试、生成题目、解法讲解、反馈——AI 在此出色</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>当 AI 被允许时:如何正确使用</h2>
+
+    <p>如果你在做一个允许 AI(无论明示或默许)的带回家,问题就从“我能不能”转为“我该怎么用”。在专业语境(包括求职面试语境)里用好 AI,本身就是一门技能。这是如何以准确代表你、产出可辩护成果的方式来做。</p>
+
+    <h3>用 AI 加速,而非替代</h3>
+
+    <p>健康的模式是:你把握设计与意图,AI 帮你提升执行速度。你应该做出所有架构决策、选数据结构、处理边界情况、组织解法。AI 能帮你更快写样板、建议地道的库用法、抓语法错误、提供供你评估的替代实现。当 AI 提出你没打算的东西时,理解它、判断是否更好、相应修改。你提交的每一行都该经过你的判断。</p>
+
+    <h3>把复盘当作真正的考试</h3>
+
+    <p>在任何带回家场景里,预期会有一场后续对话,面试官与你逐一走过你的提交。他们会问你为何选某种做法、权衡是什么、时间更多会怎么做不同、有时让你现场扩展代码。这场复盘正是那个你不理解的 AI 生成成果被瞬间揭穿之处。如果你解释不了自己代码里的某个函数、某个数据结构选择、某个架构决策,代码看起来多优雅都没用——你已示意你不是自己成果的作者。在复盘前,练习把你的提交当作别人的代码来审查和解释。</p>
+
+    <h3>如恰当,记录你的 AI 使用</h3>
+
+    <p>有些候选人在提交的 README 里主动注明:“我用了包括 Copilot 在内的 AI 工具来加速实现,尤其是样板和测试搭建。所有架构决策和业务逻辑都是我自己的。”这不是必需的,但对看重 AI 熟练度的公司的岗位,它示意的是成熟与透明,而非隐瞒。仔细读说明——有些公司可能想要这种披露,另一些则不要求。</p>
+
+    <h3>别让 AI 写你的代码评审回复</h3>
+
+    <p>如果带回家含代码评审环节——评审公司提供的一个 PR——要格外小心。意义在于看你注意到什么、你优先什么、你如何沟通反馈。让 AI 完全替你写评审意见,等于交出公司正试图收集的那些信号本身。你可以用 AI 验证你对某模式的理解,或核实一个潜在 bug 是否真实,但你的判断和你的声音应该是你的。</p>
+
+    <h2>监考与反作弊:实际能检测到什么</h2>
+
+    <p>值得把现代面试监考能与不能检测到什么说清楚——不是当作规避它的指南(无论从伦理还是实践都不可取),而是让候选人理解他们身处的环境。</p>
+
+    <h3>有监考的平台能检测到什么</h3>
+    <ul>
+      <li><strong>切换标签页与失焦</strong>——HackerRank 和 Codility 用 JavaScript 的 <code>visibilitychange</code> 和 <code>blur</code> 事件记录你何时离开编码窗口。被标记的事件会报给招聘方。即便几次切换也能拉响警报。</li>
+      <li><strong>击键动力学</strong>——一些高级平台分析打字模式:你是逐字符打代码(有机的),还是粘贴大块(可疑的)?</li>
+      <li><strong>摄像头与屏幕录制</strong>——有监考的企业测评(被一些大公司和第三方筛选供应商使用)录你的摄像头和屏幕,AI 分析标记异常的眼动模式或屏幕外瞥视。</li>
+      <li><strong>代码抄袭检测</strong>——解法会跑过自动相似度检测,对照已知解法语料库、LLM 输出、以及同一测评窗口内其他候选人的提交。</li>
+      <li><strong>时间分析</strong>——两分钟内提交一个复杂解法会被标记供人工复核。面试官经验足够,知道一个合理的完成时间是什么样。</li>
+    </ul>
+
+    <h3>现场真人面试官能检测到什么</h3>
+    <p>在与真人面试官的现场环节里,监考软件几乎无关紧要——人在看着。一位有经验的面试官会立刻注意到:你在偷偷查 AI 时停止了说话;你的解法从无到完整地跳跃,缺了你平时会讲出来的渐进推理步骤;你对自己代码的解释结结巴巴或与代码结构不一致;或你答不出关于你刚“写”的代码的追问。顶级公司的面试官做过几十场;AI 辅助表现的模式是可辨认的。</p>
+
+    <h2>用 AI 做面试准备:真正的赢面</h2>
+
+    <p>这正是 AI 改造准备体验之处,且完全合乎伦理。AI 辅助准备的约束是零——你在学习,不是被评估。杠杆则巨大。</p>
+
+    <h3>生成有针对性的练习题</h3>
+
+    <p>传统刷 LeetCode 有个众所周知的问题:重复且对你的具体弱点校准很差。AI 让你摆脱这点。你可以让 AI 生成你正挣扎的题型的新颖变体,限定在特定公司的历史模式、特定难度、用或不用特定数据结构。一些能生成高质量练习材料的 prompt 示例:</p>
+
+    <ul>
+      <li>“给我五道中等难度、聚焦 BFS 遍历的图论题,带我没见过的变化。包含涉及不连通分量的边界情况。”</li>
+      <li>“出一道关于区间调度的动态规划题。先给题面,再带我走一遍最优子结构,然后再给解法。”</li>
+      <li>“模拟一场 Google 风格的编码面试。给我一道题,等我的伪代码思路,然后就时间复杂度追问,再揭示完整解法。”</li>
+    </ul>
+
+    <p>这种有针对性的交互式生成,比刷题库更有效,因为它实时校准你的缺口。</p>
+
+    <h3>按需的解法讲解</h3>
+
+    <p>当你卡在一道题上时,理想的学习路径是:努力尝试、卡住、得到提示、再试——而非直接跳到解法。AI 把这个过程辅导得完美。你可以要一个关于关键洞见的提示而不揭示完整做法、在花时间实现前确认你的数据结构选择正确、或要一份你所需任何细节层级的解法解释——从高层直觉到逐行代码讲解。这比读一篇直接给答案却没有教学脚手架的静态题解好得多。</p>
+
+    <h3>复杂度分析练习</h3>
+
+    <p>时间与空间复杂度推理是核心面试技能,许多候选人投入不足。AI 让建立熟练度变得容易:写完任何练习解法后,让 AI 验证你的复杂度分析、你错了就反驳、并解释为什么。让它带你分析嵌套循环、递归调用、或数据结构的摊还分析。AI 在多个严谨层级上解释的能力很有用——你可以先要直觉解释,再要形式推导,再要朴素分析失效的边界情况。</p>
+
+    <h3>跑模拟面试</h3>
+
+    <p>AI 用于面试准备最被低估的用法,是跑完整的模拟面试。让 AI 扮演技术面试官:它给你一道题、等你出声思考(你打出你的推理)、问追问、评估你的沟通。这建立现场面试所需的习惯:写码前叙述你的做法、优化前检查复杂度、就约束问澄清问题、优雅地处理提示。这些技能只在类面试条件下的练习中养成,而 AI 给你无限次重复。</p>
+
+    <h3>系统设计准备</h3>
+
+    <p>系统设计出了名地难以独自练习,因为它需要一个能引入约束、挑战你假设、探究你推理的对话伙伴。AI 是出色的替身。让它为给定系统扮演面试官——“面试我设计一个分布式任务队列。先给我需求,然后在我推进设计时问探究性问题。”AI 能引入现实的复杂度:“如果一个 consumer 在处理中途崩溃会怎样?你会如何处理 exactly-once 投递?”这种动态探究建立系统设计环节所要求的思维灵活性。</p>
+
+    <h3>行为面与 STAR 故事准备</h3>
+
+    <p>行为面试在 AI 辅助准备里关注更少,但它同样回报。把你的简历和一个目标岗位描述给 AI,让它生成最可能被问的行为问题,按资深层级校准。然后走一遍你的回答,让它对照 STAR 结构(Situation、Task、Action、Result)评估、标出你回答含糊之处、并建议如何让影响更具体。这比对着镜子排练高效得多。</p>
+
+    <h2>面试官的视角:他们实际在找什么</h2>
+
+    <p>理解面试官评估什么,会重塑你对 AI 使用的思考。正经公司的面试官不是在测你会不会图遍历算法的语法。他们评估的是一簇 AI 在现场无法作假的信号:</p>
+
+    <h3>问题分解</h3>
+    <p>你能把一个含糊的问题拆成清晰的子问题吗?你会在跳到解法前识别约束吗?你能看出一个问题其实有比初看更简单的结构吗?这些在你打字之前如何思考中可被观察,而 AI 无法在现场替你提供。</p>
+
+    <h3>不确定下的沟通</h3>
+    <p>你会讲出你的推理,还是沉默并慌乱?你能富有成效地说“这部分我不确定——让我换个角度想想”吗?你能清楚地沟通权衡吗?面试官从你管理不确定性中学到的,和从你正确答案中学到的一样多。</p>
+
+    <h3>调试与方向修正</h3>
+    <p>当你的第一种做法错了,你如何回应?你认得出来吗?你能阐明它为何失败并转向更好的吗?这对在岗表现高度可预测,且在实时环节中对 AI 完全不可见。</p>
+
+    <h3>概念深度</h3>
+    <p>你能解释你的解法为何有效,而不只是它确实有效吗?你能把它推广到相关问题吗?你懂底层算法性质吗——为什么这个数据结构有这些时间界、为什么这种做法有最优子结构?这正是 AI 生成代码无法提供的那一层。</p>
+
+    <h2>如何在面试中谈论 AI 工具</h2>
+
+    <p>尤其对资深和 staff 工程岗位,预期会被直接问及你与 AI 编码工具的关系。这不再是假设——它是你工程判断、以及你与 AI 生成代码协作并评估它的能力的代理指标。这是如何应对常见问题:</p>
+
+    <h3>“你日常工作中用哪些 AI 工具?”</h3>
+    <p>具体且诚实。点名工具(Copilot、Cursor、Claude Code、ChatGPT)、你觉得每个有用的具体语境,以及——关键的——你觉得它们不有用之处。“我用 Copilot 做样板和测试生成,但我发现它在复杂算法逻辑上不可靠,那种需要我仔细推理边界情况的地方我手写,再用 AI 事后评审。”这示意真实经验,而非对 buzzword 熟练度的表演。</p>
+
+    <h3>“你如何评估 AI 生成代码的正确性?”</h3>
+    <p>好的回答覆盖多个层级:你审查明显的逻辑错误、你跑测试(并思考测试本身是否充分)、你检查 AI 可能漏掉的边界情况、你考虑解法是否地道符合该语言与代码库、你寻找像 off-by-one 或并发代码里的竞态这样的隐蔽问题。说“我跑测试,它们通过了”是个弱回答;它示意你在外包判断。</p>
+
+    <h3>“AI 编码工具有哪些局限?”</h3>
+    <p>强候选人能阐明真实的局限:AI 缺乏关于你代码库的完整上下文,倾向于幻想出貌似合理却错误的 API;它会产出能编译、能过测试,却错过真实需求的代码;它在需要跨许多相互依赖的约束做持续推理的问题上挣扎;在认证、密码学、SQL 查询构造这类领域,若不仔细评审它会产出安全漏洞。知道这些局限是个资深信号——它表明你用 AI 用得够多,遇到过它的失败模式。</p>
+
+    <h3>“你修过 AI 生成的代码吗?当时怎么回事?”</h3>
+    <p>备好一个具体故事。问这个的面试官想听到你抓到过 AI 错误——它确认你在审查而非橡皮图章。具体描述那个 bug、你如何发现它、修复是什么。如果你能描述你审查流程里的什么抓住了它、以及你因此会往审查清单里加什么,那就更好。</p>
+
+    <h2>诚信线:“用 AI”何时变成作弊</h2>
+
+    <p>这个伦理框架其实比所有逐案分析所暗示的更简单。诚信线关乎<strong>理解与呈现</strong>,而非工具使用。原则是:</p>
+
+    <p><em>如果在追问下,你能坦然解释你究竟做了什么、每个决策为何如此,你就站在线的正确一侧。如果你盼着没人问,你就不是。</em></p>
+
+    <p>这条原则一以贯之、与技术无关。它适用于 1995 年从教科书抄解法、2010 年从 Stack Overflow 复制粘贴、以及 2026 年用 AI。机制在变;伦理测试不变。用 AI 学得更快、生成练习材料、在准备题上脱困、检查你的理解——这些都不与诚信冲突。在一个其呈现关乎雇佣决策的语境里,用 AI 产出“代表你能力”而实则不然的成果,无论工具说明怎么写,都是个问题。</p>
+
+    <p>除了伦理,还有个实践论点:工作是面试之后的事。如果你靠虚报能力拿到岗位,广告所言与你能交付的之间的差距会很快、很痛苦地浮现。面试流程部分地存在于校准契合度;绕过校准,并不能消除它在度量的现实。</p>
+
+    <h2>建立不依赖 AI 的技能</h2>
+
+    <p>最重要的长期准备策略,是建立无论 AI 在不在场都立得住的技能。这不是反 AI——而是理解你作为工程师的价值,是那个使用 AI 的推理层,而非 AI 本身。无论 AI 能力如何都能存活并复利的技能:</p>
+
+    <ul>
+      <li><strong>算法直觉</strong>——在实现前就知道哪类算法适合某问题;认出一个图论问题其实是个环检测问题;看出双指针做法把朴素的 O(n²) 解坍缩到 O(n)。这种直觉来自用你自己的推理解大量题,而非接受 AI 建议。</li>
+      <li><strong>复杂度分析熟练度</strong>——能临场推导时间与空间界并在不同约束下比较它们。问“当 n 逼近 10⁸ 时你的做法会怎样”的面试官,期望一个实时答案。</li>
+      <li><strong>读代码与调试</strong>——理解不是你写的代码、跟踪穿过陌生控制流的执行、从间接症状中找出 bug 必然藏身之处。这越来越是工作实际所需,而 AI 让它更重要,而非更不重要。</li>
+      <li><strong>系统设计直觉</strong>——知道哪些分布式系统模式适用于哪些问题;对数据库、缓存、队列、负载均衡器如何交互有心智模型;理解“一致”和“可用”在实践中(而不只在理论上)意味什么。</li>
+      <li><strong>沟通</strong>——向不同上下文层级的人清楚解释技术决策的能力。它随资深度复利,且无法被自动化。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>AI 在现场编码环节被禁用、在带回家里可商量、在准备阶段不受限。在灰色地带,测试永远相同:你能解释并辩护你提交的一切吗?把 AI 当作准备倍增器——模拟面试、针对性题目生成、解法讲解、复杂度分析反馈——并建立在任何形式下都立得住的底层技能。准确地呈现你自己,因为面试是一段工作关系的开始,而非终点。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试尖锐观点</div>
+      <p><strong>编码面试中什么时候可以用 AI?</strong>准备阶段,永远可以。带回家若说明允许或未表态可以,但只用于你能完整解释的成果。现场编码或算法面里绝不——它被普遍禁止,且完全击垮了评估。<br>
+      <strong>有人用 AI 作弊时面试官实际检测到什么?</strong>现场环节里,他们看到行为特征:“打字”时的沉默、缺少渐进推理就出现的代码、追问下无法解释自己的解法。有监考的平台再加技术信号:切换标签页日志、击键动力学、时间分析、代码抄袭检测。<br>
+      <strong>资深 SDE 面试里你该如何谈 AI 工具?</strong>具体且诚实——点名工具、描述它们何处帮忙何处不帮、给抓到 AI 错误的具体例子、阐明你遇到的局限。含糊的 buzzword 回答读起来像没经验;能讨论失败模式则示意真实的日常使用。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/harness-engineering/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Harness 工程</div>
+      </a>
+      <a href="/ai-coding/sde-interviews-in-the-ai-era/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">AI 时代的 SDE 面试</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
