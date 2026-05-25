@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:搜索自动补全(typeahead)——trie 前缀树、在每个节点预计算 top-k、按热度(时间衰减)排序、离线数据管道构建 trie、内存服务与按前缀分片、缓存与客户端防抖、实时 vs 批更新、关键取舍。">
+<title>设计搜索自动补全 (Typeahead) — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/typeahead/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/typeahead/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/typeahead/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/typeahead/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计搜索自动补全 (Typeahead)">
+<meta property="og:description" content="Typeahead 系统设计:trie、预计算 top-k、热度排序、离线构建管道、分片服务、防抖缓存。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/typeahead/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计搜索自动补全 (Typeahead)">
+<meta name="twitter:description" content="设计搜索自动补全:trie、预计算 top-k、时间衰减排序、内存分片、防抖。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计搜索自动补全 (Typeahead)", "description": "系统设计:搜索自动补全(typeahead)——trie 前缀树、在每个节点预计算 top-k、按热度(时间衰减)排序、离线数据管道构建 trie、内存服务与按前缀分片、缓存与客户端防抖、实时 vs 批更新、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/typeahead/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/typeahead/">EN</a>
+        <a href="/zh/system-design/typeahead/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">typeahead</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计搜索自动补全 (Typeahead)</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>自动补全(typeahead)是你往搜索框打字时出现的建议下拉。它感觉平凡,但出人意料地苛刻:一个建议必须在<strong>数十毫秒</strong>内回来,因为请求在<em>每次按键</em>触发、建议必须是给定前缀在数十亿可能查询里最相关的、且整个东西以巨大 QPS 运行。设计取决于单个想法——<strong>为每个前缀预计算 top-k 建议</strong>,使服务是近乎即时的查找而非搜索。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>用 trie</strong>(前缀树)——走一个前缀是 O(前缀长度),与有多少短语无关。</li>
+        <li><strong>在每个节点预计算 top-k</strong>——在每个 trie 节点存最佳 k 个补全,使查询只是"走到节点、返回它的缓存列表"。无每请求排序。</li>
+        <li><strong>按热度排序</strong>——建议按历史查询频率排序(常时间衰减以使趋势词浮现)。</li>
+        <li><strong>读写解耦</strong>——trie 从查询日志<em>离线</em>构建;服务路径对一个不可变快照只读。</li>
+        <li><strong>延迟是头条</strong>——目标 &lt;50 ms;客户端防抖、热前缀缓存、边缘/CDN 投递都有帮助。</li>
+        <li><strong>按前缀分片 trie</strong>并复制;保在内存以求速度。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把已知短语存在一个 trie 里并在每个节点预计算 top-k 补全,使服务一个前缀是 O(前缀长度)的走 + 返回一个缓存列表——请求时无排序。从聚合查询日志离线构建/更新 trie(批或流式管道),并服务一个只读内存快照,按前缀分片并复制。客户端防抖、缓存热前缀、从边缘投递,以命中亚 50 ms 延迟目标。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">trie with precomputed top-k</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>            (root)
+              │ c
+              ▼
+             [c]  top: cat(90), car(70), care(40)
+              │ a
+              ▼
+             [ca] top: cat(90), car(70), care(40)
+            ╱      ╲
+         t ▼        ▼ r
+       [cat]       [car] top: car(70), care(40), cargo(20)
+       top:cat        │ e
+                      ▼
+                    [care] top: care(40), career(25)
+
+  query "car" → 跳到节点 [car] → 返回它的缓存 top-k。完成。</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>给定一个前缀,返回 top <em>k</em>(比如 5–10)个最相关的完整建议;建议反映什么热门并随时间演化。<strong>非功能:</strong>极低延迟(&lt;50 ms,因为它每次按键触发)、极高读 QPS、高可用,和对巨大短语语料的可扩展。要陈述的范围决策:只前缀匹配(非模糊/错别字纠正,那是更大的 NLP 问题——虽值得提)、建议按全局热度排序(个性化可选),和一个小的固定 k。我们能容忍建议略<strong>陈旧</strong>(周期性重建)——自动补全无需反映上一秒的活动。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>假设每天 5 十亿次搜索。因为每次搜索是几次按键、每次按键能触发一个 suggest 调用,原始自动补全 QPS 可能是搜索 QPS 的 ~10×——轻易数十万 QPS、峰值更高。那个读量乘以亚 50 ms 延迟目标,正是强制预计算和内存服务的东西。短语语料(值得建议的不同查询)可能是数千万到数亿字符串;它们上的一个 trie,带节点的 top-k 列表,很大但可跨一群服务器的内存分片。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET /suggest?prefix=car&amp;limit=5
+      → {suggestions: ["car", "care", "career", "cargo", "carpet"]}
+
+<span class="cm"># 只读。更新经数据管道带外发生,</span>
+<span class="cm"># 而非经此端点。</span></code></pre>
+    </div>
+
+    <h2>第 4 步 — Trie</h2>
+    <p>一个 <strong>trie</strong>(前缀树)逐字符存字符串:从根的每条路径拼出一个前缀,共享前缀共享节点。查找一个前缀只是走下对应字符——<strong>O(前缀长度)</strong>,完全独立于 trie 含多少短语。那个属性是为什么它是经典自动补全结构。朴素版在叶存完整词,为回答一个前缀查询,遍历前缀节点下的整棵子树以收集和排序候选——请求时太慢。修法是第 5 步。</p>
+
+    <h2>第 5 步 — 在每个节点预计算 Top-k</h2>
+    <p>不在每个请求上搜索子树,而<strong>在节点缓存答案</strong>:每个 trie 节点存它前缀的 top-k 补全,已排序。现在查询是"走到前缀节点、返回它存的列表"——本质 O(前缀长度),请求时无排序或子树遍历。成本被移到构建时(计算那些列表)和存储(每节点 k 条),这正是对读主导系统正确的取舍:把昂贵工作离线做一次,让数十亿读每一个都便宜。这是把工作从读路径推到写/构建路径的经典动作。</p>
+
+    <h2>第 6 步 — 排序</h2>
+    <p>"top"建议主要按<strong>热度</strong>排序——每个完整查询历史上被搜索多频繁。改进:</p>
+    <ul>
+      <li><strong>时间衰减</strong>——给近期搜索更多权重,使趋势词上升、陈旧的淡出(一个曾经巨大的旧查询不该永远主导)。</li>
+      <li><strong>个性化 / 上下文</strong>——位置、语言或用户历史能重排,代价是打破简单的共享预计算(现在列表因 segment 而异)。</li>
+      <li><strong>业务规则</strong>——冒犯或不许建议的过滤在构建时发生。</li>
+    </ul>
+
+    <h2>第 7 步 — 构建和更新 Trie(数据管道)</h2>
+    <p>trie 不是实时构建的;它由一个离线管道从<strong>查询日志</strong>产生:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">offline build pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>搜索日志 ─▶ 按查询聚合计数(MapReduce / 流)
+          ─▶ 过滤(冒犯、罕见)+ 应用时间衰减权重
+          ─▶ 构建 trie,在每个节点计算 top-k
+          ─▶ 发布不可变快照 ─▶ 加载进服务机群</code></pre>
+    </div>
+    <p>聚合是教科书<a href="/ddia/chapter-10/">批</a>(或<a href="/ddia/chapter-11/">流</a>)作业。输出是一个<strong>不可变快照</strong>;服务节点周期性(如每小时/每天)加载新快照并原子切换到它。这种读/写解耦让服务路径简单、快、无锁。</p>
+
+    <h2>第 8 步 — 服务与分片</h2>
+    <p>服务层把 trie 保在<strong>内存</strong>以求速度并横向扩展。因为整个 trie 可能装不进一台机器,<strong>按前缀分片</strong>:如所有以 "a"–"m" 开头的前缀在一个分片组、"n"–"z" 在另一个(或更细拆分以平衡负载——像 "th" 这样的常见前缀得到更多流量)。一个轻量聚合器/路由器把每个请求发给拥有那个前缀的分片。每个分片被复制以求可用和分摊读负载。因为快照切换之间数据只读,副本平凡一致。</p>
+
+    <h2>第 9 步 — 缓存与客户端技巧</h2>
+    <p>几层削减延迟和负载:</p>
+    <ul>
+      <li><strong>客户端防抖(debouncing)</strong>——最后一次按键后等 ~100–300 ms 再发请求,使 "h-e-l-l-o" 发一两个调用、而非五个。</li>
+      <li><strong>客户端/浏览器缓存</strong>——缓存用户已打过前缀的建议(打字再退格应命中本地缓存)。</li>
+      <li><strong>服务端缓存 / CDN</strong>——最热门的短前缀("a"、"th"、"you")占巨大流量份额;以适度 TTL 在边缘缓存它们的 top-k。</li>
+    </ul>
+
+    <h2>第 10 步 — 实时 vs 批更新</h2>
+    <p>建议该多新鲜?纯批重建(每小时/每天)简单且对大多数词足够,但错过<strong>趋势</strong>尖峰(突发新闻)。取舍:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>更新模型</th><th>新鲜度</th><th>成本 / 复杂度</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">批重建</td><td>数小时——错过趋势</td><td>简单;大批语料的默认</td></tr>
+        <tr><td class="col-b">流式 top-k</td><td>数秒–分钟</td><td>抓住趋势词;更多管道复杂度</td></tr>
+      </tbody>
+    </table>
+    <p>一个实用混合:一个大的、缓慢重建的基础 trie 加一个小的实时层,经流式计数器跟踪趋势词并把它们合并进结果。面试官追问"那突发新闻呢?"时提这个。</p>
+
+    <h2>第 11 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>预计算 vs 即时计算。</strong>在每个节点存 top-k 使读近似 O(1) 但花存储和构建时间;每请求计算省存储但爆延迟预算。对读主导的自动补全,预计算决定性胜出。</li>
+      <li><strong>新鲜度 vs 成本。</strong>更频繁重建(或流式更新)更快浮现趋势但花更多计算;大多数词容忍数小时陈旧。</li>
+      <li><strong>个性化 vs 可共享。</strong>全局 top-k 列表被所有用户共享(便宜);个性化列表倍增存储/计算并削弱缓存。</li>
+      <li><strong>Trie 大小 vs 分片开销。</strong>更细前缀分片更好平衡负载但加路由复杂度。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>自动补全是用构建时工作换读时速度最干净的例子:一个 trie 加预计算 top-k 把"搜索并排序数十亿短语"问题变成对一个缓存列表的 O(前缀长度)查找。让服务路径对一个不可变、分片、内存快照只读,从查询日志离线构建它,并倚靠防抖 + 边缘缓存以命中延迟预算。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么 trie?</strong>前缀查找是 O(前缀长度),独立于语料大小,且共享前缀共享节点——对"补全这个前缀"理想。<br>
+      <strong>为什么在每个节点预计算 top-k?</strong>它把排序移出热路径:查询变成"走到节点、返回它的缓存列表",在巨大 QPS 下满足亚 50 ms 预算。<br>
+      <strong>建议怎么排序并保持新鲜?</strong>按时间衰减的查询热度,从日志离线重建;一个小流式层能捕获趋势词。<br>
+      <strong>怎么扩展服务?</strong>把 trie 保在内存、按前缀分片、复制每个分片、换入不可变快照——读保持无锁。<br>
+      <strong>什么削减客户端负载?</strong>防抖按键(~200 ms)并缓存已打前缀;边缘缓存热门短前缀。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/pastebin/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计 Pastebin</div>
+      </a>
+      <a href="/system-design/nearby/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计附近的人 / Yelp(邻近)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
