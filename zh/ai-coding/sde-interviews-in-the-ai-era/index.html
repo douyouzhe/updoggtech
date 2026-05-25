@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:AI 时代的 SDE 面试——样板坍缩、存活下来的技能(系统设计/调试/代码评审/需求澄清/算法直觉/权衡沟通)、AI 能大体替代什么、面试形式如何演进、把 AI 当学习放大器、耐久技能清单、按形式准备,以及用 AI 而不依赖它。">
+<title>AI 时代的 SDE 面试 — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/sde-interviews-in-the-ai-era/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/sde-interviews-in-the-ai-era/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/sde-interviews-in-the-ai-era/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/sde-interviews-in-the-ai-era/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="AI 时代的 SDE 面试">
+<meta property="og:description" content="AI 时代的 SDE 面试:样板坍缩、哪些技能存活、形式如何演进、把 AI 当学习放大器而非拐杖。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/sde-interviews-in-the-ai-era/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="AI 时代的 SDE 面试">
+<meta name="twitter:description" content="AI 时代的 SDE 面试:系统设计、调试、代码评审、权衡沟通——AI 浮现了一直真正困难的技能。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI 时代的 SDE 面试", "description": "AI 编程:AI 时代的 SDE 面试——样板坍缩、存活下来的技能(系统设计/调试/代码评审/需求澄清/算法直觉/权衡沟通)、AI 能大体替代什么、面试形式如何演进、把 AI 当学习放大器、耐久技能清单、按形式准备,以及用 AI 而不依赖它。", "datePublished": "2026-05-24", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/sde-interviews-in-the-ai-era/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/sde-interviews-in-the-ai-era/">EN</a>
+        <a href="/zh/ai-coding/sde-interviews-in-the-ai-era/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">sde-interviews-in-the-ai-era</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">AI 时代的 SDE 面试</h1>
+    <div class="article-meta">
+      <span>2026年5月24日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>AI 编码工具如今能写出可用的二分查找、脚手架一个 REST API、从一段散文描述生成数据库 schema、从一段线框图描述产出一个完整 React 组件——都在几秒内。如果你花了几个月刷 LeetCode、背面试套路,这会让人不安。当 AI 能做被测的事时,面试究竟在测什么?事实证明,答案不是面试已过时、或它探究的技能无关紧要。答案更微妙、对你如何准备也更重要:<strong>AI 让某些技能过时,同时放大了另一些技能的价值。</strong>存活下来的技能,正是面试一直试图度量、却常被语法噪声掩埋的那些。本指南精确勾勒 AI 能替代哪些技能、不能替代哪些、面试形式本身如何适应,以及如何建立无论 AI 怎样演进都会复利的能力。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>样板完全可自动化</strong>——AI 写得比任何人都快;凭记忆产出样板代码,已不再是工程能力的有意义信号。</li>
+        <li><strong>系统设计、调试、代码评审更难用 AI 作假</strong>——它们要求情境判断、持续推理、以及现场 AI 无法实时提供的沟通。</li>
+        <li><strong>算法直觉仍然重要</strong>——不是背套路的能力,而是推理复杂度、选对抽象、看出朴素做法何时失效的能力。</li>
+        <li><strong>面试形式正在转变</strong>——更多设计、更多代码评审、更多调试;资深岗位更少纯粹的从零实现练习。</li>
+        <li><strong>流畅地与 AI 协作如今是被测的技能</strong>——对许多资深岗位,谈不出你的 AI 工作流就是缺口。</li>
+        <li><strong>耐久的技能关乎推理层</strong>——用好 AI 的工程师,是那个理解 AI 产出什么、抓住其错误、做出 AI 无法做的架构决策的人。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>AI 自动化了编码的表层——语法、样板、常见模式——但它没有自动化对系统的推理、代码评审中的判断、从间接证据找 bug 的本领、或实时沟通权衡的能力。这些正是 SDE 面试一直试图度量的技能,而如今样板的噪声被移除,它们变得更显眼了。茁壮成长的工程师,是那些把 AI 当作学习放大器而非拐杖、并能做 AI 做不了的推理工作的人。</p>
+    </div>
+
+    <h2>变了什么:样板的坍缩</h2>
+
+    <p>要理解什么仍有价值,精确说清 AI 实际自动化了什么很有用。诚实的答案是:大量曾消耗工程时间、却并非难点的实现层。</p>
+
+    <p>一个 2026 年中的 AI 编码 agent 能可靠地:从一段技术栈描述脚手架整个项目、从一个数据模型实现标准 CRUD 端点、为你写的函数生成单元与集成测试、把一段粗略的算法描述翻译成任何主流语言的可用代码、按需写正则、SQL 查询、配置文件,并从代码 diff 产出文档、changelog、PR 描述。它做这些比任何人都快,且没有那些曾占据认知空间的语法错误和查文档。</p>
+
+    <p>这对面试意味的不是面试该被抛弃——而是 AI 能轻松做的事,本就从不是真正区分好工程师与卓越工程师的东西。资深工程师的价值,从不在于打样板打得快。它在于知道该伸手去拿哪种系统架构、读一段生产 trace 并定位慢查询、评审一个 PR 并注意到一个隐蔽的竞态、因所述做法在规模上制造一致性问题而对一条产品需求提出反对。这些都不可自动化。这些恰恰正是最好的面试一直试图度量的。</p>
+
+    <h2>存活下来的技能——及其原因</h2>
+
+    <h3>系统设计与架构</h3>
+
+    <p>系统设计是 AI 增益最少、人类判断增益最多的类别。一场关于分布式任务队列、内容分发网络、或实时通知服务的系统设计面试,根本上是在一个没有单一正确答案的问题空间里推理,且约束随对话演进而改变。</p>
+
+    <p>AI 能描述通用架构——“用消息队列做异步处理、负载均衡器做分发、缓存减少数据库读”——但这种通用输出恰恰是过不了资深级设计面试的。面试官引入具体约束:“你的用户在 40 个国家、延迟要求各异”“数据有监管驻留约束”“你要在拍卖结束时承受 10 倍流量尖峰”。候选人必须实时推理其架构如何适应、哪些权衡发生偏移、哪些先前决策需要重新审视。</p>
+
+    <p>这种推理是多层、情境化的,其方式当前 AI 在现场对话形式里真的处理不了。更重要的是,你得把它表达出来——用清晰、自信的技术语言——对一个正在探究你深度的人。知道正确答案不够;沟通权衡、你考虑并否决的失败模式、以及你设计的监控与运维故事,才是区分资深与中级候选人之处。</p>
+
+    <p><strong>无论 AI 如何都会复利的系统设计技能:</strong></p>
+    <ul>
+      <li>数据建模——知道何时规范化 vs. 反规范化、如何分区数据、何时一致性比可用性更重要,反之亦然。</li>
+      <li>容量估算——把一条需求(“承受 100 万日活”)翻译成具体数字:QPS、存储增长率、带宽,以及这些如何驱动硬件与架构决策。</li>
+      <li>失败模式推理——主动识别在负载下、节点故障下、网络分区下什么会崩,以及恢复路径长什么样。</li>
+      <li>权衡阐述——不只是挑一个做法,而是解释你放弃了什么、以及为何对所述需求而言这可接受。</li>
+    </ul>
+
+    <h3>调试与根因分析</h3>
+
+    <p>调试是最高价值的工程技能之一,也是在生产环境所需的层级上最难自动化的之一。在 SDE 面试——更重要的是在工作本身——中要紧的那种调试,不是“修这个语法错误”。而是:给定一个 P99 延迟从三天前开始回归的生产服务,追踪证据、形成假设、设计有针对性的实验来确认或排除每个假设、并收敛到根因。</p>
+
+    <p>这是一个不确定下的推理问题。你没有完整图景——你有指标、日志、trace、以及回归出现的时间点。你得推理哪一层是元凶、同期什么变了、为何这效应可能是间歇或随负载的。AI 能帮你查日志或建议假设,但建立系统心智模型、推理哪些组件交互、决定下一个该看哪个数据点的能力——那是工程判断,且靠练习而非捷径养成。</p>
+
+    <p>有些面试直接给调试任务:这是一个失败的测试、一个性能退化的服务、或一段有隐蔽逻辑错误的代码——找到并修复它。这些任务在现场环境里抗 AI 辅助,因为被评估的正是思考过程本身。面试官不只关心你是否找到 bug;他们在看你如何形成假设、如何验证它们、如何沟通你在试什么以及为什么。</p>
+
+    <h3>代码评审与技术判断</h3>
+
+    <p>代码评审已日益成为 SDE 面试的核心,恰恰因为它是 AI 无法完全自动化的任务、它紧密映射真实工作、且它无需候选人在时间压力下从零产出代码就能揭示其技术判断。当面试官给你看一个 pull request 并问“你会给这个作者什么反馈”,他们在同时度量几样东西:</p>
+
+    <ul>
+      <li><strong>正确性发现</strong>——你能看出那个 off-by-one 错误、空解引用风险、并发代码里的竞态、SQL 注入漏洞吗?</li>
+      <li><strong>优先级排序</strong>——你会以关键 bug 开头,还是迷失在风格挑刺里?你能把阻塞问题、建议、正面观察分开吗?</li>
+      <li><strong>沟通</strong>——你的反馈精确到可执行吗?它尊重且建设性吗?它解释为什么,而不只是什么吗?</li>
+      <li><strong>关切的广度</strong>——你会想到性能影响、可测试性、文档、向后兼容、运维可观测性——还是只想到最狭窄的正确性检查?</li>
+    </ul>
+
+    <p>为代码评审面试做的最好准备,是评审真实代码。读你主语言里开源项目的 PR。研究有经验的工程师留下的评审意见。练习阐述某处为何错——而不只是它确实错——以及正确做法会是什么。这建立一套词汇和模式库,在面试和日常工作里都为你服务。</p>
+
+    <h3>需求澄清</h3>
+
+    <p>有经验的工程师最可靠的信号之一,是他们如何应对含糊。面试里拿到一个问题的初级候选人常立刻跳到一个做法。资深候选人放慢:这里“高效”是什么意思——延迟还是吞吐?读远多于写吗?这需要精确还是能容忍近似?这是单机还是分布式?规模假设是什么?</p>
+
+    <p>在冲进解法前澄清需求不是拖延战术——它是工程纪律。造错东西的成本是巨大的;问一个澄清问题的成本是零。AI 无法在现场面试里替你做这件事——它需要实时交换,以及知道哪些问题值得问、哪些是 bikeshedding 的判断。培养这种本能需要在你能获得“你的问题是否有价值”反馈的环境里练习。</p>
+
+    <h3>算法与复杂度直觉</h3>
+
+    <p>这是多数人以为 AI 已使之过时的技能——他们部分对、大体错。AI 能写正确的二分查找或拓扑排序。AI 在现场面试里做不了的,是告诉你这些中哪一个才是你眼前问题的正确结构、如何把它适配给给定的具体约束、以及为何朴素的 O(n²) 做法会在你被告知要设计的规模上崩溃。</p>
+
+    <p>算法直觉不是背算法。它是识别问题结构的能力:“这有最优子结构,所以动态规划值得考虑”“这等价于 DAG 上的最短路”“瓶颈在于我们在重做同样的计算——一张备忘表解决它”。这种识别靠解题并仔细思考做法为何有效或失败而养成,而非靠背解法。AI 能生成解法;它无法转移关于“何时与为何”的直觉。</p>
+
+    <p>复杂度分析仍完全相关,如今或许更显眼。面试官能给你一段 AI 生成的代码,让你分析其时间与空间复杂度、识别最坏情况行为、找出优化机会。这是个纯推理任务,需要深刻理解而非代码产出,在代码生成变得容易的时代,它正成为探究算法深度的更常见方式。</p>
+
+    <h3>沟通与权衡表达</h3>
+
+    <p>跨所有面试形式,清晰简洁地沟通技术思考的能力是一个一阶信号。这不是比技术技能次要的软技能——对资深岗位,它就是技术技能,因为资深工程师的杠杆来自影响跨团队与组织的决策,而非当最快的打字员。AI 不放大这项技能;它无法在现场面试里替你说话。</p>
+
+    <p>面试最常测的具体沟通能力是<strong>权衡表达</strong>:“我选这个做法因为 X,它给我们 Y,代价是 Z,而这可接受,因为需求说我们看重 A 胜过 B。”这个模式——指出选择、点出收益、点出代价、连回需求——是资深工程沟通的语法。能流畅做这件事的候选人,远比技术知识相当却表达不出推理的候选人更有说服力。</p>
+
+    <h2>AI 能大体替代的技能</h2>
+
+    <p>对此精确,有助你正确分配准备时间。相比五年前,在以下领域投入数周的回报正快速递减:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>技能 / 任务</th><th>AI 能替代?</th><th>为什么 / 备注</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>凭记忆写标准算法实现</td>
+          <td>能,在允许 AI 的语境</td>
+          <td>二分查找、BFS、归并排序——AI 写得又对又快。但在无 AI 的现场面试里你仍需要它们;评估点是你的推理,而非代码。</td>
+        </tr>
+        <tr>
+          <td>样板与脚手架(项目搭建、CRUD、配置)</td>
+          <td>能</td>
+          <td>AI 出色;死记框架语法提供近乎零的工程质量信号。</td>
+        </tr>
+        <tr>
+          <td>语法正确 / 知道精确 API 签名</td>
+          <td>能</td>
+          <td>查文档从不是有用的面试信号;如今更没用。多数面试官本就给了完整文档访问权。</td>
+        </tr>
+        <tr>
+          <td>为直白函数写单元测试</td>
+          <td>大体能</td>
+          <td>AI 快速生成高覆盖测试。面试问题转为:测试真在测对的行为吗?边界情况覆盖了吗?</td>
+        </tr>
+        <tr>
+          <td>模式匹配到有名字的算法类型(如“双指针”)</td>
+          <td>部分能</td>
+          <td>AI 能说出模式名,但仍需要你正确应用它并论证它为何契合具体约束。推理仍归你。</td>
+        </tr>
+        <tr>
+          <td>系统设计——通用架构描述</td>
+          <td>仅表层</td>
+          <td>AI 能通用地描述“用缓存 + 队列 + 关系型 DB”。它无法实时推理你的设计在具体约束下的具体权衡。</td>
+        </tr>
+        <tr>
+          <td>陌生系统里 bug 的根因分析</td>
+          <td>不能</td>
+          <td>需要对具体系统的情境知识、不确定下的推理、以及决定下一个看哪个数据。这是人类推理任务。</td>
+        </tr>
+        <tr>
+          <td>代码评审判断与优先级</td>
+          <td>不能</td>
+          <td>AI 能发现一些问题,但无法复制关于“什么最要紧、如何恰当沟通反馈”的整体判断。</td>
+        </tr>
+        <tr>
+          <td>需求澄清与范围协商</td>
+          <td>不能</td>
+          <td>一项对话技能,需要关于“哪些含糊对技术做法要紧”的实时判断。</td>
+        </tr>
+        <tr>
+          <td>现场质询下的权衡沟通</td>
+          <td>不能</td>
+          <td>实时口头表达;AI 无法在现场面试里替你说话,而对话适应性正是这项技能。</td>
+        </tr>
+        <tr>
+          <td>复杂度分析与正确性证明</td>
+          <td>不能——在现场环境</td>
+          <td>推导界限需要理解,而非记忆。面试官现场探究;现场环境里无法外包给 AI。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>面试形式如何演进</h2>
+
+    <p>面试这一行不是静态的。公司正积极修订流程,以回应 AI 工具的可得性和工作本身性质的变化。变化并不一致——大型结构化项目动得慢,初创适应得快——但方向性趋势是清晰的。</p>
+
+    <h3>更多设计,更少从零实现</h3>
+
+    <p>对资深和 staff 工程岗位,公司正提高系统设计相对算法实现的权重。这不意味 LeetCode 式题目消失了——它们仍重要,尤其对早期职业和应届招聘,那里面试部分在测候选人有基础 CS 知识。但对 L5/资深+ 层级,平衡正在偏移。把系统设计得好更难用 AI 作假;推理更复杂,对话成分不可避免。</p>
+
+    <h3>代码评审与调试成为一等面试形式</h3>
+
+    <p>越来越多公司——尤其那些已离开“纯 LeetCode”面试的——把代码评审和调试练习用作独立的面试类型。你可能被给到一个含三个不同严重程度的故意问题的 diff,被要求找到并解释它们。或被给到一个有可复现 bug 的服务,被要求在有日志和 trace 访问权下诊断它。这些形式比实现练习更直接地揭示工程判断,且因推理过程完全是口头的而难得多用 AI 作弊。</p>
+
+    <h3>AI 熟练度作为直接的面试话题</h3>
+
+    <p>对任何把用 AI 工具当作预期工作流一部分的岗位——这是 2026 年大多数软件工程岗位——面试官开始直接评估 AI 熟练度。这包括:你用什么工具、为什么、你如何评估 AI 生成的代码、你遇到过什么失败模式、你如何决定何时用 AI 何时手写。从未仔细想过这些的候选人无法蒙混过关。答案不能是“我就用 Copilot”而没有后续例子;它需要反映真实的日常工作流经验。</p>
+
+    <h3>协作式与开放资源形式</h3>
+
+    <p>一些公司,尤其那些明确离开禁止模式的,跑允许任何工具的带回家练习,而后续复盘刻意严格。其信息是:我们在意你构建什么、你是否理解它,而非你是否用了某个特定工具。这种形式在某些方面其实更苛刻——你需要能在探究性问题下解释你代码里的每个决策,这意味你不理解的 AI 生成代码是负债而非优势。</p>
+
+    <h2>AI 作为学习放大器:建立耐久技能</h2>
+
+    <p>对 2026 年备考的候选人,有产出的框架不是“尽管 AI 工具存在,我如何准备”,而是“我如何用 AI 更快地建立那些无论如何都需要发展的技能”。这个区分很重要:把 AI 当拐杖会阻碍那些要紧的推理技能的发展;把 AI 当导师则加速它。</p>
+
+    <h3>用 AI 来理解,而非只为产出</h3>
+
+    <p>当你遇到一个解不出的问题,AI 最糟的用法是问它要解法然后翻篇。最好的用法是苏格拉底式地用 AI:要一个关于关键洞见的提示而不要完整解法、从那提示试着实现、再问你的尝试为何失败、迭代到你理解完整解法深到能从第一性原理解释它。这比读解法花更长时间——而这正是重点。目标是转移洞见,而非代码。</p>
+
+    <p>解完一题后,用 AI 压测你的理解:让它用你没想到的边界情况探究你的解法、让它生成一个表面相似却需要不同做法的问题、让它解释对问题做什么修改会改变最优解。这种主动精加工,正是把表层知识转化为真正理解的东西。</p>
+
+    <h3>带动态约束的系统设计练习</h3>
+
+    <p>读系统设计文章、看视频的局限在于,它们给你答案却不给你约束导航的过程。用 AI 模拟那个过程:描述一个系统设计问题,让 AI 扮演面试官,并让它在中途引入约束——“你的延迟要求刚变了,团队需要 50ms P99 而非 200ms”“你刚得知需要支持离线移动客户端”。练习你在对话中途适应设计的能力,建立设计面试所要求的实时灵活性。</p>
+
+    <h3>代码评审模式构建</h3>
+
+    <p>让 AI 生成带故意问题的代码——C++ 里的缓冲区溢出、Go 里的 goroutine 泄漏、SQL 注入漏洞、热路径上导致全表扫描的缺失索引——并练习找出它们。然后让 AI 评估你的评审:你先找到了关键问题吗?你的反馈可执行吗?你漏了什么吗?这为那项判断技能创造了一个反馈回路,否则要靠多年评审真实 PR 才能发展。</p>
+
+    <h3>把复杂度分析当作一项主动练习</h3>
+
+    <p>别只写解法——每道练习题之后,在检查前从零推导时间与空间复杂度。然后让 AI 探究你:“如果输入能到 10^9,空间复杂度会怎样?”“你这个递归解的递推关系对吗?”“给这个数据结构摊还成本找最紧的界。”把复杂度分析当作自己独立的练习科目——与写代码分开——建立面试官现场测的那种熟练度。</p>
+
+    <h2>耐久技能清单</h2>
+
+    <p>这是一份按价值无论 AI 能力如何都会复利的技能优先级清单,按对资深岗位的面试权重从高到低排列:</p>
+
+    <ul>
+      <li><strong>系统架构推理</strong>——给定需求与约束,你能设计一个系统、论证其组件、推理失败模式、并在约束改变时适配设计吗?</li>
+      <li><strong>权衡沟通</strong>——你能以“得到什么、放弃什么”、锚定到具体需求,来阐述设计选择吗?</li>
+      <li><strong>根因与调试</strong>——给定一个 bug 或性能回归的间接证据,你能形成假设、给它们排优先级、并收敛到原因吗?</li>
+      <li><strong>代码评审判断</strong>——给定一个 PR,你能按严重程度识别问题、可执行地沟通反馈、并就正确性/性能/安全/可维护性推理吗?</li>
+      <li><strong>算法推理</strong>——你能识别一个问题的结构、推理哪些算法做法适用、推导并比较复杂度界吗?</li>
+      <li><strong>需求与范围澄清</strong>——在扎进解法前,你会识别并解决那些会改变你做法的含糊吗?</li>
+      <li><strong>AI 工具熟练度与评估</strong>——你能有效使用 AI 编码工具、批判性地评估其输出、并清楚描述你的工作流吗?</li>
+      <li><strong>并发与分布式系统直觉</strong>——你对竞态、一致性级别、分布式失败模式、异步的含义有心智模型吗?</li>
+      <li><strong>安全意识推理</strong>——你会默认思考信任边界、输入校验、认证、授权、数据暴露吗?</li>
+      <li><strong>运维思维</strong>——你设计系统时考虑可观测性(指标、日志、trace)、部署(回滚、canary)、事故响应吗?</li>
+    </ul>
+
+    <h2>如何针对演进中的面试形式来准备</h2>
+
+    <h3>对算法与实现环节</h3>
+
+    <p>它们不会消失,尤其对早期职业岗位和有结构化招聘流程的公司。准备策略应转移重心:少花时间在纯粹的题量上,多花在对每题的深刻理解上——算法的“为什么”、从第一性原理算复杂度、以及写码前解释你做法的能力。练习在解题时叙述你的思考过程,因为那段叙述正是面试官在评估的。正确性要紧,但你通往解法途中展现的推理质量也要紧。</p>
+
+    <h3>对系统设计环节</h3>
+
+    <p>最常见的准备缺口,是孤立地练设计而非在对话中练。找一个伙伴——人或 AI——会引入你没预料的约束并对你的决策提出反对。读真实系统的案例研究(Cloudflare、Stripe、Discord、Figma、Netflix 的工程博客含出色的真实世界设计叙事)。练容量估算直到你能快速产出合理数字——知道 100 万 DAU、每天 10 次请求大致是平均 100 QPS,给你快速锚定设计的心算捷径。</p>
+
+    <h3>对代码评审环节</h3>
+
+    <p>读你在意的开源项目里的真实 PR。留意有经验的评审者评论什么、不评论什么。练习时,用 AI 生成故意有缺陷的代码,给自己计时找出并阐述所有问题。研究代码评审关切的经典类别:正确性、边界情况、资源管理、安全、性能、可读性、可测试性。养成在多个抽象层级评审代码的习惯——行级正确性和系统级设计——再沉到细节里。</p>
+
+    <h3>对 AI 熟练度评估</h3>
+
+    <p>这需要在你的日常工作中真正使用 AI 工具——不为面试准备,而为真实任务。用 Copilot 或 Claude Code 构建东西。留意它们何处帮忙、何处误导你。收集抓到 AI 错误并纠正它们的具体例子。对何时用 AI、何时手写,发展出真实的看法。面试中被问到 AI 时,你应该在调用真实经验,而非当场编一个答案。</p>
+
+    <h2>用 AI 而不依赖它</h2>
+
+    <p>专注准备的候选人应主动防范的风险,是以一种萎缩面试所测推理技能的方式变得依赖 AI。这就是拐杖模式:用 AI 产出你不完全理解的解法、习惯了总有 AI 在手、于是丧失了在时间压力的现场环境里独立推理问题的能力。</p>
+
+    <p>纪律是:用 AI 学得更快,但确保你没有它也能做那件事。用 AI 理解一个概念后,关掉 AI,从零复现那个推理。如果你做不到,你就没学会它——你只是遇见过它。测试不是“我能复现 AI 说的话”,而是“我能从第一性原理解释为什么、并把它扩展到一个新颖变体”。那个理解标准正是现场面试所揭露的,而它只在独立练习中建立。</p>
+
+    <p>这里有一条更广的原则,适用于面试之外的你的工程职业生涯:<strong>AI 是那些有判断力去指挥它、评审其输出、抓住其错误的工程师的力量倍增器。</strong>那份判断不可替代。把判断外包给 AI 的工程师不是被倍增——他们是被替代。复利的工程师,是那些用 AI 工作得更快、同时持续建立让他们的 AI 使用更有效的理解的人。从这个意义上说,面试是真实工作的一个准确代理。</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>AI 坍缩了样板记忆的价值,并浮现了那些一直真正困难的技能:系统设计、调试、代码评审、权衡沟通、算法推理。面试形式正在适应——更多设计、更多评审、更多开放式复盘——以匹配。靠建立在现场对话中立得住的理解来准备:把 AI 当导师和陪练,而非绕过学习的捷径。将在面试以及随后的工作中茁壮成长的工程师,是那些理解 AI 产出到足以指挥、评估、改进它的人。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试尖锐观点</div>
+      <p><strong>如今 AI 能写代码了,SDE 面试里什么技能最重要?</strong>系统设计推理、不确定下的调试、代码评审判断、从第一性原理做复杂度分析、权衡沟通——对资深岗位按此顺序。这些是 AI 在现场对话里无法提供的技能,而随着实现样板作为噪声被移除,它们正变得更显眼。<br>
+      <strong>面试形式如何回应 AI 工具而变化?</strong>更多设计、更多代码评审练习、更多调试任务、以及对资深岗位更直接地评估 AI 熟练度。纯从零实现在资深招聘里权重下降,那里对话式推理与判断才是主要信号。<br>
+      <strong>你如何把 AI 当学习放大器而非拐杖?</strong>苏格拉底式地用 AI——要提示,不要解法;用新颖变体压测你的理解;关掉 AI,从零复现推理。如果你无法从第一性原理解释一个解法为何有效,你就没学会它。AI 加速通往理解的路;它不替代理解本身。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/ai-in-coding-interviews/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">在编码面试中用 AI</div>
+      </a>
+      <a href="/ai-coding/" class="article-nav-card next">
+        <div class="article-nav-label">返回 →</div>
+        <div class="article-nav-title">AI 编程</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
