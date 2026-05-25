@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:电商平台——微服务 + API 网关、多语言持久化(SQL/NoSQL/Cassandra/Redis/ES)、结账管道与 Saga、订单状态机、库存与超卖、支付幂等、CDC 搜索、高峰扩展(缓存/分片)、可靠性与可观测性、安全与欺诈、退款与多区域、ML 推荐、关键取舍。">
+<title>设计电商平台 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ecommerce-platform/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计电商平台">
+<meta property="og:description" content="电商系统设计:微服务、SQL/NoSQL、Redis TTL 持有、Kafka 结账、Saga、超卖防护、CDC 搜索。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/ecommerce-platform/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计电商平台">
+<meta name="twitter:description" content="设计电商平台:微服务、polyglot 存储、结账 Saga、超卖防护、CDC 搜索、高峰扩展。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计电商平台", "description": "系统设计:电商平台——微服务 + API 网关、多语言持久化(SQL/NoSQL/Cassandra/Redis/ES)、结账管道与 Saga、订单状态机、库存与超卖、支付幂等、CDC 搜索、高峰扩展(缓存/分片)、可靠性与可观测性、安全与欺诈、退款与多区域、ML 推荐、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/ecommerce-platform/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/ecommerce-platform/">EN</a>
+        <a href="/zh/system-design/ecommerce-platform/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">ecommerce-platform</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计电商平台</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>电商平台——想想 Amazon、阿里巴巴、Walmart 或 Shopify——是面试中可能被要求设计的最苛刻的分布式系统之一。它同时结合实时库存管理、金融交易处理、高流量搜索与发现,以及 ML 驱动的个性化,全都在严格正确性要求下——一个超卖的商品或一个丢失的订单直接转化为损失的收入和破碎的用户信任。本指南走完整个面试弧:需求、容量估算、API 与数据建模、高层架构,然后深入真正难的部分——结账、库存、支付、搜索、扩展和容错。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>微服务 + API 网关</strong>——每个服务拥有自己的数据存储;无跨服务直接 DB 访问。</li>
+        <li><strong>钱用 SQL,目录用 NoSQL</strong>——订单/用户用 ACID;异构商品 schema 用文档存储。</li>
+        <li><strong>Redis 购物车持有(TTL ~10 分钟)</strong>——软预留库存而不永久阻塞;过期自动释放。</li>
+        <li><strong>Kafka 解耦结账</strong>——用户得到即时确认;库存扣减、支付和通知在下游异步发生。</li>
+        <li><strong>CDC → Elasticsearch</strong>——搜索索引保持最终一致而不把写延迟耦合到索引。</li>
+        <li><strong>Cassandra 做归档</strong>——横向可扩展、高写吞吐用于历史订单记录。</li>
+        <li><strong>处处幂等</strong>——支付键、事件消费者去重,和跨服务一致性的 Saga 模式。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>用 API 网关后的微服务:订单和用户用 SQL(ACID),商品目录用 NoSQL(schema 灵活),历史订单归档用 Cassandra,购物车持有用带 TTL 的 Redis,Kafka 把结账管道与下游处理解耦。Elasticsearch 经 CDC 喂的索引驱动搜索。在要紧处(钱、库存)保持一致,其他处拥抱最终一致。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/ecommerce-platform-1.jpg" alt="电商平台高层架构" loading="lazy">
+      <figcaption>电商平台高层架构</figcaption>
+    </figure>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>画一个框前,大声界定问题。面试官奖励把一个宽得不可能的提示收窄成一个具体、可辩护的子集。电商很大,所以陈述你会和不会覆盖什么。</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>用户注册、认证和资料管理。</li>
+      <li>商家入驻:店铺创建和商品管理(带媒体的 CRUD)。</li>
+      <li>商品搜索、浏览、购物车和愿望单。</li>
+      <li>结账和支付,产生一个持久订单。</li>
+      <li>个性化首页 feed 和订单历史。</li>
+      <li>订单生命周期跟踪(下单 → 已付 → 已发货 → 已送达)。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>低延迟</strong>——搜索和页面加载 ~200 ms p99 内;结账应感觉即时。</li>
+      <li><strong>高可用</strong>——目标 99.99%;高峰销售(Prime Day、双 11)期间宕机是灾难性的。</li>
+      <li><strong>要紧处强正确性</strong>——库存绝不能超卖;支付绝不能双重扣款。</li>
+      <li><strong>可扩展</strong>——挺过闪购期间 10–100× 流量尖峰。</li>
+      <li><strong>持久性</strong>——一个已确认订单绝不丢失。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>显式命名什么是范围外——推荐排序内部、欺诈检测、卖家分析套件——这样你能把时间花在核心事务路径上。说"我把支付处理当作经 webhook 的外部提供商"是一个界定范围的决定,不是缺口。</p>
+    </div>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>粗略数字证明你的存储和扩展选择。假设一个有 <strong>1 亿日活(DAU)</strong>的大平台。</p>
+
+    <h3>流量</h3>
+    <ul>
+      <li>若每 DAU 每天执行 ~10 次读动作(浏览/搜索):100M × 10 = <strong>1B 读/天 ≈ 11,500 读/秒</strong>平均,5× 峰值因子约 <strong>~58K 读/秒</strong>峰值。</li>
+      <li>若 1% DAU 每天下单:1M 订单/天 ≈ <strong>~12 写/秒</strong>平均,但闪购能把那集中到几分钟——为突发 <strong>数千订单写/秒</strong>设计。</li>
+      <li>读写比大约 <strong>100:1</strong>,这呐喊"激进缓存并用读副本"。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>500M 商品 × 各 ~2 KB 元数据 ≈ <strong>1 TB</strong> 目录数据(媒体前)。</li>
+      <li>商品图片/视频住在 CDN 后的对象存储(S3)——轻易 PB 级,挡在主 DB 外。</li>
+      <li>订单:1M/天 × 365 × ~1 KB ≈ <strong>~365 GB/年</strong>热订单数据,线性增长——历史订单归档到 Cassandra 的原因。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">注解</div>
+      <p>你不需要确切数字——你需要正确的<em>数量级</em>和它们驱动的结论:100:1 读写比 → 缓存 + 副本;PB 级媒体 → 对象存储 + CDN;线性增长的订单 → 一个归档层。</p>
+    </div>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>通过 API 网关暴露干净的 REST 面。几个代表性端点:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 目录与搜索</span>
+<span class="kw">GET</span>  <span class="str">/api/products?q=shoes&amp;category=men&amp;page=2</span>
+<span class="kw">GET</span>  <span class="str">/api/products/{productId}</span>
+
+<span class="cm"># 购物车(软预留库存)</span>
+<span class="kw">POST</span> <span class="str">/api/cart/items</span>        { productId, qty }
+<span class="kw">DELETE</span> <span class="str">/api/cart/items/{id}</span>
+
+<span class="cm"># 结账——经客户端提供的键幂等</span>
+<span class="kw">POST</span> <span class="str">/api/orders</span>
+     Idempotency-Key: <span class="str">"a1b2-c3d4"</span>
+     { cartId, addressId, paymentMethodId }
+
+<span class="kw">GET</span>  <span class="str">/api/orders/{orderId}</span></code></pre>
+    </div>
+
+    <p>两个赢得加分的细节:结账端点携带一个 <strong><code>Idempotency-Key</code></strong>,使重试请求(不稳定移动网络、双击)绝不创建重复订单;搜索支持 cursor/offset 分页,因为没有客户端应取一个无界结果集。</p>
+
+    <h2>第 4 步 — 核心服务</h2>
+    <p>平台被分解成聚焦的微服务,每个拥有自己的数据存储。服务读时经 API 网关同步通信、状态变更时经 Kafka 异步通信——绝不伸进另一个服务的数据库。</p>
+    <ul>
+      <li><strong>用户服务</strong>——认证(OAuth2/JWT)、资料、地址。</li>
+      <li><strong>店铺服务</strong>——商家店铺创建和设置。</li>
+      <li><strong>商品服务</strong>——目录 CRUD、属性、媒体引用。</li>
+      <li><strong>搜索服务</strong>——Elasticsearch 驱动的全文和分面搜索。</li>
+      <li><strong>可服务性服务(Serviceability)</strong>——按购买资格(地区、合法性、可用性)过滤商品。</li>
+      <li><strong>购物车服务</strong>——Redis 支撑、带 TTL 库存持有的购物车。</li>
+      <li><strong>库存服务</strong>——权威库存计数和预留。</li>
+      <li><strong>定价服务</strong>——动态定价、促销、优惠券。</li>
+      <li><strong>订单服务</strong>——订单生命周期状态机,事务真相来源。</li>
+      <li><strong>支付服务</strong>——包装外部网关(Stripe/PayPal),处理幂等和对账。</li>
+      <li><strong>推荐服务</strong>——ML 驱动的个性化建议。</li>
+      <li><strong>通知服务</strong>——email、SMS、push。</li>
+    </ul>
+
+    <h2>第 5 步 — 数据存储决策</h2>
+    <p>存储选择由每个服务的访问模式和一致性需求驱动。没有单个数据库适合每个负载——多语言持久化正是重点。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>数据类型</th><th>存储</th><th>理由</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>用户、订单、店铺</td><td class="col-a">SQL (RDBMS)</td><td>金融交易和结构化关系数据需要 ACID</td></tr>
+        <tr><td>商品目录</td><td class="col-a">NoSQL(文档)</td><td>商品有异构属性集;文档存储避免大量 null 的 schema</td></tr>
+        <tr><td>历史订单</td><td class="col-b">Cassandra</td><td>横向可扩展、高写吞吐;适合追加重的归档</td></tr>
+        <tr><td>购物车持有</td><td class="col-a">Redis (TTL)</td><td>~10 分钟 TTL 临时预留库存而不永久阻塞</td></tr>
+        <tr><td>搜索索引</td><td class="col-a">Elasticsearch</td><td>规模化的全文搜索、模糊匹配、分面过滤</td></tr>
+        <tr><td>媒体</td><td class="col-b">对象存储 + CDN</td><td>PB 级 blob 服务到用户附近,挡在 DB 外</td></tr>
+      </tbody>
+    </table>
+
+    <h3>为什么商品用文档存储</h3>
+    <p>笔记本有 CPU、RAM 和屏幕尺寸;T 恤有尺码和颜色;书有 ISBN 和页数。把这建模在单个关系表里产生要么一片可空列、要么一个笨拙的 entity-attribute-value schema。文档存储(MongoDB、DynamoDB)让每个商品恰好携带它需要的属性,且目录压倒性读多、无跨行事务——完美的 NoSQL 契合。</p>
+
+    <h2>第 6 步 — 数据模型</h2>
+    <p>订单和库存表住在 SQL,因为它们需要事务。一个简化 schema:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> orders (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  user_id       <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  status        <span class="ty">VARCHAR</span>(<span class="num">20</span>),  <span class="cm">-- PENDING|PAID|SHIPPED|...</span>
+  total_cents   <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  idempotency_key <span class="ty">VARCHAR</span>(<span class="num">64</span>) <span class="kw">UNIQUE</span>,
+  created_at    <span class="ty">TIMESTAMP</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="kw">CREATE TABLE</span> inventory (
+  product_id    <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  available     <span class="ty">INT</span> <span class="kw">NOT NULL</span>,   <span class="cm">-- 在库减预留</span>
+  reserved      <span class="ty">INT</span> <span class="kw">NOT NULL</span>,
+  version       <span class="ty">INT</span> <span class="kw">NOT NULL</span>    <span class="cm">-- 乐观锁</span>
+);</code></pre>
+    </div>
+
+    <p><code>idempotency_key UNIQUE</code> 约束是使重试结账在数据库级别安全的东西:第二次插入只是唯一性检查失败,服务返回已创建的订单。库存上的 <code>version</code> 列支持乐观并发控制,下面覆盖。</p>
+
+    <h2>第 7 步 — 结账管道</h2>
+    <p>结账是最关键——也最复杂——的流程。关键设计洞见是用 Kafka <strong>把面向用户的确认与下游订单处理链解耦</strong>。用户得到即时确认;库存扣减、支付扣款、通知派发和履约启动异步发生。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>用户点"购买"
+  → 购物车服务校验 TTL 持有仍活跃
+  → 订单服务写一个 PENDING 订单到 SQL(幂等键)
+  → 发布 OrderCreated 到 Kafka
+      ├── 库存服务: 把持有 → 永久扣减
+      ├── 支付服务 (Stripe/PayPal): 扣卡
+      │     └── webhook 回调翻转订单 PAID / FAILED
+      ├── 通知服务: 发确认
+      └── 推荐服务: 记录购买信号</code></pre>
+    </div>
+
+    <h3>跨服务一致性:Saga 模式</h3>
+    <p>单次结账触及订单、库存和支付服务——三个数据库,无分布式事务。标准答案是一个 <strong>Saga</strong>:一系列本地事务,各发布一个触发下一个的事件,失败时带<strong>补偿动作</strong>。若扣减库存后支付被拒,一个 <code>PaymentFailed</code> 事件驱动库存服务释放预留、订单服务把订单标 <code>CANCELLED</code>。这用原子性换可用性和最终一致——对一个必须在高峰保持运行的系统是正确选择。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么不 2PC?</div>
+      <p>两阶段提交给你原子性但在事务期间跨服务持锁,造成协调者瓶颈并在负载下使可用性暴跌。Saga 保持每个服务独立且高可用,代价是写显式补偿逻辑。</p>
+    </div>
+
+    <h3>订单状态机</h3>
+    <p>订单最好建模为一个显式状态机;这么做防止非法转换,如发货一个未付订单或退款两次。每个转换由一个事件触发且幂等,所以重放一个 Kafka 消息绝不错误推进状态。</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">states</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>PENDING ──paid──▶ PAID ──pack──▶ PACKED ──ship──▶ SHIPPED ──▶ DELIVERED
+   │                 │
+   └─超时/失败─▶ CANCELLED       └─退货──▶ REFUNDED  (终态)</code></pre>
+    </div>
+    <p>把 <code>status</code> 存在由应用级检查(或 DB <code>CHECK</code>/触发器)守卫的 SQL 里,使只有 <code>PAID</code> 订单能移到 <code>PACKED</code>,且 <code>CANCELLED</code>/<code>REFUNDED</code> 是终态。状态字段加 <code>updated_at</code> 时间戳也给支持和分析每个订单旅程的干净审计轨迹。</p>
+
+    <h2>第 8 步 — 库存与超卖问题</h2>
+    <p>电商最难的正确性问题是购物车到购买的间隙。加入购物车时扣库存,你为放弃购物车的用户阻塞销售;只在结账时扣,你冒高需求突发期间超卖风险。选的中间地带是一个<strong>带 TTL(~10 分钟)的 Redis 持有</strong>:加入购物车时软预留库存、成功结账时永久扣减,过期持有自动释放。</p>
+
+    <h3>防止并发超卖</h3>
+    <p>当 10,000 个买家争抢 100 个单位,两个写绝不能都越过零成功。两个机制:</p>
+    <ul>
+      <li><strong>乐观锁</strong>——读带 <code>version</code> 的行,然后 <code>UPDATE ... WHERE version = :v</code>;若零行更新,别人赢了——重试。争抢通常低时很好。</li>
+      <li><strong>原子递减</strong>——一个 Redis <code>DECR</code>(或一个条件 SQL <code>UPDATE ... WHERE available &gt; 0</code>)使检查并递减成为单个原子步骤。最适合像闪售这样的极致单品争抢。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 原子、并发下安全:仅当还有库存时成功</span>
+<span class="kw">UPDATE</span> inventory
+<span class="kw">SET</span> available = available - <span class="num">1</span>, reserved = reserved + <span class="num">1</span>
+<span class="kw">WHERE</span> product_id = <span class="num">42</span> <span class="kw">AND</span> available &gt; <span class="num">0</span>;
+<span class="cm">-- rows affected = 0 → 售罄,拒绝加入购物车</span></code></pre>
+    </div>
+
+    <h2>第 9 步 — 支付处理</h2>
+    <p>把卡网络当作外部提供商(Stripe、PayPal、Adyen)——你几乎从不想自己做 PCI-DSS Level 1。支付服务是它周围一个薄、谨慎的包装:</p>
+    <ul>
+      <li><strong>幂等键</strong>——每次扣款尝试传一个唯一键,使超时后重试绝不双重扣款;提供商去重。</li>
+      <li><strong>webhook 驱动状态</strong>——绝不从同步响应假设成功;权威的 <code>charge.succeeded</code> / <code>charge.failed</code> webhook 翻转订单状态。验证 webhook 签名。</li>
+      <li><strong>对账</strong>——一个每晚作业把你的订单与提供商的结算报告比较,以抓住掉落的 webhook 和卡住的 PENDING 订单。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">边界情况</div>
+      <p>若扣款成功但 webhook 丢失会怎样?订单卡在 PENDING,客户的钱被取了。对账加一个超时后的"查询扣款状态"回退是安全网——这正是面试官探查的失败模式。</p>
+    </div>
+
+    <h2>第 10 步 — 搜索与发现</h2>
+    <p>商品和店铺更新经<strong>变更数据捕获(CDC)</strong>流入 Elasticsearch 集群:主数据库发出变更事件,一个 CDC 连接器(如 Debezium)把它们发布到 Kafka,Kafka 喂搜索索引器。这让索引保持最终一致而不把写延迟耦合到索引——并避免双写陷阱。</p>
+    <p>搜索服务处理模糊匹配、同义词和 type-ahead。可服务性服务随后在结果返回前按请求用户的地区和购买资格过滤它们。排序混合文本相关性与业务信号(热度、转化率、利润)。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么 CDC,不是双写?</div>
+      <p>双写(应用同时写 DB 和 Elasticsearch)在一个写失败的那一刻分歧——现在你的搜索显示不存在的商品或隐藏存在的。CDC 使数据库成为单一真相来源、索引成为它变更日志的下游、可重放投影。</p>
+    </div>
+
+    <h2>第 11 步 — 为高峰流量扩展</h2>
+    <p>闪购和季节性高峰(双 11、黑五)能把流量尖峰提数个数量级。逐层防御:</p>
+    <ul>
+      <li><strong>CDN + 边缘缓存</strong>——静态资源甚至可缓存的商品页服务到用户附近。</li>
+      <li><strong>多层缓存</strong>——目录和热门商品读前的 Redis;带合理 TTL 的 cache-aside。100:1 读比意味缓存命中承载大部分流量。</li>
+      <li><strong>读副本</strong>——把读扇到副本;写保持在主库。</li>
+      <li><strong>数据库分片</strong>——按 <code>user_id</code> 分区订单、按 <code>product_id</code> 分区目录,使没有单节点成瓶颈。</li>
+      <li><strong>Kafka 作减震器</strong>——异步管道缓冲结账突发,使订单后端按自己节奏排干而非倾倒。</li>
+      <li><strong>限流与负载卸除</strong>——保护平台免受滥用客户端和真实踩踏;为限量售卖把用户排进虚拟候车室。</li>
+      <li><strong>自动扩缩</strong>——无状态服务按 CPU/延迟触发横向扩展。</li>
+    </ul>
+
+    <h3>商家处理模型</h3>
+    <ul>
+      <li><strong>大企业(批拉)</strong>——Apache Airflow 调度批量库存/目录拉取;对高量定时更新更好。</li>
+      <li><strong>中小企业(推模型)</strong>——商品或订单事件时立即推送变更以求新鲜。</li>
+    </ul>
+
+    <h3>深入缓存策略</h3>
+    <p>100:1 读写比下,缓存是杠杆最高的单项优化。默认模式是 <strong>cache-aside</strong>:应用先查 Redis、未命中时回退到数据库、填充缓存。难的部分不是 happy path 而是失败模式:</p>
+    <ul>
+      <li><strong>失效</strong>——商品或价格更新时,发布一个事件驱逐或刷新缓存条目。结账时显示陈旧价格是真实的收入甚至法律风险,所以价格用短 TTL 缓存并急切失效。</li>
+      <li><strong>缓存击穿</strong>——热 key 过期时,数千请求同时未命中并猛敲数据库。用随机 TTL 抖动、一个单飞互斥(只一个请求重建条目),或过期前后台 refresh-ahead 缓解。</li>
+      <li><strong>热点 key</strong>——一个病毒商品能饱和一个 Redis 分片。跨分片复制热 key 或在 Redis 前加一个小进程内缓存吸收尖峰。</li>
+      <li><strong>缓存什么</strong>——商品详情页、分类列表、搜索结果(短 TTL);绝不缓存权威库存计数或订单状态,它们必须总被强读。</li>
+    </ul>
+
+    <h3>深入分片策略</h3>
+    <p>单个主库无法持有 5 亿商品或吸收峰值订单写,所以横向分区——而选好分片键是全部关键:</p>
+    <ul>
+      <li><strong>订单</strong>——按 <code>user_id</code> 分片,使一个用户的完整历史住一个分片、常见的"我的订单"读保持单分片。按 <code>order_id</code> 分片会把一个用户的订单散到节点。</li>
+      <li><strong>目录</strong>——按 <code>product_id</code> 哈希分片以均匀分布、无热分区。</li>
+      <li><strong>跨分片查询</strong>——"本月某区域所有订单"必须扇出到每个分片并合并,慢;把这类分析查询路由到 OLAP/数仓副本而非 OLTP 路径。</li>
+      <li><strong>重分片</strong>——用一致性哈希或一个查找/目录服务,使加容量移动最少数据。朴素取模分片在分片数变化时重洗几乎每行。</li>
+    </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/ecommerce-platform-2.jpg" alt="店铺和商品类图" loading="lazy">
+      <figcaption>店铺和商品类图</figcaption>
+    </figure>
+
+    <h2>第 12 步 — 可靠性与容错</h2>
+    <p>99.99% 可用性下每个依赖最终都会失败;设计必须优雅降级而非崩溃。</p>
+    <ul>
+      <li><strong>复制 + 多 AZ</strong>——每个数据存储跨可用区带副本运行;主丢失时自动故障转移。</li>
+      <li><strong>熔断器</strong>——推荐服务宕时,首页回退到一个非个性化的"热门商品" feed 而非报错。</li>
+      <li><strong>幂等消费者</strong>——Kafka 保证至少一次投递,所以每个消费者按事件 ID 去重;重处理一个 <code>OrderCreated</code> 不能扣两次库存。</li>
+      <li><strong>死信队列</strong>——反复失败的事件被停放检查而非阻塞分区。</li>
+      <li><strong>优雅降级</strong>——搜索宕?服务缓存的分类页。定价宕?服务最后已知价格。保持购买按钮活着。</li>
+    </ul>
+
+    <h3>可观测性</h3>
+    <p>没有看进系统内部你无法在 99.99% 运作。倚靠三大支柱:</p>
+    <ul>
+      <li><strong>指标</strong>——每服务 RED(Rate、Errors、Duration)加业务指标(订单/分钟、支付成功率、购物车放弃)在 Prometheus/Grafana,每服务有仪表盘。</li>
+      <li><strong>分布式追踪</strong>——跨网关 → 订单 → 库存 → 支付传播的 trace ID 把一个"结账慢"报告变成你能指出的确切 span。</li>
+      <li><strong>结构化日志与告警</strong>——按 <code>orderId</code>/<code>userId</code> 为键的集中日志便于 grep,并在 SLO 燃尽(如支付成功率 &lt; 99%、p99 延迟 &gt; 300 ms)而非原始资源用量上告警。</li>
+    </ul>
+
+    <h2>安全、欺诈与滥用</h2>
+    <p>钱吸引攻击者,所以防御必须跨栈分层而非坐在单个门:</p>
+    <ul>
+      <li><strong>认证 / 授权</strong>——OAuth2 配短命 JWT 访问令牌加刷新令牌;商家和管理 API 带独立 scope,使泄露的客户令牌碰不到目录。</li>
+      <li><strong>限流</strong>——网关处每用户和每 IP 令牌桶钝化撞库、抓取和意外客户端重试风暴。</li>
+      <li><strong>欺诈评分</strong>——速度检查(短窗口内许多订单或许多卡)、设备指纹和一个 ML 风险分把可疑订单路由到履约前的持有/审查队列。</li>
+      <li><strong>售卖的 bot 防御</strong>——限量闪购吸引 bot;结合 CAPTCHA、虚拟候车室和每账号购买限制。</li>
+      <li><strong>PCI 范围最小化</strong>——绝不存原始卡数据;经支付提供商 tokenize,使泄露不能漏卡号。</li>
+    </ul>
+
+    <h2>退货、退款与多区域</h2>
+    <p>购后流程在面试里常被跳过但是真实范围。一次<strong>退货</strong>产生一个逆向物流任务;收到商品时,一次<strong>退款</strong>重入支付服务(又是幂等、又是 webhook 确认)并重新入库。退款是它们自己的小状态机,且必须像扣款一样对照提供商的结算报告对账。</p>
+    <p>对全球受众,一个<strong>多区域</strong>部署削减延迟并提供灾难恢复。目录和搜索只读复制到每个区域,而订单通常被钉到用户的主区域以保持事务路径简单,带异步跨区域复制做 DR。强全局一致昂贵且很少值得——大多数设计接受区域所有权加最终全局复制,只在区域宕机时故障转移到另一区域。</p>
+
+    <h2>第 13 步 — ML 与推荐</h2>
+    <p>用户行为信号——搜索查询、加入购物车、愿望单保存和完成购买——经 Kafka 捕获并喂进 Spark Streaming 做近实时分析。推荐服务用它们做:</p>
+    <ul>
+      <li>用户分段(回归模型、KNN 聚类)。</li>
+      <li>个性化首页和"买了又买"模块。</li>
+      <li>动态定价和促销定向。</li>
+      <li>喂库存规划的需求预测。</li>
+    </ul>
+    <p>每个表携带 <code>created_at</code> / <code>updated_at</code> 列,身兼两职:调试生产问题和为这些模型提供时间特征。</p>
+
+    <h2>关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>订单一致性</td><td class="col-a">强(SQL + ACID)</td><td>比 NoSQL 更低写吞吐,由分片缓解</td></tr>
+        <tr><td>目录与搜索</td><td class="col-b">最终(CDC)</td><td>新商品可能需数秒出现在搜索</td></tr>
+        <tr><td>跨服务事务</td><td class="col-a">Saga</td><td>必须写显式补偿逻辑;无全局回滚</td></tr>
+        <tr><td>库存持有</td><td class="col-b">Redis TTL</td><td>持有后放弃的商品短暂不可用的小窗口</td></tr>
+        <tr><td>结账路径</td><td class="col-a">经 Kafka 异步</td><td>订单在支付确认前已"下单";状态稍后更新</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>电商系统设计从根本上关于隔离一致性域:钱和订单用 SQL + ACID,灵活目录用文档存储,归档规模用 Cassandra,Kafka 把结账关键路径与所有下游效果解耦。Redis TTL 购物车持有是超卖-vs-损失销售取舍的经典答案,Saga 模式是你不用分布式事务保持正确性的方式。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>闪购期间怎么防止超卖?</strong>Redis TTL 持有(~10 分钟)在加入购物车时软预留;只在确认结账时经原子条件递减永久扣减;过期持有自动释放。<br>
+      <strong>为什么结账和支付间用 Kafka?</strong>把面向用户延迟与下游工作解耦——即时订单确认,同时库存、支付和通知异步进行,Kafka 也缓冲突发。<br>
+      <strong>不用 2PC 怎么保持三个服务一致?</strong>Saga 模式——由事件串联的本地事务,失败时带补偿动作(释放库存、取消订单)。<br>
+      <strong>为什么 CDC 进 Elasticsearch 而非双写?</strong>CDC 让索引作为可重放投影与 DB 一致;双写若索引写失败就分歧。<br>
+      <strong>怎么避免给客户双重扣款?</strong>扣款调用上的幂等键加 webhook 驱动状态和每晚对账。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/" class="article-nav-card">
+        <div class="article-nav-label">← 返回</div>
+        <div class="article-nav-title">系统设计</div>
+      </a>
+      <a href="/system-design/map-webapp/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计地图 Web 应用</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
