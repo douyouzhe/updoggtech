@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:支付系统——正确性优于可用性、幂等键(绝不双重扣款)、支付状态机与 webhook、复式记账账本、数据模型、exactly-once 效果、Saga(而非 2PC)、对账、PCI 合规与 tokenization、关键取舍。">
+<title>设计支付系统 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/payment-system/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/payment-system/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/payment-system/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/payment-system/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计支付系统">
+<meta property="og:description" content="支付系统设计:幂等键、复式记账账本、状态机、Saga、对账、tokenization、CP 取舍。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/payment-system/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计支付系统">
+<meta name="twitter:description" content="设计支付系统:幂等、复式记账、状态机 webhook、Saga、对账、PCI tokenize。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计支付系统", "description": "系统设计:支付系统——正确性优于可用性、幂等键(绝不双重扣款)、支付状态机与 webhook、复式记账账本、数据模型、exactly-once 效果、Saga(而非 2PC)、对账、PCI 合规与 tokenization、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/payment-system/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/payment-system/">EN</a>
+        <a href="/zh/system-design/payment-system/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">payment-system</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计支付系统</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>支付系统移动钱,而这一个事实改变一切:正确性不可妥协。feed 里的 bug 能显示一个陈旧帖子;这里的 bug 能给客户双重扣款或丢失一笔交易,且没有"最终它会没事"。设计被三个想法主导——<strong>幂等(idempotency)</strong>(重试的请求绝不能扣两次)、<strong>复式记账账本(double-entry ledger)</strong>(每次钱移动的不可变、永远平衡的记录),和<strong>对账(reconciliation)</strong>(持续对照支付提供商核验你的账)。它是我们 <a href="/ddia/chapter-7/">DDIA 事务笔记</a>和<a href="/ddia/chapter-12/">端到端正确性</a>里正确性想法最直接的应用。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>正确性优于可用性</strong>——这是个偏 CP 的系统;拒绝一笔支付好过处理它两次或丢失它。</li>
+        <li><strong>幂等键强制必需</strong>——客户端为每个支付意图生成一个唯一键;用同键重试返回原始结果,绝不第二次扣款。</li>
+        <li><strong>复式记账账本</strong>——每笔交易往仅追加、不可变账本写平衡的借 + 贷条目;余额被派生,从不原地编辑。</li>
+        <li><strong>集成 PSP,别碰卡</strong>——路由到 Stripe/Adyen 等;tokenize 卡,使原始 PAN 永不进入你的系统(PCI 范围)。</li>
+        <li><strong>异步配 webhook + 状态机</strong>——支付移动 pending → authorized → captured → settled;PSP 异步确认。</li>
+        <li><strong>无情对账</strong>——每日对照 PSP/银行对账单比较你的账本以抓住并修复任何差异。信任,但要核验。</li>
+        <li><strong>用 saga,不用 2PC</strong>——你无法跨外部提供商做两阶段提交;用补偿动作编排。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>经客户端提供的键 + 一个去重存储让每笔支付幂等,使重试安全。在一个不可变复式记账账本记录钱移动并从它派生余额。别存卡数据——委托给 PSP 并 tokenize。把支付建模为由异步 webhook 驱动的状态机,用 saga 编排多步流程(补偿动作,而非 2PC),并对照提供商运行每日对账以保证你的账与现实相符。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">payment flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code> ┌────────┐  pay(idempotency_key)  ┌──────────────┐
+ │ 客户端 │──────────────────────▶│   支付       │
+ └────────┘                       │   服务       │
+                                  └───┬───┬───────┘
+              去重 + 账本写           │   │  charge
+            ┌───────────────┐◀───────┘   ▼
+            │  账本 DB      │          ┌──────────┐  ┌──────────┐
+            │ (复式记账)    │          │   PSP    │─▶│   银行   │
+            └───────────────┘          │ (Stripe) │  │  网络    │
+            ┌───────────────┐  webhook └──────────┘  └──────────┘
+            │ 幂等          │◀── "captured/failed"(异步)
+            │   存储        │
+            └───────────────┘   每晚对照 PSP 对账单对账</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>为一个订单从客户接受一笔支付(收款);与支付服务提供商(PSP)集成;跟踪每笔支付的状态;支持退款;(可选)给卖家付款。<strong>非功能</strong>,且这些主导:<strong>正确性/一致性</strong>高于一切(无双重扣款、无丢失或幽灵支付)、持久性、幂等、可审计性(为合规的完整不可变历史),和合理可用性。我们显式偏好<strong>一致性优于可用性</strong>:若有疑,安全失败并对账,而非冒移动钱两次的风险。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>相比 feed 支付量适中——比如每天 10M 支付(~120/秒平均,促销事件峰值更高)。数字不是挑战;<strong>故障下的正确性</strong>才是。每个组件都必须假设网络能在最糟时刻丢一个请求或响应(见<a href="/ddia/chapter-8/">分布式系统的麻烦</a>),这正是为什么幂等和对账是一等公民、不是事后想法。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API (idempotency key required)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /payments
+   Idempotency-Key: 7f3c-...-a91     <span class="cm"># 客户端生成,每次尝试</span>
+   {order_id, amount, currency, payment_method_token}
+      → {payment_id, status}
+GET  /payments/{payment_id}          → {status, amount, ...}
+POST /payments/{payment_id}/refund   {amount}  Idempotency-Key: ...</code></pre>
+    </div>
+    <p><code>Idempotency-Key</code> 头是关键(第 5 步),且卡作为一个 <strong>token</strong> 传递,绝不原始号(第 11 步)。</p>
+
+    <h2>第 4 步 — 支付流程与状态机</h2>
+    <p>支付不是瞬时的;它在旅行到银行并返回时穿过各状态,大体<strong>异步</strong>。支付服务调 PSP 授权和捕获资金,但最终确认稍后经一个 <strong>webhook</strong> 回调到达。把支付建模为一个显式<strong>状态机</strong>使这可管理:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>状态</th><th>含义</th><th>下一个</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">pending</td><td>已创建,未发送/确认</td><td>authorized / failed</td></tr>
+        <tr><td class="col-b">authorized</td><td>资金在卡上被冻结</td><td>captured / voided</td></tr>
+        <tr><td class="col-a">captured</td><td>资金被取(扣款确认)</td><td>settled / refunded</td></tr>
+        <tr><td class="col-b">settled</td><td>钱实际移到你的账户</td><td>refunded</td></tr>
+        <tr><td class="col-a">failed / voided</td><td>被拒或取消</td><td>终态</td></tr>
+      </tbody>
+    </table>
+
+    <p>每个转换被持久记录;来自 PSP 的 webhook 驱动异步转换(authorized→captured→settled),系统必须处理 webhook 迟到、乱序或多于一次到达(所以 webhook 处理本身幂等)。</p>
+
+    <h2>第 5 步 — 幂等:绝不扣两次</h2>
+    <p>定义性危险:客户端发"付 $50",请求在服务器成功,但响应丢失;客户端重试;现在你扣了 $50 两次。解药是一个<strong>幂等键</strong>——客户端<em>每个支付意图生成一次</em>、随每次重试发送的唯一 ID。服务器把键与首次成功尝试的结果一起记录;任何后来带同键的请求返回存储结果而非再次执行。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">idempotent payment handling</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">pay</span>(key, order, amount):
+    <span class="kw">if</span> seen(key):                 <span class="cm"># 先前尝试的重试</span>
+        <span class="kw">return</span> stored_result(key)  <span class="cm"># 返回原始结果——不重新扣款</span>
+    reserve(key)                  <span class="cm"># 原子认领键(唯一约束)</span>
+    result = psp.charge(amount, idempotency_key=key)  <span class="cm"># PSP 也幂等</span>
+    write_ledger(order, amount)   <span class="cm"># 在与下面同一事务里 ...</span>
+    store_result(key, result)     <span class="cm"># ... 记录结果</span>
+    <span class="kw">return</span> result</code></pre>
+    </div>
+
+    <p>关键地,PSP 本身接受一个幂等键,所以即便你到 PSP 的重试也不会在他们那端双重扣款。这是<a href="/ddia/chapter-12/">端到端论证</a>在行动——去重用一个穿过每层的标识符强制,而非在任何单层打补丁。</p>
+
+    <h2>第 6 步 — 复式记账账本</h2>
+    <p>钱用<strong>复式记账(double-entry bookkeeping)</strong>跟踪,这是银行用了几个世纪的会计模型。每笔交易产生至少两个总和为零的条目:从一个账户<strong>借(debit)</strong>和到另一个账户匹配的<strong>贷(credit)</strong>。账本<strong>仅追加且不可变</strong>——你从不编辑或删除一个条目;一次纠正是一个新的补偿条目。余额通过求和条目<em>派生</em>,从不存为一个你覆写的可变数字。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">double-entry: a $50 payment</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>txn 9001  customer_cash      −50.00   (借)
+txn 9001  merchant_payable   +50.00   (贷)
+                             ───────
+                              0.00     ← 每笔 txn 必须平衡到零
+
+稍后退款 = 一笔新的平衡 txn,绝不编辑 txn 9001
+balance(account) = SUM(entries) — 派生,不可变历史保留</code></pre>
+    </div>
+
+    <p>这个模型使系统<strong>可审计</strong>且<strong>自检</strong>:因为每笔交易平衡到零,钱不能被静默创造或销毁,且完整历史可为合规和争议解决重建。</p>
+
+    <h2>第 7 步 — 数据模型</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>payments         (payment_id, order_id, amount, currency, status,
+                  psp_ref, created_at, updated_at)
+ledger_entries   (entry_id, txn_id, account, amount, ts)   <span class="cm"># 仅追加</span>
+idempotency_keys (key PK, payment_id, response, created_at) <span class="cm"># 去重</span></code></pre>
+    </div>
+    <p>带 ACID 事务的关系数据库是这里正确的默认(见<a href="/ddia/chapter-7/">事务</a>):写账本条目、更新支付行和记录幂等结果应在<strong>一个原子事务</strong>里发生,使它们不能部分应用。</p>
+
+    <h2>第 8 步 — Exactly-Once 效果</h2>
+    <p>真正的 exactly-once 投递在不可靠网络上不可能,所以目标是 exactly-once <em>效果</em>:无论请求、webhook 或 PSP 调用被重试多少次,一笔支付恰好改变钱一次。达到它的组合:(1) 幂等键去重重复客户端请求;(2) PSP 自己的幂等键去重重复 charge 调用;(3) webhook 处理器幂等(处理同一 "captured" 事件两次是 no-op);(4) 原子账本写把钱移动与去重记录绑定,使它们一起提交或都不。</p>
+
+    <h2>第 9 步 — 处理故障:Saga,不是 2PC</h2>
+    <p>一笔支付常跨多个内部服务和一个外部 PSP(你无法把 Stripe 纳入你的分布式事务)。<strong>两阶段提交跨外部系统不工作</strong>且故障下阻塞(见<a href="/ddia/chapter-9/">一致性与共识</a>)。而是用 <strong>saga</strong>:一系列本地步骤,各带一个<strong>补偿动作(compensating action)</strong>去撤销它。若一个较晚步骤失败,你跑较早步骤的补偿(如撤销一个授权、反转一个账本条目)以返回一致状态。步骤被排队并以指数退避重试;持续失败的事件去死信队列调查而非被静默丢弃。</p>
+
+    <h2>第 10 步 — 对账</h2>
+    <p>无论代码多小心,你必须<strong>对照现实核验你的账</strong>——磁盘损坏数据、webhook 被漏、bug 溜过。<strong>对账(reconciliation)</strong>是一个定时作业(通常每晚),逐行比较你的内部账本与来自 PSP 和银行的结算报告/对账单,并标记任何差异:PSP 记录了而你没有的支付、金额不匹配、缺失的结算。差异被升级并用补偿账本条目纠正。这体现<a href="/ddia/chapter-12/">"信任,但要核验"</a>原则——系统被设计来检测和从不一致恢复,而非假设它从不发生。</p>
+
+    <h2>第 11 步 — 安全与合规</h2>
+    <p>直接处理卡数据把你拖进 <strong>PCI DSS</strong> 的完整范围,一个昂贵的合规负担。标准动作是<strong>绝不让原始卡号(PAN)碰你的服务器</strong>:客户端把卡细节直接发给 PSP(或 PSP 的托管字段/SDK),它返回一个 <strong>token</strong>;你的系统只存储和扣这个 token。除此之外:加密静态和传输中的敏感数据、严格控制访问、维护审计日志(不可变账本已提供),并对支付流跑欺诈检测。</p>
+
+    <h2>第 12 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>一致性优于可用性。</strong>支付系统安全失败——拒绝并重试好过冒双重扣款风险。对账是让你能保守的安全网。</li>
+      <li><strong>同步 vs 异步。</strong>授权可能为即时 UX 同步,但捕获/结算经 webhook 异步;状态机吸收延迟。</li>
+      <li><strong>自建 vs 购买。</strong>集成一个 PSP(和 tokenization)相比自己造卡处理大砍 PCI 范围和风险——几乎总是正确的选择。</li>
+      <li><strong>Saga vs 2PC。</strong>Saga 容忍外部系统和部分失败,代价是写补偿逻辑;2PC 概念上更简单但跨第三方 PSP 不可用。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>支付系统是一台正确性机器。三个机制承载设计:端到端穿线的幂等键使重试绝不双重扣款、一个不可变复式记账账本使钱绝不被静默创造或丢失且一切可审计,以及对照提供商的持续对账使任何差异被抓住并纠正。偏好一致性、把卡处理委托给 PSP,并用 saga 而非分布式事务编排多方流程。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>怎么防止双重扣款?</strong>一个客户端生成、服务端记录(并传给 PSP)的幂等键;任何带同键的重试返回原始结果而非再次扣款。<br>
+      <strong>为什么复式记账账本?</strong>每笔交易往不可变、仅追加的日志写平衡的借/贷条目;余额被派生,所以钱不能被静默创造/丢失且一切可审计。<br>
+      <strong>为什么对账?</strong>代码和网络会失败;每日比较你的账本与 PSP/银行对账单检测并修复差异——信任,但要核验。<br>
+      <strong>为什么 saga 而非 2PC?</strong>你无法跨外部 PSP 做两阶段提交;saga 用带补偿动作的本地步骤在故障下保持一致。<br>
+      <strong>怎么避免 PCI 范围?</strong>Tokenize——卡细节直接去 PSP,它返回一个 token;原始 PAN 永不碰你的服务器。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/leaderboard/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计实时排行榜</div>
+      </a>
+      <a href="/system-design/ticketmaster/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计 Ticketmaster</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
