@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:用 Claude 与 OpenAI API 构建生产应用——Messages API 结构与角色、streaming、prompt caching、token 成本与估算、延迟优化、错误处理与指数退避、structured output(tool use)、API 密钥管理与服务端代理,以及如何选对模型。">
+<title>用 Claude 与 OpenAI API 构建应用 — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/building-with-llm-apis/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="用 Claude 与 OpenAI API 构建应用">
+<meta property="og:description" content="用 Claude 与 OpenAI API 构建:Messages API、streaming、prompt caching、structured output、密钥安全、模型选择。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="用 Claude 与 OpenAI API 构建应用">
+<meta name="twitter:description" content="LLM API 生产实践:streaming、prompt caching、token 成本、指数退避、structured output、密钥管理。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "用 Claude 与 OpenAI API 构建应用", "description": "AI 编程:用 Claude 与 OpenAI API 构建生产应用——Messages API 结构与角色、streaming、prompt caching、token 成本与估算、延迟优化、错误处理与指数退避、structured output(tool use)、API 密钥管理与服务端代理,以及如何选对模型。", "datePublished": "2026-05-18", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/building-with-llm-apis/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/building-with-llm-apis/">EN</a>
+        <a href="/zh/ai-coding/building-with-llm-apis/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">building-with-llm-apis</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">用 Claude 与 OpenAI API 构建应用</h1>
+    <div class="article-meta">
+      <span>2026年5月18日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>今天运行的每一个 AI 编码工具、聊天机器人、文档分析器和自主 agent,都建立在同一基础之上:一个 HTTP API,接收一组 message、返回一个 completion。Claude 的 Messages API 与 OpenAI 的 Chat Completions API 在结构上几乎相同,精通其一就给了你一个对两者都通用的心智模型。但会基础调用只是起点,而非全部。生产应用需要处理 streaming 以获得感知上的响应速度、prompt caching 以控制成本、structured output 以可靠解析、指数退避以应对瞬时错误,以及严密的密钥管理以让 secret 保持 secret。本文全部覆盖。</p>
+
+    <p>我们会从基础 API 结构搭起,再逐层叠加每个生产关切。读完你将对“交付一个可靠、低成本、低延迟的 LLM 驱动 feature”所需的一切有完整图景——而不只是在终端里拿回一个响应。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>Messages API 有三种角色</strong>——<code>system</code>、<code>user</code>、<code>assistant</code>——理解每一个是 prompt 设计的基础。system 角色设定持久指令;user/assistant 交替构成对话。</li>
+        <li><strong>对面向用户的 feature,streaming 几乎总是正确的默认。</strong>首 token 延迟感觉上比等整段响应快得多,即便总时间相同。</li>
+        <li><strong>prompt caching 能把成本砍掉 80–90%</strong>——对那些有大而稳定前缀(system prompt、文档、代码库)的工作负载。缓存命中也比完整推理快 3–5 倍。</li>
+        <li><strong>token 成本累加得很快。</strong>理解你的输入/输出 token 比例,实测它,并设计 prompt 来最小化不必要的输入重复。</li>
+        <li><strong>structured output</strong>(JSON 模式或 schema 约束生成)在下游代码要解析模型响应时不可或缺。能约束输出格式就别去正则解析自由文本。</li>
+        <li><strong>密钥卫生从第一天起就重要。</strong>API key 是 bearer token;拿到你 key 的任何人都能花你的预算、读你的 prompt。用环境变量、secret manager、服务端代理——绝不要把 key 嵌进客户端代码。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Claude 与 OpenAI 的 API 共享同样的基于 message 的结构。生产环境:用 streaming 求响应感、用 prompt caching 在大而稳定上下文上控成本、用 structured output 求可靠解析、用指数退避处理错误、用服务端代理让 API key 永不到达客户端。模型选择是成本/能力的权衡——实测为准。</p>
+    </div>
+
+    <h2>Messages API:结构与角色</h2>
+    <p>每次对 Messages API 的调用都是一组 message 对象,每个带一个 <code>role</code> 和 <code>content</code>。三种角色语义各异:</p>
+
+    <ul>
+      <li><strong>system</strong>——在任何 user 回合之前发送一次。设定模型的人格、任务约束、输出格式,以及任何持久指令。模型把它视为比 user 消息更高的权威。这里放“You are a senior Python engineer. Always return valid JSON. Never include markdown code fences.”</li>
+      <li><strong>user</strong>——来自人类(或扮演人类的应用)的消息。对话的每一回合加一条 user 消息。</li>
+      <li><strong>assistant</strong>——模型之前的响应。构建多轮对话时,你把先前的 assistant 消息纳入列表,好让模型维持上下文。单轮调用则省略它们。</li>
+    </ul>
+
+    <p>Anthropic 的 API 把 system 消息作为顶层参数处理,而非列表里的一条消息,但概念角色完全相同。OpenAI 把 system 作为 messages 数组的第一个对象。两者实践中行为一致。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — 基础 Messages API 调用(Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()  <span class="cm"># 从 env 读取 ANTHROPIC_API_KEY</span>
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    system=<span class="str">"You are a concise technical writer. Reply in plain text, no markdown."</span>,
+    messages=[
+        {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Explain what a context window is in one paragraph."</span>},
+    ],
+)
+
+<span class="fn">print</span>(response.content[<span class="num">0</span>].text)
+<span class="fn">print</span>(<span class="str">f"Input tokens: {response.usage.input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Output tokens: {response.usage.output_tokens}"</span>)</code></pre>
+    </div>
+
+    <h3>关键参数及其作用</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>参数</th><th>类型</th><th>它控制什么</th><th>典型值</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model</code></td><td>string</td><td>用哪个模型</td><td>"claude-opus-4-5", "gpt-4o"</td></tr>
+        <tr><td><code>max_tokens</code></td><td>int</td><td>截断前的最大输出 token</td><td>视任务 256–4096</td></tr>
+        <tr><td><code>temperature</code></td><td>float 0–1</td><td>随机性:0 = 确定,1 = 创造</td><td>代码/JSON 用 0,散文用 0.7</td></tr>
+        <tr><td><code>top_p</code></td><td>float 0–1</td><td>核采样:temperature 的替代</td><td>不要同时用两者</td></tr>
+        <tr><td><code>stop_sequences</code></td><td>list[str]</td><td>产生任一字符串时停止生成</td><td>结构化 prompt 用 ["</s>", "###"]</td></tr>
+        <tr><td><code>stream</code></td><td>bool</td><td>边生成边返回 token</td><td>面向用户的 feature 设 true</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>temperature vs. top_p:</strong>多数应用用 temperature。想要确定、事实性输出(解析、代码生成、JSON 抽取)时设低(0–0.2)。想要创造或变化时设高(0.6–0.9)。避免同时改两者——它们的相互作用很难推理。</p>
+
+    <h2>Streaming:首 token 赢得用户注意力</h2>
+    <p>没有 streaming,你的 app 要等整段响应才显示任何东西——对长响应这可能是 5–20 秒的空白屏。有了 streaming,token 在模型生成时陆续到达,用户在发出请求后几百毫秒内就看到文字出现。总延迟往往相同,但<em>感知</em>延迟低得多。对任何面向用户的 feature,streaming 几乎总是正确的默认。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — streaming 响应(Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="kw">with</span> client.messages.<span class="fn">stream</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Write a merge sort in Python."</span>}],
+) <span class="kw">as</span> stream:
+    <span class="kw">for</span> text <span class="kw">in</span> stream.<span class="fn">text_stream</span>():
+        <span class="fn">print</span>(text, end=<span class="str">""</span>, flush=<span class="kw">True</span>)  <span class="cm"># 每个 chunk 随生成到达</span>
+
+final = stream.<span class="fn">get_final_message</span>()
+<span class="fn">print</span>(<span class="str">f"\nTotal tokens: {final.usage.input_tokens + final.usage.output_tokens}"</span>)</code></pre>
+    </div>
+
+    <p>在 web 应用里,你通常用 Server-Sent Events(SSE)或 WebSocket 把流从服务器代理到浏览器。浏览器随每个 chunk 到达即渲染。多数 LLM API SDK 在服务端替你处理 SSE 分帧——你只管迭代这个流。</p>
+
+    <h3>JavaScript 里的 streaming</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">javascript — 用 OpenAI SDK streaming</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">"openai"</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">OpenAI</span>();  <span class="cm">// 从 env 读取 OPENAI_API_KEY</span>
+
+<span class="kw">const</span> stream = <span class="kw">await</span> client.chat.completions.<span class="fn">create</span>({
+  model: <span class="str">"gpt-4o"</span>,
+  stream: <span class="kw">true</span>,
+  messages: [{ role: <span class="str">"user"</span>, content: <span class="str">"Explain async/await in JavaScript."</span> }],
+});
+
+<span class="kw">for await</span> (<span class="kw">const</span> chunk <span class="kw">of</span> stream) {
+  <span class="kw">const</span> delta = chunk.choices[<span class="num">0</span>]?.delta?.content ?? <span class="str">""</span>;
+  process.stdout.<span class="fn">write</span>(delta);  <span class="cm">// 生产中经 SSE 流到浏览器</span>
+}</code></pre>
+    </div>
+
+    <h2>Prompt Caching:最划算的单项成本优化</h2>
+    <p>LLM 推理之所以贵,是因为模型每次调用都必须从头处理每个输入 token。但许多生产工作负载有一个大而稳定的前缀:一段长 system prompt、一份正被分析的文档,或一整个被逐查询处理的代码库。prompt caching 让 API 把这个稳定前缀预处理一次,并为后续相同前缀的调用复用 KV cache——大幅削减成本与延迟。</p>
+
+    <h3>缓存经济学如何运作</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>token 类型</th><th>相对成本</th><th>延迟影响</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>常规输入 token</td><td>1×</td><td>完整推理时间</td></tr>
+        <tr><td>缓存写入(首次调用)</td><td>~1.25×(填充略有溢价)</td><td>首次调用略高</td></tr>
+        <tr><td>缓存读取(后续调用)</td><td>~0.10×(打九折优惠 90%)</td><td>比完整输入处理快 3–5 倍</td></tr>
+        <tr><td>输出 token</td><td>输入成本的 3–5 倍</td><td>由输出长度决定</td></tr>
+      </tbody>
+    </table>
+
+    <p>这笔账很有说服力:若你的 system prompt 是 10,000 token、每天 100 次调用,朴素算就是 1,000,000 输入 token。有了缓存,就是 10,000 缓存写入 token(首次调用或 TTL 刷新时)加上其余的 90,000 缓存读取 token——这部分 prompt 的输入 token 成本大约降 90%。</p>
+
+    <h3>用 Claude 实现 prompt caching</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — 用 cache_control 做 prompt caching(Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="cm"># 一段跨多次调用保持稳定的长 system prompt</span>
+LONG_SYSTEM_PROMPT = <span class="str">"""
+You are a senior Python engineer reviewing code for a fintech company.
+[... 5,000 tokens of detailed coding standards, style rules, security
+ requirements, and example patterns ...]
+"""</span>
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    system=[
+        {
+            <span class="str">"type"</span>: <span class="str">"text"</span>,
+            <span class="str">"text"</span>: LONG_SYSTEM_PROMPT,
+            <span class="str">"cache_control"</span>: {<span class="str">"type"</span>: <span class="str">"ephemeral"</span>},  <span class="cm"># 标记为可缓存</span>
+        }
+    ],
+    messages=[
+        {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Review this function: def process(x): return x*2"</span>}
+    ],
+)
+
+usage = response.usage
+<span class="fn">print</span>(<span class="str">f"Cache write tokens: {usage.cache_creation_input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Cache read tokens:  {usage.cache_read_input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Regular input tokens: {usage.input_tokens}"</span>)</code></pre>
+    </div>
+
+    <p>Claude 上缓存 TTL 默认 5 分钟。只要调用在 TTL 内到达,后续请求就命中缓存。对高流量应用这基本上是常态;对低流量应用,你可能需要实现一个 keep-alive ping,在真实调用之间保持缓存温热。</p>
+
+    <h3>缓存何时帮助最大</h3>
+    <ul>
+      <li><strong>文档 Q&amp;A:</strong>把整份文档嵌进 prompt 一次;每个用户问题都是对文档前缀的缓存读取。</li>
+      <li><strong>代码评审流水线:</strong>把你整份编码规范文档放进 system prompt;每个 PR 都对照同一份被缓存的规范评审。</li>
+      <li><strong>带长 system prompt 的多轮聊天:</strong>system prompt 跨所有回合稳定;缓存它,只为每条新 user 消息付全价。</li>
+      <li><strong>批处理:</strong>若你用同一模板处理 10,000 份文档,模板前缀在首次请求后被缓存。</li>
+    </ul>
+
+    <h2>token 成本与成本估算</h2>
+    <p>每次 API 调用按消耗的 token 计费:输入 token(你的 prompt + 对话历史)和输出 token(模型的响应)。在多数模型上,输出 token 比输入 token 贵 3–5 倍,反映自回归生成所需的额外算力。理解这个比例对成本感知的应用设计至关重要。</p>
+
+    <h3>动手前估算成本</h3>
+    <p>一个粗略经验法则:1 token ≈ 0.75 个英文单词。一份 1,000 词的文档大约 1,333 token。按应用类型的常见输入/输出比:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>应用类型</th><th>典型 输入:输出 比</th><th>成本瓶颈</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>代码评审 / 分析</td><td>10:1 到 20:1</td><td>输入(待评审的代码)</td></tr>
+        <tr><td>内容生成</td><td>1:5 到 1:10</td><td>输出(生成的文本)</td></tr>
+        <tr><td>分类 / 抽取</td><td>20:1 到 100:1</td><td>输入(被处理的文档)</td></tr>
+        <tr><td>对话助手</td><td>3:1 到 5:1</td><td>混合——取决于历史长度</td></tr>
+        <tr><td>agent 任务执行</td><td>50:1 到 200:1</td><td>输入(工具输出、上下文)</td></tr>
+      </tbody>
+    </table>
+
+    <p>给产品定价前,在真实输入上实测你的实际 token 用量。API 响应里的 <code>usage</code> 对象总含精确 token 计数——把它们打进日志。你的估算往往会偏差 2–3 倍,而这对单位经济性很重要。</p>
+
+    <h3>降本杠杆</h3>
+    <ul>
+      <li><strong>prompt caching</strong>——对稳定前缀工作负载的最大单项杠杆。</li>
+      <li><strong>简单任务用更小模型</strong>——Haiku 或 GPT-4o-mini 比 Opus 或 GPT-4o 便宜 10–20 倍;许多分类与抽取任务不需要最大的模型。</li>
+      <li><strong>限制 max_tokens</strong>——为你的任务设一个贴切的紧上限。从文档抽取单个字段的函数不需要 4096 输出 token。</li>
+      <li><strong>截断对话历史</strong>——多轮应用会累积历史;裁剪或摘要旧回合,避免反复为陈旧上下文付费。</li>
+      <li><strong>Batch API</strong>——Anthropic 和 OpenAI 都提供异步 batch 端点,价格约为同步的 50%,适合非实时工作负载。</li>
+    </ul>
+
+    <h2>延迟优化</h2>
+    <p>延迟有两个不同成分:<strong>首 token 时间(TTFT)</strong>——用户多久才看到东西——和<strong>总完成时间</strong>——完整响应多久才可用。streaming 解决 TTFT。总时间取决于模型大小、prompt 长度、输出长度。</p>
+
+    <h3>降低首 token 时间</h3>
+    <ul>
+      <li><strong>流式响应。</strong>TTFT 降到模型开始生成第一个 token 的时间——主流 API 通常 200–800ms——与总响应长度无关。</li>
+      <li><strong>用 prompt caching。</strong>缓存命中跳过输入处理,对大的被缓存前缀把 TTFT 降低 3–5 倍。</li>
+      <li><strong>用地理上更近的 API 端点。</strong>到 API 服务器的往返延迟直接加到 TTFT 上。Anthropic 和 OpenAI 都提供区域端点。</li>
+      <li><strong>减小输入体量。</strong>更小的 prompt 处理起步更快。若你在加载一整份大文档,考虑改用检索(只取相关片段)。</li>
+    </ul>
+
+    <h3>降低总完成时间</h3>
+    <ul>
+      <li>任务允许时<strong>用更小、更快的模型</strong>。Haiku 生成 token 的速度大约是 Opus 的 3–4 倍。</li>
+      <li><strong>设一个紧的 max_tokens。</strong>模型一直生成到撞上 max_tokens 或 stop sequence。不必要的高上限不会让模型生成更多——但也不会让它更早停下。让 max_tokens 匹配现实的输出长度。</li>
+      <li><strong>并行化独立调用。</strong>若你需要两个互不依赖的 LLM 输出,用 <code>asyncio.gather</code> 或 <code>Promise.all</code> 并发发起两个 API 调用。</li>
+    </ul>
+
+    <h2>错误处理与重试逻辑</h2>
+    <p>LLM API 是网络服务,偶尔会返回错误。最常见的两类是瞬时错误(限流、临时过载)和永久错误(无效输入、认证失败)。对它们一视同仁——要么总重试要么从不重试——都是错的。设计良好的客户端会区分两者。</p>
+
+    <h3>HTTP 状态码及对策</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>状态</th><th>含义</th><th>对策</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>200</td><td>成功</td><td>正常处理响应</td></tr>
+        <tr><td>400</td><td>错误请求(无效参数、内容策略)</td><td>修请求——别重试</td></tr>
+        <tr><td>401</td><td>无效 API key</td><td>修认证——别重试</td></tr>
+        <tr><td>429</td><td>超出限流</td><td>用指数退避重试;尊重 Retry-After header</td></tr>
+        <tr><td>500, 529</td><td>服务器错误 / 过载</td><td>用指数退避重试,最多 5 次</td></tr>
+        <tr><td>413</td><td>请求过大</td><td>截断 prompt——别原样重试</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — 带 jitter 的指数退避</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time, random, anthropic
+<span class="kw">from</span> anthropic <span class="kw">import</span> RateLimitError, APIStatusError
+
+<span class="kw">def</span> <span class="fn">call_with_retry</span>(client, max_retries=<span class="num">5</span>, **kwargs):
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+        <span class="kw">try</span>:
+            <span class="kw">return</span> client.messages.<span class="fn">create</span>(**kwargs)
+
+        <span class="kw">except</span> RateLimitError <span class="kw">as</span> e:
+            <span class="kw">if</span> attempt == max_retries - <span class="num">1</span>:
+                <span class="kw">raise</span>
+            wait = (<span class="num">2</span> ** attempt) + random.<span class="fn">uniform</span>(<span class="num">0</span>, <span class="num">1</span>)  <span class="cm"># 指数 + jitter</span>
+            <span class="fn">print</span>(<span class="str">f"rate limit hit, retry {attempt+1} in {wait:.1f}s"</span>)
+            time.<span class="fn">sleep</span>(wait)
+
+        <span class="kw">except</span> APIStatusError <span class="kw">as</span> e:
+            <span class="kw">if</span> e.status_code <span class="kw">in</span> (<span class="num">500</span>, <span class="num">529</span>) <span class="kw">and</span> attempt &lt; max_retries - <span class="num">1</span>:
+                wait = (<span class="num">2</span> ** attempt) + random.<span class="fn">uniform</span>(<span class="num">0</span>, <span class="num">1</span>)
+                time.<span class="fn">sleep</span>(wait)
+            <span class="kw">else</span>:
+                <span class="kw">raise</span>  <span class="cm"># 4xx 错误:别重试</span></code></pre>
+    </div>
+
+    <p>加 jitter(那个 <code>random.uniform(0, 1)</code>)是为避免惊群问题:若 100 个客户端同时撞限流、又都在精确的 2 秒、4 秒、8 秒重试——它们会在每个重试点一起锤 API。jitter 把重试摊到一个时间窗里,显著降低重试引发的负载尖峰。</p>
+
+    <h2>Structured Output:让响应可解析</h2>
+    <p>当你的应用以编程方式解析模型响应——抽取字段、填库、触发下游逻辑——你需要可预测格式的输出。自由文本不是。一个在你需要 <code>{"answer": 42}</code> 时返回 "The answer is 42." 的模型会弄坏你的解析器。structured output 通过约束模型能生成什么来解决这点。</p>
+
+    <h3>三种方法,按可靠性排</h3>
+    <ol>
+      <li><strong>纯 prompt 的 JSON:</strong>在 system prompt 里指示模型“返回有效 JSON”并给一个例子。在强模型上 80–95% 的时候有效;其余情况产出带尾随文本、缺引号或转义非法的 JSON。没有校验 + 重试循环的话不可用于生产。</li>
+      <li><strong>JSON 模式:</strong>一个参数(OpenAI 上 <code>response_format: {type: "json_object"}</code>),约束模型始终产出有效 JSON。解决语法错误;但不保证 schema(键、类型、嵌套)符合你的预期。</li>
+      <li><strong>schema 约束生成(把 tool use 当输出):</strong>把期望输出经由 tool 定义为一个 JSON Schema;模型被迫发出一个符合该 schema 的 tool call。这是最可靠的方法,也是我们对生产的推荐。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — 经 tool use 的 schema 约束 structured output</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> json, anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="cm"># 把期望的输出形状定义为一个 tool</span>
+extract_tool = {
+    <span class="str">"name"</span>: <span class="str">"extract_bug_report"</span>,
+    <span class="str">"description"</span>: <span class="str">"Extract structured data from a bug report."</span>,
+    <span class="str">"input_schema"</span>: {
+        <span class="str">"type"</span>: <span class="str">"object"</span>,
+        <span class="str">"properties"</span>: {
+            <span class="str">"severity"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"enum"</span>: [<span class="str">"low"</span>, <span class="str">"medium"</span>, <span class="str">"high"</span>, <span class="str">"critical"</span>]},
+            <span class="str">"affected_component"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>},
+            <span class="str">"reproduction_steps"</span>: {<span class="str">"type"</span>: <span class="str">"array"</span>, <span class="str">"items"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}},
+            <span class="str">"is_regression"</span>: {<span class="str">"type"</span>: <span class="str">"boolean"</span>},
+        },
+        <span class="str">"required"</span>: [<span class="str">"severity"</span>, <span class="str">"affected_component"</span>, <span class="str">"is_regression"</span>],
+    },
+}
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-haiku-4-5"</span>,  <span class="cm"># 抽取任务 → 用更便宜的模型</span>
+    max_tokens=<span class="num">512</span>,
+    tools=[extract_tool],
+    tool_choice={<span class="str">"type"</span>: <span class="str">"tool"</span>, <span class="str">"name"</span>: <span class="str">"extract_bug_report"</span>},  <span class="cm"># 强制使用 tool</span>
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: BUG_REPORT_TEXT}],
+)
+
+<span class="cm"># 模型必须发出符合 schema 的有效 tool call</span>
+tool_call = response.content[<span class="num">0</span>]
+extracted = tool_call.input  <span class="cm"># 已是解析好的 dict,无需 json.loads()</span>
+<span class="fn">print</span>(extracted[<span class="str">"severity"</span>], extracted[<span class="str">"affected_component"</span>])</code></pre>
+    </div>
+
+    <p>把 <code>tool_choice</code> 设为强制使用特定 tool,你就保证了模型的整个输出是符合你 schema 的有效 JSON 对象。无需正则,无需对 json.loads 加 try/except,无需为格式错乱的输出做重试循环。</p>
+
+    <h2>API 密钥管理与安全</h2>
+    <p>API key 是 bearer token:谁拿到它就能发起记到你账上的 API 调用、读你发送的任何 prompt、并可能访问对话历史。粗心对待它,是同时收获意外账单和数据泄露的最快方式。</p>
+
+    <h3>铁律</h3>
+    <ul>
+      <li><strong>绝不把 key 嵌进客户端代码。</strong>JavaScript bundle 可被检视。移动 app 可被逆向。任何下载你 app 的人都能提取硬编码的 key。永远经你的服务器代理。</li>
+      <li><strong>绝不把 key 提交进版本控制。</strong>哪怕在私有 repo,git 历史是永久的,而 repo 会被分享。给 <code>.env</code> 文件用 <code>.gitignore</code>,并跑一个 pre-commit hook 阻止误提交 secret。</li>
+      <li><strong>从环境变量读取 key。</strong>所有 LLM SDK 在你不显式传入时会自动从环境读取 <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code>。这是最低限度的正确做法。</li>
+      <li><strong>生产用 secrets manager。</strong>AWS Secrets Manager、GCP Secret Manager、HashiCorp Vault、Doppler 都提供集中、可审计、可轮换的 secret 存储。你的应用在启动时取 key,而非把它存进配置文件里的 env var。</li>
+      <li><strong>定期轮换 key</strong>,怀疑泄露时立即轮换。两个 API 都允许同时存在多个 key,所以轮换无中断:创建新 key → 更新所有服务 → 吊销旧 key。</li>
+    </ul>
+
+    <h3>服务端代理模式</h3>
+    <p>对浏览器应用,正确架构是:你的后端持有 API key,你的前端把请求发给你自己的后端,你的后端再转发给 LLM API。这个模式还让你能加上按用户的限流、内容过滤、日志、成本归因——全都在代理层,不必碰客户端代码。</p>
+
+    <h2>选对模型</h2>
+    <p>Anthropic 和 OpenAI 都提供分层模型阵容:一个大而强的模型(Opus、GPT-4o)、一个快而均衡的模型(Sonnet、GPT-4o-mini)、一个便宜又快的模型(Haiku、折扣档的 GPT-4o-mini)。“总用最好的模型”这种直觉在经济上是错的。任务—模型匹配是一个真实的工程决策。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>任务类型</th><th>推荐档位</th><th>为什么</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>简单分类、抽取、路由</td><td>小(Haiku、mini)</td><td>便宜 10–20 倍;对界限分明的任务质量差异可忽略</td></tr>
+        <tr><td>代码生成、多步推理</td><td>中(Sonnet、GPT-4o)</td><td>能力/成本均衡;多数工程任务处理得好</td></tr>
+        <tr><td>复杂架构、微妙判断、研究</td><td>大(Opus、难任务用 GPT-4o)</td><td>对高风险决策,质量差异值这个成本</td></tr>
+        <tr><td>多 tool call 的长时 agent</td><td>中 + 缓存</td><td>成本累加快;缓存大幅降低输入成本</td></tr>
+      </tbody>
+    </table>
+
+    <p>选择的正确方式是实测:在 50–100 个真实样例上跑两个模型,在你的具体任务上比质量,算出成本差,再决定质量差是否值这个价差。别假设——去测。</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>用 LLM API 构建不难,但构建得<em>好</em>需要理解这些分层关切:把 message 结构弄对、用 streaming 求感知延迟、缓存稳定前缀以控成本、约束输出格式以可靠解析、用指数退避处理错误、把 key 留在服务端。每一层与其他层叠加复利——一个全做到的应用,不只更便宜更快,而是根本上更可靠、更可维护。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试尖锐观点</div>
+      <p><strong>prompt caching 是什么,为何重要?</strong>API 预处理一个稳定的输入前缀(system prompt、文档)并为后续相同前缀的调用复用 KV cache——在被缓存部分上带来 90% 成本下降和 3–5 倍延迟改善。对文档 Q&amp;A、代码评审流水线,以及任何带固定上下文的高量工作负载不可或缺。<br><br>
+      <strong>如何保证 LLM 的 structured output?</strong>把期望 schema 定义为 tool 定义里的一个 JSON Schema,并经 <code>tool_choice</code> 强制模型调用该 tool。模型无法产出任何不符合 schema 的东西。纯 prompt 指示“返回 JSON”大多时候有效但在生产会失败——schema 约束的 tool use 才是可靠方法。<br><br>
+      <strong>为什么模型选择是工程决策,而非“总用最好的”决策?</strong>输出 token 是输入 token 的 3–5 倍;大模型比小模型贵 10–20 倍。对分类、抽取、路由任务,小模型在质量上与大模型持平,却把成本降低一个数量级。在你的任务上度量质量,实测算出成本/质量权衡。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/how-ai-coding-agents-work/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">AI coding agent 是如何工作的</div>
+      </a>
+      <a href="/ai-coding/tool-use-function-calling-mcp/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">工具使用、函数调用与 MCP</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
