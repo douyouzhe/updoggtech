@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:Ticketmaster 抢票——无超卖的强一致库存、座位状态机与临时持有、原子并发控制(条件 UPDATE / FOR UPDATE / Redis 锁)、持有过期、虚拟候车室驯服尖峰、按一致性拆分路径(浏览 AP / 预订 CP)、支付 saga、热门事件热点、关键取舍。">
+<title>设计 Ticketmaster / 抢票 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/ticketmaster/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ticketmaster/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ticketmaster/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ticketmaster/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计 Ticketmaster / 抢票">
+<meta property="og:description" content="抢票系统设计:座位状态机、原子认领、虚拟候车室、AP/CP 拆分、持有过期、支付 saga。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/ticketmaster/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计 Ticketmaster / 抢票">
+<meta name="twitter:description" content="设计 Ticketmaster:无超卖、座位持有、原子认领、虚拟候车室、AP/CP 拆分。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计 Ticketmaster / 抢票", "description": "系统设计:Ticketmaster 抢票——无超卖的强一致库存、座位状态机与临时持有、原子并发控制(条件 UPDATE / FOR UPDATE / Redis 锁)、持有过期、虚拟候车室驯服尖峰、按一致性拆分路径(浏览 AP / 预订 CP)、支付 saga、热门事件热点、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/ticketmaster/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/ticketmaster/">EN</a>
+        <a href="/zh/system-design/ticketmaster/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">ticketmaster</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计 Ticketmaster / 抢票</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>票务预订平台看起来像电商,直到你注意到残酷的转折:一场热门演唱会开售时,<strong>数百万人在同一瞬间试图买几千个特定座位</strong>。那个组合——极小、争抢的库存加巨大并发尖峰——使两个需求相撞。你必须<strong>绝不把同一座位卖两次</strong>(库存强一致),且必须<strong>挺过 thundering herd</strong> 而不倒下。设计围绕带恰当锁的座位<strong>持有(hold)</strong>,和一个<strong>虚拟候车室(virtual waiting room)</strong>来驯服尖峰。它与我们的<a href="/system-design/hotel-booking/">酒店预订</a>设计共享库存锁定核心。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>绝不超卖</strong>——预订库存需要强一致;座位认领必须是原子操作,而非读后写竞态。</li>
+        <li><strong>临时持有</strong>——选座把它置于 <code>held</code> 状态几分钟、用户付款期间;若不付,持有过期、座位返回。</li>
+        <li><strong>原子锁定座位</strong>——条件更新(<code>available → held</code> 仅当仍可用)、<code>SELECT ... FOR UPDATE</code> 或 Redis 锁;谁赢谁得座位,其他人被告知它没了。</li>
+        <li><strong>虚拟候车室</strong>——对热门开售,排队用户并以受控批次放入,使预订后端看到稳定负载、而非海啸。</li>
+        <li><strong>按一致性需求拆分路径</strong>——浏览事件/座位图读多且可缓存(AP);预订路径强一致(CP)。</li>
+        <li><strong>持有 + 支付 = 一个 saga</strong>——持有座位、收款、确认;支付失败或超时则释放持有。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>难的部分是在大量争抢下把每个座位恰好卖一次。把座位建模为状态机(available → held → booked)并用原子条件更新或行锁认领它,使并发买家不能都赢。结账期间持有座位几分钟,超时释放。用一个以批次放入用户的虚拟候车室吸收开售尖峰。缓存读多的浏览路径;让预订路径强一致;并把 hold→pay→confirm 编排为一个 saga。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">booking flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code> 数百万 ─▶ ┌────────────────┐ 批次放入       ┌──────────────┐
+  开售时   │ 虚拟候车室     │─────────────────▶│   预订       │
+           │ (队列)         │                  │   服务       │
+           └────────────────┘                  └──────┬───────┘
+                                     原子认领          │
+   浏览(缓存,AP) ───▶ 读副本 / CDN                   ▼
+                                          ┌──────────────────┐
+                                          │  库存 DB         │ 座位:
+                                          │ (强一致, CP)     │ available
+                                          └──────────────────┘ → held → booked
+                                hold→pay→confirm (saga) ─▶ 支付服务</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>浏览事件;看一个事件带可用性的座位图;预留(持有)一个或多个特定座位;完成购买;释放未付款的持有。<strong>非功能:</strong><strong>无双重预订 / 无超卖</strong>(头条正确性需求)、预订路径强一致、浏览的极高可用和吞吐,和吸收开售时极端流量尖峰的能力。公平性也要紧(混乱的自由争抢挫败用户并招来机器人),这促成候车室。假设<strong>对号入座(reserved seating)</strong>(特定座位),比无座(一个简单计数器)更难。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>稳态流量适中,但开售是病态的:一个体育场巡演可能把 5 万座位放售,而<strong>2–10 百万</strong>人在第一分钟同时刷新。所以读(浏览/座位图)路径必须以突发处理数百万 QPS,而写(预订)路径处理一个相对小但<strong>激烈争抢</strong>的量——数千用户为每个剩余座位争夺。这种不对称是全部故事:用缓存扩展读,用锁定和一个队列保护小的一致写路径。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET  /events/{id}                       <span class="cm"># 事件详情</span>
+GET  /events/{id}/seats                 <span class="cm"># 座位图 + 可用性(缓存)</span>
+POST /reservations  {event_id, seat_ids}<span class="cm"># 放一个 HOLD(返回 hold + 过期)</span>
+POST /bookings      {hold_id, payment}  <span class="cm"># 确认 + 付款 → booked</span>
+DELETE /reservations/{hold_id}          <span class="cm"># 提前释放</span></code></pre>
+    </div>
+
+    <h2>第 4 步 — 核心挑战:无双重预订</h2>
+    <p>根本危险是竞态:两个用户看到座位 12A 可用,都点"预留",而朴素的<em>读后写</em>("检查它空闲,然后标占用")让两者都成功——超卖。修法是把认领座位做成一个只有一个并发请求能赢的<strong>原子、条件操作</strong>。这是我们 <a href="/ddia/chapter-7/">DDIA 事务笔记</a>覆盖的同一丢失更新 / check-then-act 问题;座位是争抢资源,数据库(或一个锁)必须串行化对它的访问。</p>
+
+    <h2>第 5 步 — 座位持有(预留状态机)</h2>
+    <p>购买花时间(选座、输入支付),所以你不能在点击时简单标座位已售——但你也不能让它在结账中途对其他人可用。答案是一个<strong>临时持有(temporary hold)</strong>:选座把它移到一个为那个用户保留的短窗口(如 5–10 分钟)的 <code>held</code> 状态。座位是一个小状态机:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>状态</th><th>含义</th><th>转换</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">available</td><td>任何人能认领</td><td>→ held(预留时)</td></tr>
+        <tr><td class="col-b">held</td><td>为一个用户预留,带过期</td><td>→ booked(已付)/ → available(超时)</td></tr>
+        <tr><td class="col-a">booked</td><td>已售——终态</td><td>(退款是单独流程)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>第 6 步 — 并发控制:原子认领座位</h2>
+    <p>hold 转换必须原子,使 N 个同时请求只有一个成功。选项:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">atomic conditional claim (optimistic)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>UPDATE seats
+   SET status = <span class="str">'held'</span>, held_by = :user, hold_expires = now()+interval <span class="str">'8 min'</span>
+ WHERE seat_id = :seat
+   AND status = <span class="str">'available'</span>;          <span class="cm"># 这个守卫使它原子</span>
+
+<span class="cm"># rows_affected = 1 → 你得到了座位</span>
+<span class="cm"># rows_affected = 0 → 别人赢了;告诉用户"座位没了"</span></code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>机制</th><th>怎么做</th><th>取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">条件 UPDATE(乐观)</td><td>仅当 <code>status='available'</code> 时更新</td><td>简单,无持有的锁;输家就重试另一座位</td></tr>
+        <tr><td class="col-b">SELECT ... FOR UPDATE(悲观)</td><td>锁住行,然后更新</td><td>清晰,但高争抢下持 DB 锁</td></tr>
+        <tr><td class="col-a">Redis 分布式锁</td><td>每座位 key 带 TTL 加锁</td><td>把热争抢从 DB 卸下;需小心正确性</td></tr>
+      </tbody>
+    </table>
+
+    <p>乐观条件更新通常是最干净的答案:它无需长持锁,且争抢下除一个更新者外全都简单地得到 <code>rows_affected = 0</code> 并被告知座位被占。<code>WHERE status='available'</code> 守卫是使整件事安全的东西。</p>
+
+    <h2>第 7 步 — 持有过期</h2>
+    <p>用户放弃结账时持有必须被释放,否则座位泄漏、事件看似假性售罄。组合机制(与过期链接或粘贴同一模式):<strong>惰性</strong>——当任何人读或试图认领一个 <code>hold_expires</code> 已过的座位时,把它当再次可用;和<strong>定时</strong>——一个后台清扫器周期性把过期 <code>held</code> 座位翻回 <code>available</code>。一些设计用每持有一个带 TTL 的 Redis key,使过期自动。持有窗口是个调优旋钮:长到能从容付款,短到使废弃座位在热门开售期间快速回流。</p>
+
+    <h2>第 8 步 — 数据模型</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>events (event_id, name, venue_id, starts_at, onsale_at)
+seats  (seat_id, event_id, section, row, number,
+        status,          <span class="cm"># available | held | booked</span>
+        held_by, hold_expires)        <span class="cm"># 为清扫器建索引</span>
+bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre>
+    </div>
+    <p>一个 ACID 关系数据库是库存的天然契合,因为原子条件认领依赖事务保证。按 <code>event_id</code> 分片使每个事件的座位住一起——方便,但意味单个热门事件是一个分片的问题(第 11 步)。</p>
+
+    <h2>第 9 步 — 驯服尖峰:虚拟候车室</h2>
+    <p>没有库存数据库能在同一秒承受 5 百万用户的直接打击。标准解法——也是 Ticketmaster 实际做的——是一个<strong>虚拟候车室</strong>。开售开始时,进来的用户被置于一个<strong>队列</strong>(常是带位置 token 的 Redis 支撑列表)并显示一个"你在排队"页。系统随后<strong>以受控批次把用户放入真正的预订流程</strong>,批次大小匹配后端能安全处理的量。这把一个无界尖峰转成一个稳定、有界的流——预订路径从不见到超过它能串行化的并发,用户得到公平、有序的体验而非崩溃的自由争抢。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么这是关键动作</div>
+      <p>候车室把<em>到达率</em>与<em>处理率</em>解耦。没有它,你得让预订后端吸收对几千行的数百万并发锁尝试——锁争抢熔毁的配方。有它,后端总在它的安全包络内运作,背压被推到一个便宜的队列。它也钝化机器人并给你一个公平/反滥用控制点。</p>
+    </div>
+
+    <h2>第 10 步 — 一致性:拆分路径</h2>
+    <p>系统的不同部分有相反需求,所以区别对待它们:</p>
+    <ul>
+      <li><strong>浏览路径</strong>(事件列表、座位图)——读多且容忍轻微陈旧;从缓存、读副本和 CDN 服务(AP)。座位图落后一两秒没问题;预订时的原子认领才是真正的真相来源。</li>
+      <li><strong>预订路径</strong>(hold → pay → confirm)——必须<strong>强一致</strong>(CP):一个座位恰好被认领一次。这条路径针对权威库存存储用原子操作运行,接受更低可用/吞吐以换正确性。</li>
+    </ul>
+    <p>这是一个直接的 CAP 式拆分(见<a href="/ddia/chapter-9/">一致性与共识</a>):在无害处可用且近似,在钱和超卖攸关处一致且权威。</p>
+
+    <h2>第 11 步 — 支付集成</h2>
+    <p>确认一个预订跨库存存储和一个外部支付提供商,所以它被编排为一个 <strong>saga</strong>(见我们的<a href="/system-design/payment-system/">支付系统</a>设计):持有座位 → 收款(幂等地)→ 成功时把座位转换到 <code>booked</code> 并记录预订;支付失败或超时时,跑补偿动作并释放持有使座位返回库存。持有的过期是安全网——即便一个步骤丢失,座位不会永远卡在 <code>held</code>。</p>
+
+    <h2>第 12 步 — 扩展与热门事件热点</h2>
+    <p>浏览路径用缓存、副本和 CDN 横向扩展。预订路径按事件分片,跨<em>许多</em>事件工作良好——但单个重磅开售把所有争抢集中在一个事件的座位(热点)。缓解:候车室给进入那个分片的并发设上限;座位能在事件内分区(按区)以分散锁争抢;一个内存层(Redis)能罩住最热的座位状态检查。关键地,争抢被座位数限制——只有这么多座位可争——所以一旦候车室节流到达,后端的活就有限且可处理。</p>
+
+    <h2>第 13 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>乐观 vs 悲观锁定。</strong>乐观条件更新避免持有的锁、在争抢下更好扩展(输家就重试);悲观 <code>FOR UPDATE</code> 更易推理但在热门座位上能硬串行化。</li>
+      <li><strong>持有时长。</strong>更长持有对买家更友好但锁住库存、热门售卖期间减慢回流;更短持有让座位流动但冒真实购买超时风险。</li>
+      <li><strong>一致性 vs 可用性。</strong>浏览是 AP(缓存,可能陈旧);预订是 CP(权威,无超卖)。混淆它们要么超卖、要么使浏览脆弱。</li>
+      <li><strong>候车室公平性。</strong>队列强加顺序并节流负载但加延迟和一整个子系统;这是优雅挺过开售尖峰的代价。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>Ticketmaster 是穿一件外套的两个问题:把每个座位恰好卖一次(由座位状态机加原子条件认领解决),和挺过数百万同时买家(由把到达节流进一致预订路径的虚拟候车室解决)。按一致性需求拆分架构——缓存浏览路径、保护预订路径——并把 hold→pay→confirm 编排为一个 saga,以持有过期作安全网。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>怎么防止双重预订?</strong>用原子条件更新(<code>SET held WHERE status='available'</code>)或行锁认领座位,使许多并发请求只有一个赢。<br>
+      <strong>为什么临时持有?</strong>结账花时间;持有为座位预留几分钟(状态 available→held→booked)且若未付过期回 available,使座位既不双卖也不泄漏。<br>
+      <strong>怎么处理数百万的开售尖峰?</strong>虚拟候车室排队用户并以批次放入,把到达率与预订后端的安全处理率解耦。<br>
+      <strong>一致性边界在哪?</strong>浏览/座位图缓存且 AP;预订路径强一致(CP)——原子认领是单一真相来源。<br>
+      <strong>支付怎么嵌入?</strong>hold → pay(幂等)→ confirm,作为一个 saga;失败或超时时持有被释放,以过期作兜底。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/payment-system/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计支付系统</div>
+      </a>
+      <a href="/system-design/" class="article-nav-card next">
+        <div class="article-nav-label">返回 →</div>
+        <div class="article-nav-title">系统设计</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
