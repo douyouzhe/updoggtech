@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:URL 短链(TinyURL)——需求与容量估算、API、短 ID 生成(哈希 vs Snowflake vs 范围分配)、布隆过滤器冲突检测、数据模型、读写路径与 Redis 缓存、301 vs 302、自定义别名、点击分析管道、过期清除、扩展与容错、限流与安全。">
+<title>设计一个 URL 短链 (TinyURL) — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/url-shortener/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/url-shortener/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/url-shortener/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/url-shortener/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计一个 URL 短链">
+<meta property="og:description" content="URL 短链系统设计:Snowflake ID、布隆过滤器、Redis 缓存、301/302、异步点击分析、扩展容错。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/url-shortener/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计一个 URL 短链">
+<meta name="twitter:description" content="设计 URL 短链:slug 生成、布隆过滤器、缓存、301/302、分析管道、限流。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计一个 URL 短链", "description": "系统设计:URL 短链(TinyURL)——需求与容量估算、API、短 ID 生成(哈希 vs Snowflake vs 范围分配)、布隆过滤器冲突检测、数据模型、读写路径与 Redis 缓存、301 vs 302、自定义别名、点击分析管道、过期清除、扩展与容错、限流与安全。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/url-shortener/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/url-shortener/">EN</a>
+        <a href="/zh/system-design/url-shortener/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">url-shortener</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计一个 URL 短链</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>URL 短链是一个看似简单的服务:接收一个长 URL、返回一个短的、再把短的重定向回原始。表面看它像一个带查找的两列数据库。但设计挑战在规模上迅速复合:你必须在分布式机群上生成保证唯一的短 ID 而无全局锁、为全世界每次点击保持重定向延迟近零、在不出现读瓶颈的情况下处理 100:1 的读写比、支持自定义别名而不与自动生成的命名空间冲突、在不影响热路径性能的前提下清除过期链接,并在保持重定向路径快如 CDN 边缘响应的同时记录点击分析。每一个都是非平凡的系统设计决策,它们的相互作用造成微妙的正确性和性能陷阱。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>6 字符 base-62 slug</strong>——62⁶ &gt; 568 亿个唯一 slug;在此规模足够多年的 URL 量。</li>
+        <li><strong>ID 生成胜过哈希</strong>——Snowflake 或范围分配在源头避免冲突;MD5/SHA-1 前缀冲突需检测 + 重试循环。</li>
+        <li><strong>布隆过滤器做冲突检查</strong>——Redis 布隆过滤器:阴性 = 一定是新的(可安全写);阳性 = 可能存在(回退到 DB 查找)。保持快路径便宜。</li>
+        <li><strong>读上 Redis 缓存</strong>——吸收 100:1 读写比;大多数重定向从不命中数据库。</li>
+        <li><strong>301 vs 302 是产品决策</strong>——301 在浏览器缓存(更少命中、无分析);302 每次都命中短链服务(完整分析、更高负载)。</li>
+        <li><strong>自定义别名需要独立命名空间</strong>——用户提供的 slug 必须对照自动生成命名空间和自定义别名表检查以防冲突。</li>
+        <li><strong>点击分析经异步管道</strong>——每次重定向把点击事件记到 Kafka;分析消费者异步聚合,不给热重定向路径加延迟。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>6 字符 base-62 slug 为一年的 URL 量提供足够命名空间。用 ID 生成(Snowflake 或范围分配)而非哈希来避免冲突。加一个 Redis 布隆过滤器在写前检查已存在的 slug。在 Redis 缓存热重定向。通过 TTL、定时扫描或惰性求值清除过期 URL。对写端点限流以防 DDoS。把点击事件流到 Kafka 做异步分析。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-1.jpg" alt="URL 短链高层架构" loading="lazy">
+      <figcaption>URL 短链高层架构</figcaption>
+    </figure>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>设计任何东西前,显式界定问题。URL 短链是常见面试题,因为它看似平凡却迅速暴露深度。问面试官这些维度:</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>从一个长 URL 输入生成一个短 URL。</li>
+      <li>把短 URL 重定向回原始长 URL。</li>
+      <li>支持自定义别名(用户提供的短码,如 <code>tiny.url/my-brand</code>)。</li>
+      <li>给链接设过期日期/TTL;过期链接返回 404。</li>
+      <li>跟踪点击分析:总点击、唯一访客、referrer、国家、设备类型。</li>
+      <li>用户账户管理自己的链接(可选,但常见于产品型面试变体)。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>极低重定向延迟</strong>——重定向在互联网上每次点击发生;目标全球 &lt;50 ms p99。</li>
+      <li><strong>极高可用性</strong>——服务宕掉会破坏现存的每个短链;目标 99.99%。</li>
+      <li><strong>唯一性保证</strong>——两个不同长 URL 绝不能映射到同一短码;一个短码必须总解析到恰好一个长 URL。</li>
+      <li><strong>可扩展性</strong>——处理 10M DAU、10:1 读写比;在大规模扩展到 100:1。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>显式问点击分析是否必需——答案驱动你的重定向策略。若是,你大概想要 302 重定向(无浏览器缓存)和一个分析管道。若否,301 + 激进 CDN 缓存更简单更便宜。陈述你的选择和理由。</p>
+    </div>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>粗略估算锚定存储和基础设施决策。假设一个中型部署、<strong>10M DAU</strong>。</p>
+
+    <h3>流量</h3>
+    <ul>
+      <li>写速率:假设每 DAU 每天创建 ~0.1 个短 URL → 10M × 0.1 = <strong>1M 写/天 ≈ 12 写/秒</strong>平均;峰值 ~2–3× → <strong>~30 写/秒</strong>。</li>
+      <li>读速率:假设每个 URL 平均每天被点击 ~10 次 → 1M × 10 = <strong>10M 重定向/天 ≈ 115 读/秒</strong>平均;峰值 5–10× → <strong>~1,000 读/秒</strong>。</li>
+      <li>读写比在此规模 ≈ <strong>10:1</strong>;在大型病毒链接规模(一个热门链接被点击数百万次)它轻易达到 <strong>100:1 或更高</strong>。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>每条 URL 记录:~100 字节(slug 6 B、长 URL ~100 B 均、created_at 8 B、expires_at 8 B、user_id 8 B)≈ <strong>~130 字节/记录</strong>。</li>
+      <li>1M 新 URL/天 × 365 天 × 130 字节 ≈ <strong>~47 GB/年</strong> URL 记录——轻易装进单个 SQL 数据库,更别说分片的。</li>
+      <li>分析事件:若我们记录每次点击(115 读/秒 × 86,400 s × ~200 字节)≈ <strong>~2 GB/天点击事件</strong>;这些去时序存储或数仓,而非热 URL 数据库。</li>
+    </ul>
+
+    <h3>Slug 命名空间定容</h3>
+    <ul>
+      <li>Base-62 字符集:<code>[0-9, a-z, A-Z]</code> = 62 字符。</li>
+      <li>6 字符 slug:62⁶ = <strong>56,800,235,584</strong> 个唯一码——超过 568 亿。</li>
+      <li>每天 1M 新 URL,这个命名空间持续<strong>超过 155,000 年</strong>。即便每天 1B URL 也持续 ~56 年。6 字符是经典答案。</li>
+      <li>7 字符给 62⁷ = 3.5 万亿——若你真预期十亿每天的规模才用。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">注解</div>
+      <p>存储数学展示了为什么 URL 短链是个常被误解的"难"问题:数据量很小。真正的挑战是分布式写规模下的唯一性保证、读规模下的重定向延迟,以及自定义别名命名空间的正确性——而非原始存储。</p>
+    </div>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>干净、最小的 REST 面。整个服务本质是两个端点加一个管理层:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 写:创建一个短 URL</span>
+<span class="kw">POST</span> <span class="str">/api/shorten</span>
+     Authorization: Bearer &lt;token&gt;
+     { <span class="str">"long_url"</span>: <span class="str">"https://example.com/very/long/path?q=1"</span>,
+       <span class="str">"custom_alias"</span>: <span class="str">"my-brand"</span>,   <span class="cm">// 可选</span>
+       <span class="str">"expires_at"</span>: <span class="str">"2025-12-31"</span> }  <span class="cm">// 可选</span>
+     → <span class="num">201</span> { <span class="str">"short_url"</span>: <span class="str">"https://tiny.url/aB3kPq"</span>,
+             <span class="str">"slug"</span>: <span class="str">"aB3kPq"</span>, <span class="str">"expires_at"</span>: <span class="str">"2025-12-31"</span> }
+
+<span class="cm"># 读:重定向</span>
+<span class="kw">GET</span> <span class="str">/{slug}</span>
+     → <span class="num">302</span> Location: https://example.com/very/long/path?q=1
+     → <span class="num">404</span> 若 slug 未找到或过期
+
+<span class="cm"># 分析:某链接的点击统计</span>
+<span class="kw">GET</span> <span class="str">/api/links/{slug}/analytics</span>
+     Authorization: Bearer &lt;token&gt;  <span class="cm">// 必须拥有该链接</span>
+     → { <span class="str">"total_clicks"</span>: <span class="num">14827</span>, <span class="str">"unique_visitors"</span>: <span class="num">9301</span>,
+         <span class="str">"clicks_by_country"</span>: {...}, <span class="str">"clicks_by_day"</span>: [...] }
+
+<span class="cm"># 管理:删除一个链接</span>
+<span class="kw">DELETE</span> <span class="str">/api/links/{slug}</span>
+       Authorization: Bearer &lt;token&gt;</code></pre>
+    </div>
+
+    <p><code>POST /api/shorten</code> 端点对同一 <code>(long_url, custom_alias)</code> 对幂等——两次提交同一请求返回已存在的 slug 而非创建重复。按用户 token 对此端点限流:免费层可能允许 10 创建/分钟,付费层 100/分钟。<code>GET /{slug}</code> 重定向端点在热路径上;它必须尽可能快,且对读者从不限流(只有写侧需要保护)。</p>
+
+    <h2>第 4 步 — 短 ID 生成:哈希 vs ID 生成</h2>
+    <p>核心问题是如何生成 6 字符 slug。有四种主要方法,各有独特取舍:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方法</th><th>机制</th><th>冲突风险</th><th>可排序</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-b">MD5 / SHA-1 哈希</td><td>哈希长 URL,取 base-62 编码前 6 字符</td><td>高——生日悖论在 568 亿空间用短前缀时咬人</td><td>否</td></tr>
+        <tr><td class="col-a">UUID(随机)</td><td>生成随机 128 位 UUID,base-62 编码前 6 字符</td><td>低但非零——需要冲突检测</td><td>否</td></tr>
+        <tr><td class="col-a">Snowflake ID</td><td>41 位时间戳 + 10 位机器 ID + 12 位序列;base-62 编码</td><td>机器 ID 唯一则为零</td><td>是(时间有序)</td></tr>
+        <tr><td class="col-a">范围分配</td><td>中央控制器给 worker 节点分配数字范围;worker 用范围内下一个值</td><td>零</td><td>是</td></tr>
+      </tbody>
+    </table>
+
+    <h3>为什么哈希有问题</h3>
+    <p>哈希长 URL 并取前 6 字符看似优雅——同一 URL 总产生同一 slug(确定性)、无需协调。问题是<strong>生日悖论</strong>:在 568 亿槽位空间,插入大约 √(2 × 56B) ≈ 334,000 个 URL 后,冲突概率超过 50%。每天 1M URL,你不到一天就撞上。每次冲突都需检测(DB 查找或布隆过滤器检查)和带 salt 的重试——现在你在写路径上有一个延迟不确定的重试循环。</p>
+
+    <h3>Snowflake ID 生成</h3>
+    <p>Twitter 的 Snowflake 格式从打包进单个整数的三个组件生成 64 位 ID:一个 41 位毫秒时间戳(从 epoch 给 ~69 年余量)、一个 10 位机器 ID(支持 1,024 个唯一生成器节点)和一个 12 位序列计数器(允许每机器每毫秒 4,096 个 ID)。把这个 64 位整数转 base-62 给最多 11 字符——对 6 字符 slug,取低 36 位(base-62 编码到 62⁶ ≈ 56B 的数需要 ~36 位)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time
+
+EPOCH = <span class="num">1700000000000</span>  <span class="cm"># 自定义 epoch ms</span>
+MACHINE_ID = <span class="num">1</span>          <span class="cm"># 部署时分配(0–1023)</span>
+BASE62 = <span class="str">"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"</span>
+_seq = <span class="num">0</span>
+
+<span class="kw">def</span> <span class="fn">generate_snowflake</span>():
+    <span class="kw">global</span> _seq
+    ts = <span class="fn">int</span>(time.<span class="fn">time</span>() * <span class="num">1000</span>) - EPOCH
+    _seq = (_seq + <span class="num">1</span>) & <span class="num">0xFFF</span>   <span class="cm"># 12 位回绕</span>
+    <span class="kw">return</span> (ts &lt;&lt; <span class="num">22</span>) | (MACHINE_ID &lt;&lt; <span class="num">12</span>) | _seq
+
+<span class="kw">def</span> <span class="fn">to_base62</span>(n: <span class="ty">int</span>, length=<span class="num">6</span>) -> <span class="ty">str</span>:
+    chars = []
+    <span class="kw">while</span> n > <span class="num">0</span>:
+        chars.<span class="fn">append</span>(BASE62[n % <span class="num">62</span>])
+        n //= <span class="num">62</span>
+    <span class="kw">return</span> <span class="str">""</span>.<span class="fn">join</span>(<span class="fn">reversed</span>(chars)).<span class="fn">zfill</span>(length)[-length:]
+
+<span class="kw">def</span> <span class="fn">new_slug</span>() -> <span class="ty">str</span>:
+    <span class="kw">return</span> <span class="fn">to_base62</span>(<span class="fn">generate_snowflake</span>())</code></pre>
+    </div>
+
+    <h3>范围分配(基于计数器)</h3>
+    <p>Snowflake 的替代:一个中央协调器(如 ZooKeeper 节点或一个 SQL <code>AUTO_INCREMENT</code> 支撑的专用计数器服务)给 worker 节点分配数字范围。Worker 1 拿 0–999,999;worker 2 拿 1,000,000–1,999,999,等等。每个 worker 把它的下一个计数器值转 base-62 并用作 slug。范围内无需协调——worker 自增一个本地计数器。范围耗尽时,worker 向协调器请求新范围。这个方法比 Snowflake 简单且无冲突,但造成一个必须高可用的单点协调器。</p>
+
+    <div class="callout">
+      <div class="callout-label">可扩展性注解</div>
+      <p>对大多数面试场景,Snowflake 是首选答案:它在 ID 生成层无需协调(每个节点给定预分配机器 ID 后独立生成 ID)、时间有序(对调试和分析有用)、且构造上无冲突。范围分配是有效替代——若面试官问更简单的设置则偏好它。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-2.png" alt="URL 短链系统流程图" loading="lazy">
+      <figcaption>URL 短链系统流程图</figcaption>
+    </figure>
+
+    <h2>第 5 步 — 布隆过滤器做冲突检测</h2>
+    <p>即便用无冲突 ID 生成,你仍需为<strong>基于哈希的方法</strong>和<strong>自定义别名</strong>(用户提供的字符串,可能与自动生成 slug 或彼此冲突)做冲突检测。经典工具是 <strong>Redis 布隆过滤器</strong>。</p>
+
+    <p>布隆过滤器是一个概率数据结构,回答"这个元素一定不在集合里吗?"或"这个元素可能在集合里吗?"。它从不产生假阴性但可能产生假阳性。操作规则:</p>
+    <ul>
+      <li><strong>布隆过滤器说否</strong>(位未设)→ slug 一定是新的——可安全写,无需 DB 查找。</li>
+      <li><strong>布隆过滤器说是</strong>(位已设)→ slug 可能存在——回退到 DB 查找确认。若 DB 说它存在,用新 slug 或 salt 重试。</li>
+    </ul>
+
+    <p>这让写快路径——压倒性常见情况(新 slug)——成为一次 O(1) 内存 Redis 检查而非 DB 往返。假阳性率(由过滤器位数组大小和哈希数控制)通常配到 1% 或更低,意味只有 100 次写中 1 次承担不必要的 DB 查找。</p>
+
+    <div class="callout">
+      <div class="callout-label">可扩展性注解</div>
+      <p>单个 Redis 布隆过滤器在高规模成瓶颈。把布隆过滤器检查分散到多个 Redis 实例减少瓶颈但牺牲单一真相来源——一个极致规模下无干净解的已知取舍。一个替代是完全跳过布隆过滤器、用 Snowflake ID(构造上无冲突),只在 DB 里检查自定义别名。</p>
+    </div>
+
+    <h2>第 6 步 — 数据模型</h2>
+    <p>URL 存储简单,但 schema 细节对正确性和查询性能要紧:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> urls (
+  slug          <span class="ty">VARCHAR</span>(<span class="num">8</span>)  <span class="kw">PRIMARY KEY</span>,    <span class="cm">-- 短码(6–8 字符)</span>
+  long_url      <span class="ty">TEXT</span>        <span class="kw">NOT NULL</span>,
+  user_id       <span class="ty">BIGINT</span>,                     <span class="cm">-- 匿名则 NULL</span>
+  is_custom     <span class="ty">BOOLEAN</span>     <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>, <span class="cm">-- 用户提供的别名</span>
+  created_at    <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  expires_at    <span class="ty">TIMESTAMP</span>,                  <span class="cm">-- NULL = 永不过期</span>
+  click_count   <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>      <span class="cm">-- 近似,异步自增</span>
+);
+
+<span class="kw">CREATE INDEX</span> idx_user_id <span class="kw">ON</span> urls(user_id);   <span class="cm">-- 列出用户的链接</span>
+<span class="kw">CREATE INDEX</span> idx_expires <span class="kw">ON</span> urls(expires_at) <span class="cm">-- 清除过期行</span>
+  <span class="kw">WHERE</span> expires_at <span class="kw">IS NOT NULL</span>;
+
+<span class="cm">-- 分析事件(高量,写到 Kafka → OLAP 存储)</span>
+<span class="cm">-- 不存在热 SQL DB 里</span>
+<span class="cm">-- Kafka 消息 schema:</span>
+<span class="cm">-- { slug, timestamp_ms, ip, user_agent, referrer, country, device_type }</span></code></pre>
+    </div>
+
+    <p>关键 schema 决策:<code>slug</code> 是主键——每个重定向是主键查找,在 B-tree 索引上 O(log n)、极快。<code>expires_at</code> 部分索引(过滤到非 NULL 行)保持清除扫描便宜。<code>click_count</code> 列是近似计数器——它由分析消费者异步自增,不在重定向热路径上,所以它可能滞后几分钟但从不阻塞重定向。</p>
+
+    <h2>第 7 步 — 核心架构与读/写路径</h2>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 写路径(短化一个 URL)</span>
+POST /api/shorten { long_url, custom_alias?, expires_at? }
+  → 限流器(按 user_id 或 IP 的令牌桶)
+  → 若提供 custom_alias:
+      检查别名未被占用(DB 查找)
+      slug = custom_alias
+    否则:
+      slug = to_base62(snowflake_id())
+  → 检查 Redis 布隆过滤器(仅哈希方法)
+      阴性 → 可安全写
+      阳性 → DB 查找确认;冲突则重试
+  → 把 { slug, long_url, user_id, expires_at } 写到主 DB
+  → 把 slug 加进布隆过滤器(若使用)
+  → 把 slug → long_url 加进 Redis 缓存(TTL = min(expires_at, 24h))
+  → 返回 { short_url: "https://tiny.url/{slug}" }
+
+<span class="cm">-- 读路径(重定向)</span>
+GET /{slug}
+  → 检查 Redis 缓存
+      命中 → 检查 expires_at → 302/404 重定向
+      未命中 → 按主键 DB 查找
+               找到 → 缓存 → 302 重定向
+               未找到 → 404
+  → fire-and-forget:发布点击事件到 Kafka
+      { slug, ts, ip, user_agent, referrer, country }</code></pre>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-3.jpg" alt="URL 重定向的读写路径流程" loading="lazy">
+      <figcaption>URL 重定向的读写路径流程</figcaption>
+    </figure>
+
+    <h3>深入 Redis 缓存</h3>
+    <p>100:1 读写比下,缓存是杠杆最高的单项优化。缓存模式是<strong>look-aside 配 write-through</strong>:写时立即填充缓存,使第一次重定向已是缓存命中;读未命中时从 DB 拉并填充。关键缓存决策:</p>
+    <ul>
+      <li><strong>TTL</strong>——设为 <code>min(链接 expires_at, 24 小时)</code>。明天过期的链接不该被缓存过它的过期。不过期的链接得 24h TTL 配急切刷新,以避免热门链接上的 stampede。</li>
+      <li><strong>热点链接</strong>——名人分享的病毒链接能在几分钟内收到数百万点击,打爆一个 Redis 分片。用 <strong>进程内本地缓存</strong>(重定向服务里的 LRU 缓存,1 s TTL)在 Redis 前缓解,或把热 key 跨多个 Redis 节点复制。</li>
+      <li><strong>缓存击穿</strong>——当热门链接的缓存条目过期,数千重定向请求同时未命中并猛敲 DB。用一个<strong>单飞互斥(single-flight mutex)</strong>:只有一个请求重建缓存条目;其他等它。或用概率提前过期(基于链接的点击速度在 TTL 归零前刷新)。</li>
+      <li><strong>缓存失效</strong>——链接被删除(经 <code>DELETE /api/links/{slug}</code>)时,立即从缓存驱逐它。绝不从陈旧缓存服务一个已删除的链接。</li>
+    </ul>
+
+    <h2>第 8 步 — 重定向:301 vs 302</h2>
+    <p>HTTP 重定向响应码是一个有重大系统设计含义的产品决策:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>码</th><th>含义</th><th>浏览器行为</th><th>分析影响</th><th>服务器负载</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">301</td><td>永久重定向</td><td>在浏览器缓存;后续点击跳过短链服务</td><td>只记录首次点击</td><td>极低——浏览器处理重复访问</td></tr>
+        <tr><td class="col-b">302</td><td>临时重定向</td><td>不缓存;每次点击都命中短链服务</td><td>每次点击都记录</td><td>更高——所有点击经过服务</td></tr>
+      </tbody>
+    </table>
+
+    <p>若点击分析是产品需求,你<strong>必须用 302</strong>——301 意味短链服务在首次后从不再见同一浏览器的重复点击。若不需要分析、想要最低成本下的最大性能,301 + CDN 缓存是正确选择:CDN 边缘节点缓存 301 并以边缘延迟服务重复重定向,而不碰你的源服务器。</p>
+
+    <div class="callout">
+      <div class="callout-label">混合方法</div>
+      <p>一些服务对前 N 次点击用 302 收集分析,然后在阈值后切到 301。这正确实现起来复杂(切换必须与缓存失效协调)但偶尔在高级面试里被问到。更简单:总用 302 但加一个 CDN 层,以短 TTL(如 60 s)缓存重定向,以减少源负载同时仍捕获大多数点击。</p>
+    </div>
+
+    <h2>第 9 步 — 自定义别名</h2>
+    <p>自定义别名(<code>tiny.url/my-brand</code>)是用户提供的字符串,不能与自动生成 slug 或其他用户的自定义别名冲突。命名空间管理规则:</p>
+    <ul>
+      <li><strong>校验</strong>——强制字符白名单(a-z、A-Z、0-9、连字符、下划线)、最小长度(3 字符)、最大长度(50 字符)。拒绝保留词(<code>api</code>、<code>admin</code>、<code>health</code> 等)。</li>
+      <li><strong>唯一性检查</strong>——接受自定义别名前,检查 <code>urls</code> 表:<code>SELECT 1 FROM urls WHERE slug = :alias</code>。若它存在且由另一用户拥有,用 409 Conflict 拒绝。若它存在且由同一用户拥有(幂等重提),返回已存在记录。</li>
+      <li><strong>命名空间隔离</strong>——把自定义别名和自动生成 slug 存在同一 <code>urls</code> 表,由 <code>is_custom</code> 标志区分。主键检查自动防止两个命名空间间的冲突。</li>
+      <li><strong>自定义别名限制</strong>——免费账户可能允许 5 个自定义别名;付费账户无限。在 API 层强制,而非 DB。</li>
+    </ul>
+
+    <h2>第 10 步 — 点击分析管道</h2>
+    <p>点击分析不能给重定向热路径加延迟。解法是一个 <strong>fire-and-forget 异步管道</strong>:</p>
+
+    <ol>
+      <li>每次重定向,重定向服务异步(非阻塞)把点击事件发布到 <strong>Kafka</strong>。重定向本身立即返回。</li>
+      <li>Kafka 消费者(分析 worker)消费事件流并写到为聚合查询优化的时序存储(ClickHouse、BigQuery 或 Redshift)。</li>
+      <li>一个单独的聚合作业(Spark 批或 Flink 流)预计算每链接 rollup:总点击、唯一 IP、按国家/设备/referrer 的点击、按小时/天的点击。</li>
+      <li>分析 API(<code>GET /api/links/{slug}/analytics</code>)从预计算 rollup 存储读,而非从原始事件——O(1) 查找而非全扫描数十亿条点击记录。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>重定向服务
+  └── fire-and-forget → Kafka topic: <span class="str">"click-events"</span>
+        { <span class="str">"slug"</span>: <span class="str">"aB3kPq"</span>, <span class="str">"ts"</span>: <span class="num">1716556800000</span>, <span class="str">"ip"</span>: <span class="str">"1.2.3.4"</span>,
+          <span class="str">"country"</span>: <span class="str">"US"</span>, <span class="str">"device"</span>: <span class="str">"mobile"</span>, <span class="str">"referrer"</span>: <span class="str">"twitter.com"</span> }
+
+分析消费者(Flink 流)
+  └── 读 Kafka → 按 (slug, hour, country, device) 计数
+  └── 把 rollup 写到 ClickHouse:
+        <span class="cm">-- clicks_hourly(slug, hour, country, device, click_count)</span>
+
+分析 API
+  └── SELECT SUM(click_count) FROM clicks_hourly WHERE slug = <span class="str">'aB3kPq'</span>
+      → 在 &lt;<span class="num">10</span> ms 返回(索引 rollup 表)</code></pre>
+    </div>
+
+    <h2>第 11 步 — URL 过期与清除</h2>
+    <p>过期 URL 必须被清理以回收存储并返回正确的 404 响应。三种策略,各有不同取舍:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>怎么工作</th><th>优点</th><th>缺点</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Redis TTL</td><td>给缓存条目设等于链接过期的 TTL;缓存自动驱逐</td><td>零 DB 开销;对缓存命中工作</td><td>过期行在 DB 累积;DB 仍显示记录存在</td></tr>
+        <tr><td class="col-a">惰性求值</td><td>每次重定向检查 <code>expires_at &lt; NOW()</code>;返回 404 并可选删除 DB 行</td><td>无需批作业;自清理</td><td>过期行累积直到被访问;热路径上删除加延迟</td></tr>
+        <tr><td class="col-b">定时扫描</td><td>Airflow 作业每晚跑:用部分索引 <code>DELETE FROM urls WHERE expires_at &lt; NOW()</code></td><td>DB 保持干净;可预测负载</td><td>过期链接在 DB 里"有效"长达 24h;大表上批量删除可能慢</td></tr>
+      </tbody>
+    </table>
+
+    <p>推荐方法组合全部三种:<strong>Redis TTL</strong> 为大多数流量正确处理缓存层;<strong>惰性过期检查</strong>在重定向处理器里捕获过期但别处缓存的链接的 DB 命中;<strong>每晚扫描</strong>保持 DB 表干净、部分索引小。惰性删除应异步做(如入队到删除队列)以保持重定向响应快。</p>
+
+    <h2>第 12 步 — 扩展与容错</h2>
+    <p>高规模时,URL 短链必须在硬件故障、流量峰值和区域宕机下保持可用和快。</p>
+
+    <h3>读扩展</h3>
+    <p>重定向服务是无状态的——它从 Redis、偶尔从 DB 读。在负载均衡器后横向扩展。有一个热 Redis 缓存吸收 95%+ 的读,DB 在最小负载下。给 DB 加<strong>读副本</strong>处理剩余缓存未命中。在多个区域部署重定向服务,用 CDN 或 GeoDNS 把用户路由到最近实例。</p>
+
+    <h3>写扩展</h3>
+    <p>~30 写/秒,单个 SQL 主库轻易处理 URL 创建。若写规模成关切(比如一个也提供经 API 编程式链接创建的平台,10,000 写/秒),<strong>按 slug 前缀分片 DB</strong>:以 0-9 开头的 slug 去分片 A,a-m 去分片 B,n-z 去分片 C。因为每个重定向是 slug 上的主键查找,路由到正确分片是一个简单字符映射——无需跨分片 join。</p>
+
+    <h3>多区域一致性</h3>
+    <p>一个全球分布的 URL 短链必须处理一个在 US-East 创建的链接立即被 Asia-Pacific 用户点击的情况。选项:</p>
+    <ul>
+      <li><strong>全局单区域主库 + 区域读副本</strong>——写去 US-East;EU 和 APAC 的副本在数秒内追上。重定向读命中本地副本。新创建的链接可能需 1–2 s 出现在 APAC——通常可接受。</li>
+      <li><strong>多主配冲突检测</strong>——每个区域用 Snowflake ID 接受写(机器 ID 编码区域)。因为 Snowflake ID 构造上全局唯一,不可能有冲突。复制异步跨区域传播记录。</li>
+    </ul>
+
+    <h3>容错</h3>
+    <ul>
+      <li><strong>Redis 故障</strong>——若缓存集群宕,所有重定向落到 DB。设计 DB 容量以在 Redis 宕机期间(数分钟到数小时配自动恢复)处理 100% 重定向流量。带副本分片的 Redis Cluster 减少爆炸半径。</li>
+      <li><strong>DB 故障</strong>——自动故障转移到副本(如经 Amazon RDS Multi-AZ 或 PostgreSQL 的 Patroni)。故障转移期间短暂只读模式可接受;链接创建排队并重试。</li>
+      <li><strong>Kafka 故障</strong>——点击事件在此期间丢失。分析准确性退化但重定向不受影响(fire-and-forget 意味重定向不等 Kafka)。Kafka 本身以复制因子 ≥ 3 运行。</li>
+    </ul>
+
+    <h2>第 13 步 — 限流与安全</h2>
+    <p>写端点必须用限流器保护,以防生成数百万 slug、耗尽存储和 slug 命名空间的 DDoS 攻击。安全层:</p>
+    <ul>
+      <li><strong>每用户令牌桶</strong>——已认证用户得到一个限流(如免费层 10 创建/分钟、付费 100/分钟)。在 Redis 用滑动窗口计数器实现:<code>INCR rate:user:{user_id}:{minute}</code> + <code>EXPIRE</code>。</li>
+      <li><strong>每 IP 限流</strong>——未认证请求(匿名短化)按 IP 限制以防未认证滥用。比每用户更宽松但作为兜底必要。</li>
+      <li><strong>URL 校验与恶意软件扫描</strong>——校验长 URL 是有效 URL(正则 + DNS 解析检查)。与恶意软件/钓鱼 URL 数据库(Google Safe Browsing API)集成,在创建一个会传播钓鱼链接的 slug 前拒绝已知恶意链接。</li>
+      <li><strong>垃圾链接检测</strong>——对同一用户的同一长 URL 限流(创建 1,000 个全指向同一钓鱼页的 slug 是常见滥用模式)。</li>
+      <li><strong>读端点对匿名用户不限流</strong>——重定向便宜且缓存吸收大部分负载。只在某特定 IP 做明显自动化量的重定向调用时才限流(bot 检测层)。</li>
+    </ul>
+
+    <h2>第 14 步 — 关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Slug 生成</td><td class="col-a">Snowflake(基于 ID)</td><td>需预分配机器 ID;轻微时间有序暴露创建量</td></tr>
+        <tr><td>重定向码</td><td class="col-b">302(临时)</td><td>比 301 更高服务器负载;若点击分析是产品功能则必需</td></tr>
+        <tr><td>冲突检测</td><td class="col-a">Redis 里的布隆过滤器</td><td>假阳性需 DB 回退;极致规模下过滤器本身需分布式</td></tr>
+        <tr><td>分析管道</td><td class="col-a">异步(Kafka → OLAP)</td><td>点击计数有短暂滞后;重定向延迟不受影响</td></tr>
+        <tr><td>过期强制</td><td class="col-a">惰性 + 每晚扫描</td><td>过期链接在过期后可访问长达缓存 TTL(数秒);DB 在 24h 内清理</td></tr>
+        <tr><td>存储</td><td class="col-b">SQL(单表)</td><td>轻易装下数据量;无需分布式 NoSQL 的复杂度</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>URL 短链设计是让无聊东西扩展的研究:Snowflake ID 生成胜过哈希(在源头避免冲突)、布隆过滤器使写路径上的冲突检查便宜、Redis 缓存吸收 100:1 读放大,而 slug 长度算术确认 6 字符足够数十年。微妙的选择——301 vs 302、哪种清除策略、用 Snowflake ID 时是否还用布隆过滤器——由产品需求而非技术约束驱动。了解取舍、陈述假设、为每个选择辩护。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么 slug 生成偏好 ID 生成而非哈希?</strong>哈希函数(MD5、SHA-1)因生日悖论能为不同 URL 产生同样的 6 字符前缀——冲突检测和重试增加复杂度和不确定延迟。Snowflake 或基于范围的 ID 生成在源头消除冲突。<br>
+      <strong>布隆过滤器怎么加速冲突检测?</strong>布隆过滤器阴性(位未设)保证 slug 是新的——无需 DB 查找。只有阳性(罕见)需 DB 回退。这让写快路径在内存里 O(1)。<br>
+      <strong>301 还是 302 重定向?</strong>301(永久)被浏览器缓存——更低服务器负载但首次访问后点击分析丢失。302(临时)每次点击都命中短链服务——完整分析但更高成本。基于分析是否产品需求选择。<br>
+      <strong>怎么处理一小时内 10M 点击的病毒链接?</strong>Redis 里的热 key——跨多个分片缓存它,或在每个重定向服务实例加进程内 LRU 缓存(1–5 s TTL)在它命中 Redis 前吸收尖峰。<br>
+      <strong>怎么防止分析管道拖慢重定向?</strong>fire-and-forget 发布到 Kafka——重定向立即返回 302 而不等 Kafka 写确认。Kafka 宕机期间丢失几个点击事件可接受;重定向可用性不可。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/ride-share/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计打车应用</div>
+      </a>
+      <a href="/system-design/hotel-booking/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计酒店预订应用</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
