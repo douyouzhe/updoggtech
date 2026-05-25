@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.">
+<title>Prompt Engineering for Code | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Prompt Engineering for Code">
+<meta property="og:description" content="Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Prompt Engineering for Code">
+<meta name="twitter:description" content="Deep dive into prompting strategies that produce clean, correct code from AI coding tools.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Prompt Engineering for Code","description":"Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.","datePublished":"2026-05-12","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/prompt-engineering-for-code/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">prompt-engineering-for-code</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Prompt Engineering for Code</h1>
+    <div class="article-meta">
+      <span>May 12, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Every AI coding tool runs the same core loop: you supply text, the model generates code. That sounds simple until you realise that the text you supply — the prompt — is the only lever you have over what comes out. The model is fixed; the context window is finite; the only variable you control is what you put into it. And yet most engineers treat prompting as an afterthought, typing a one-liner and wondering why the output misses the mark.</p>
+    <p>This article is a deep dive into prompt engineering specifically for code generation and agentic coding tasks. It covers the mechanics of why prompts determine output quality, the concrete techniques that consistently raise the bar — context, constraints, planning, few-shot examples, iterative refinement, test-driven prompting — and the anti-patterns that silently produce mediocre or broken code. By the end you should have a repeatable mental model for prompting any AI coding tool, from Copilot completions to Claude Code agentic tasks.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Context is the multiplier.</strong> Giving the model the right files, the actual error message, and the real constraints is worth more than any other single technique.</li>
+        <li><strong>Plan before code.</strong> Asking the model to outline its approach first catches design errors before they get embedded in 200 lines of implementation.</li>
+        <li><strong>Few-shot examples collapse ambiguity.</strong> One concrete "given X, produce Y" example is clearer than a paragraph of prose describing the same thing.</li>
+        <li><strong>State acceptance criteria, not just goals.</strong> "Add auth" is a goal; "add JWT middleware that rejects requests without a valid token and returns 401 with a JSON error body" is a testable specification.</li>
+        <li><strong>Iterate with targeted follow-ups.</strong> One long mega-prompt is rarely better than a crisp initial prompt plus focused correction rounds.</li>
+        <li><strong>Vague prompts produce plausible-looking wrong code.</strong> The model will never tell you the prompt was ambiguous — it will just hallucinate a reasonable-seeming answer.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Prompting for code is a skill, not a knack. The core formula is: <strong>right context + clear spec + acceptance criteria + plan-first + few-shot examples</strong>. Nail those five ingredients and the model output improves dramatically. Skip them and you get plausible-looking code that silently violates your constraints.</p>
+    </div>
+
+    <h2>Why the Prompt Determines Code Quality</h2>
+    <p>A large language model is, at its core, a next-token predictor conditioned on everything in the context window. It has no background knowledge about your repo, your team's conventions, the production constraint you mentioned in Slack, or the edge case that burned you last sprint. All it knows is what you give it right now.</p>
+    <p>This has a profound implication: <strong>the model's output is bounded by the quality of its input.</strong> A frontier model with a bad prompt will produce worse code than a smaller model with a great prompt, because the smaller model is at least working with accurate, complete information. Context assembly — choosing what to include in the prompt — is the dominant factor in output quality, and it is entirely under your control.</p>
+    <p>There is also an asymmetry of failure you need to understand: the model will <em>always</em> produce something. It will not tell you the prompt was too vague; it will fill in the gaps with statistically plausible completions. In a code context that means plausible-looking code that may compile, pass a surface read, and still be subtly wrong in ways that only surface in production. This is why a junior engineer who vibe-codes aggressively can look productive for weeks before the technical debt crystallises.</p>
+    <p>Prompt engineering for code is therefore not about magic incantations. It is about systematically removing the model's uncertainty: giving it the files it needs, the error it must fix, the constraints it must respect, and the examples that show the style it should match. Every technique in this article reduces a different kind of uncertainty.</p>
+
+    <h2>Giving the Model Enough Context</h2>
+    <p>The single highest-leverage thing you can do is also the most mechanical: paste the right code. Most engineers under-paste. They describe a function in prose when they should paste the function. They mention an error message when they should paste the full stack trace. They say "the auth module" when they should paste the relevant fifty lines from it.</p>
+    <h3>What to include</h3>
+    <ul>
+      <li><strong>The function or file being changed</strong> — don't describe it, show it. The model needs the actual signatures, variable names, and existing logic.</li>
+      <li><strong>Closely related code</strong> — callers, called functions, data types. If your function returns a <code>UserRecord</code>, paste the <code>UserRecord</code> struct definition.</li>
+      <li><strong>The actual error message or failing test output</strong> — not "it throws an error," but the full stack trace including line numbers.</li>
+      <li><strong>Relevant configuration</strong> — build config, schema, environment constraints that change what valid code looks like.</li>
+      <li><strong>Prior art in the codebase</strong> — "here is how we currently handle pagination in the orders service" grounds the model in your actual conventions.</li>
+    </ul>
+    <h3>What not to include</h3>
+    <ul>
+      <li>Entire files when only a few functions matter — summarise or excerpt.</li>
+      <li>Noise that pushes important context toward the end of the window (models attend more strongly to the beginning and end).</li>
+      <li>Secrets, PII, or proprietary data — always sanitise before pasting into any cloud-hosted model.</li>
+    </ul>
+    <p>A useful heuristic: if a new teammate were pairing with you on this exact task, what would you put on a shared screen? Paste that. Nothing less, nothing gratuitously more.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">prompt — bad context</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># ❌ Vague — model must guess what "the auth middleware" looks like</span>
+Fix the bug in our auth middleware where sometimes
+tokens are accepted even when expired.</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">prompt — good context</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># ✅ Model has everything it needs to make a precise fix</span>
+Here is our JWT middleware (Go):
+
+<span class="kw">func</span> <span class="fn">AuthMiddleware</span>(next http.Handler) http.Handler {
+    <span class="kw">return</span> http.<span class="fn">HandlerFunc</span>(<span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+        tokenStr := r.Header.<span class="fn">Get</span>(<span class="str">"Authorization"</span>)
+        claims := &amp;Claims{}
+        token, err := jwt.<span class="fn">ParseWithClaims</span>(tokenStr, claims, keyFunc)
+        <span class="kw">if</span> err != <span class="kw">nil</span> || !token.Valid {
+            http.<span class="fn">Error</span>(w, <span class="str">"unauthorized"</span>, http.StatusUnauthorized)
+            <span class="kw">return</span>
+        }
+        next.<span class="fn">ServeHTTP</span>(w, r)
+    })
+}
+
+Bug: tokens that are expired (<span class="ty">Claims</span>.ExpiresAt in the past) are
+sometimes accepted. jwt.ParseWithClaims does check expiry, but we
+strip the "Bearer " prefix inconsistently — see the raw header value
+in the failing test output below:
+
+    Authorization: Bearer eyJhbGci...   &lt;-- has "Bearer " prefix
+    jwt: token is malformed              &lt;-- parse error swallowed, falls through
+
+Fix the prefix stripping and make sure an expired token always 401s.</code></pre>
+    </div>
+
+    <h2>Specifying Requirements with Acceptance Criteria</h2>
+    <p>There is a category difference between a <em>goal</em> and a <em>specification</em>. "Add rate limiting" is a goal. A specification tells the model what done looks like: which endpoints, what limit, what header carries the remaining count, what status code on exhaustion, what the reset window is, and whether limits are per-IP or per-user. The model cannot read your mind; if you don't specify it, you will get the model's default assumption, which may not match yours.</p>
+    <p>Good acceptance criteria share two properties: they are <strong>concrete</strong> (names, numbers, status codes, field names) and they are <strong>testable</strong> (you can write a test that passes if and only if the criterion is met). If you can't write a test for it, the criterion is probably too vague.</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Vague goal</th><th>Testable specification</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Add input validation to the user endpoint</td>
+          <td>POST /users must return 422 with <code>{"error":"email_invalid"}</code> if email is missing or not RFC 5322 format; return 422 <code>{"error":"name_too_long"}</code> if name &gt; 100 chars</td>
+        </tr>
+        <tr>
+          <td>Make it faster</td>
+          <td>The <code>listProducts</code> query must return in &lt;50 ms at p99 with 10k rows; add an index on <code>(category_id, created_at DESC)</code> if missing</td>
+        </tr>
+        <tr>
+          <td>Handle errors better</td>
+          <td>Wrap all <code>db.Query</code> calls to log <code>query=&lt;sql&gt; err=&lt;msg&gt; duration=&lt;ms&gt;</code> at ERROR level; propagate the original error up, never swallow it</td>
+        </tr>
+        <tr>
+          <td>Add caching</td>
+          <td>Cache GET /products/:id in Redis with TTL 300 s; use key <code>product:&lt;id&gt;</code>; on cache miss, fetch from DB and populate; on 404 from DB, do not cache</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The right column is more words, but it produces code that is measurably correct. The left column produces code that is plausibly correct — which is a very different thing.</p>
+
+    <h2>Ask for the Plan First</h2>
+    <p>One of the most reliable techniques for non-trivial tasks is a two-step sequence: first ask the model to <em>outline its approach</em>, then ask it to implement. This catches design problems before they get embedded in code, and it forces the model to reason about the problem rather than pattern-match to the nearest boilerplate.</p>
+    <p>The planning prompt is usually short: "Before writing any code, outline the steps you'll take to implement X. List any assumptions you're making. Note any edge cases I should be aware of." Read the plan. If the plan is wrong — wrong approach, wrong library, misunderstood requirement — correct it before implementation. A two-minute plan review saves a twenty-minute debugging session.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">two-step prompting</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## Step 1 — Plan prompt</span>
+I need to add distributed rate limiting to our Go API gateway.
+Requirements:
+- 100 req/min per API key, sliding window
+- Limits stored in Redis; gateway pods are stateless
+- On limit exceeded: 429 with Retry-After header (seconds until window resets)
+- Keys are passed in X-API-Key header
+
+Before writing any code, outline:
+1. The algorithm you'll use (token bucket? sliding log? fixed window?)
+2. The Redis data structure and key schema
+3. The middleware interface in Go
+4. Any edge cases (key missing, Redis down, clock skew)
+
+<span class="cm">## Step 2 — Implementation prompt (after reviewing the plan)</span>
+The plan looks good. Implement it.
+Use go-redis v9. The middleware should be chainable with our existing
+http.Handler chain. Do not introduce a global singleton — accept a
+*redis.Client as a parameter so it can be injected in tests.</code></pre>
+    </div>
+
+    <p>Planning-first is especially valuable for agentic tasks where the model will execute multiple steps autonomously. An agent that starts implementing immediately can go deep down a wrong path before you notice. An agent that surfaces a plan lets you redirect at the cheapest possible moment.</p>
+
+    <h2>Few-Shot Examples: Show, Don't Just Tell</h2>
+    <p>Few-shot prompting — providing one or more input/output examples before asking for the real thing — is one of the oldest and most reliable techniques in prompt engineering. For code, it is particularly powerful because code is unambiguous: a single example pins down naming conventions, indentation, error-handling style, return type patterns, and logging format simultaneously, in a way that paragraphs of description never can.</p>
+    <h3>When few-shot pays off most</h3>
+    <ul>
+      <li><strong>Boilerplate with a specific shape</strong> — "write CRUD endpoints for the Product model, following the same pattern as these existing User endpoints." Paste the User endpoints as the example.</li>
+      <li><strong>Code style you haven't documented</strong> — if your team uses a particular error-wrapping pattern or a non-standard logging format, one example is worth a thousand words.</li>
+      <li><strong>Data transformations with tricky edge cases</strong> — show input data and expected output data; the model infers the mapping including edge cases from the examples.</li>
+      <li><strong>Test authoring</strong> — show one or two existing tests; the model will match table-driven style, assertion library, setup/teardown patterns exactly.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">few-shot — generating consistent handlers</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// Example handler (existing code — paste as the few-shot example)</span>
+<span class="kw">func</span> (h *Handler) <span class="fn">GetUser</span>(w http.ResponseWriter, r *http.Request) {
+    id := chi.<span class="fn">URLParam</span>(r, <span class="str">"id"</span>)
+    user, err := h.store.<span class="fn">GetUser</span>(r.<span class="fn">Context</span>(), id)
+    <span class="kw">if</span> errors.<span class="fn">Is</span>(err, store.ErrNotFound) {
+        h.<span class="fn">writeError</span>(w, http.StatusNotFound, <span class="str">"user_not_found"</span>)
+        <span class="kw">return</span>
+    }
+    <span class="kw">if</span> err != <span class="kw">nil</span> {
+        h.<span class="fn">writeError</span>(w, http.StatusInternalServerError, <span class="str">"internal_error"</span>)
+        <span class="kw">return</span>
+    }
+    h.<span class="fn">writeJSON</span>(w, http.StatusOK, user)
+}
+
+<span class="cm">// Prompt after pasting example:</span>
+<span class="cm">// Following exactly the same pattern above (chi router, h.store,</span>
+<span class="cm">// h.writeError / h.writeJSON, errors.Is for not-found),</span>
+<span class="cm">// write GetProduct and DeleteProduct handlers.</span></code></pre>
+    </div>
+
+    <p>The key discipline: paste <em>real</em> examples from your codebase, not invented ones. Invented examples can accidentally introduce conventions you don't actually use.</p>
+
+    <h2>Specifying Language, Style, and Boundaries</h2>
+    <p>AI coding models are polyglot. Without explicit instruction they will pick the language, library, and style they consider most common for the task. That may not be your language, your library, or your style. Always state these explicitly when they matter.</p>
+    <h3>Language and runtime</h3>
+    <p>Specify the language version when it matters: <code>Go 1.22</code>, <code>Python 3.12 with type annotations</code>, <code>TypeScript 5 strict mode</code>, <code>Java 21 with records and sealed interfaces</code>. Models know what features are available per version and will avoid or use them accordingly.</p>
+    <h3>Libraries and frameworks</h3>
+    <p>Name the specific library: <code>use pgx/v5 not database/sql</code>, <code>use Zod for validation not Joi</code>, <code>use React Query v5 not SWR</code>. Without this the model will pick whatever it trained on most heavily, which may conflict with your existing dependency tree.</p>
+    <h3>What is out of scope</h3>
+    <p>Boundary constraints are as important as positive requirements. "Do not add any new dependencies," "do not change the public interface of this function," "do not add a database migration — this must be handled at the application layer," "do not touch the test file." These negative constraints prevent the model from "helpfully" restructuring things you didn't ask it to touch — a very common failure mode.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">style and boundary constraints</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Explicit constraints prevent "helpful" drift</span>
+Add a retry wrapper around the S3 upload call in upload.go.
+
+Constraints:
+- Language: Go 1.22
+- Use only stdlib (context, time, errors) — do NOT add a retry library
+- Max 3 attempts, exponential backoff starting at 100 ms, cap at 2 s
+- Do not change the function signature of UploadFile
+- Do not modify upload_test.go
+- Log each retry attempt at WARN level with attempt=N err=&lt;msg&gt; using
+  our existing slog.Default() logger</code></pre>
+    </div>
+
+    <h2>Iterating and Following Up Precisely</h2>
+    <p>Good prompting is a dialogue, not a monologue. The first response is rarely perfect; the question is how to correct it efficiently. The worst approach is to start over with a longer mega-prompt. The best approach is a short, surgical follow-up that names exactly what is wrong.</p>
+    <h3>Anatomy of a good correction</h3>
+    <ul>
+      <li><strong>Name the specific problem</strong> — "the retry logic doesn't reset the backoff timer between calls" is actionable; "this isn't quite right" is not.</li>
+      <li><strong>Quote the offending code</strong> — "on line 23, <code>attempt := 0</code> is inside the loop; it should be outside." The model can see its own output but a precise quote removes ambiguity.</li>
+      <li><strong>State what you want instead</strong> — not just what's wrong but what correct looks like.</li>
+      <li><strong>Ask only one correction at a time</strong> when possible — compound corrections ("fix X, and also Y, and also refactor Z") produce confused diffs where it's hard to verify each part.</li>
+    </ul>
+    <p>One valuable meta-technique: after getting output, ask the model to critique its own work. "What edge cases does this implementation miss?" or "What assumptions did you make that might not hold?" Models are surprisingly good at finding their own holes when asked directly.</p>
+
+    <h2>Test-Driven Prompting</h2>
+    <p>The most rigorous prompting workflow borrows from TDD: specify the tests first, then ask the model to make them pass. This forces the specification to be precise (tests are unambiguous) and gives the model an automated feedback loop it can use to verify its own output.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">test-driven prompting workflow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## Step 1: Write the tests yourself (or prompt for tests first)</span>
+<span class="kw">func</span> <span class="fn">TestParseISO8601Duration</span>(t *testing.T) {
+    cases := []<span class="kw">struct</span>{ input <span class="ty">string</span>; want time.Duration; wantErr <span class="ty">bool</span> }{
+        {<span class="str">"PT30S"</span>,   <span class="num">30</span> * time.Second,  <span class="kw">false</span>},
+        {<span class="str">"PT1M30S"</span>, <span class="num">90</span> * time.Second,  <span class="kw">false</span>},
+        {<span class="str">"P1D"</span>,     <span class="num">24</span> * time.Hour,    <span class="kw">false</span>},
+        {<span class="str">"P1Y"</span>,     <span class="num">0</span>,               <span class="kw">true</span>},  <span class="cm">// years not supported</span>
+        {<span class="str">""</span>,        <span class="num">0</span>,               <span class="kw">true</span>},
+        {<span class="str">"garbage"</span>, <span class="num">0</span>,               <span class="kw">true</span>},
+    }
+    <span class="kw">for</span> _, c := <span class="kw">range</span> cases {
+        got, err := <span class="fn">ParseISO8601Duration</span>(c.input)
+        <span class="kw">if</span> (err != <span class="kw">nil</span>) != c.wantErr {
+            t.<span class="fn">Errorf</span>(<span class="str">"%q: wantErr=%v got err=%v"</span>, c.input, c.wantErr, err)
+        }
+        <span class="kw">if</span> !c.wantErr &amp;&amp; got != c.want {
+            t.<span class="fn">Errorf</span>(<span class="str">"%q: want %v got %v"</span>, c.input, c.want, got)
+        }
+    }
+}
+
+<span class="cm">## Step 2: Prompt to implement against the tests</span>
+<span class="cm">// Implement ParseISO8601Duration(s string) (time.Duration, error)</span>
+<span class="cm">// in duration.go so all cases above pass. Do not add dependencies.</span></code></pre>
+    </div>
+
+    <p>When working with an agentic tool like Claude Code, you can take this further: "run the tests after implementing and iterate until they all pass." The agent closes the feedback loop automatically, and you only review the final diff when tests are green.</p>
+
+    <h2>Decomposing Large Changes for the Model</h2>
+    <p>Context windows are finite and attention degrades over long, complex tasks. A change that touches fifteen files, reorganises a data model, and updates three API surfaces is not one prompt — it is five or six. Breaking large changes into focused, independently reviewable steps produces better output and makes each step easier to verify.</p>
+    <h3>A decomposition heuristic</h3>
+    <ul>
+      <li><strong>One data model change per prompt</strong> — if you're changing a schema, do that first and verify it before touching anything that depends on it.</li>
+      <li><strong>One interface at a time</strong> — change the interface definition, then update implementations, then update callers. Each is a separate prompt with the previous output pasted as context.</li>
+      <li><strong>Tests before implementation</strong> — in each step, write or confirm the tests first, then implement.</li>
+      <li><strong>Vertical slices for feature work</strong> — implement one endpoint end-to-end (DB → service → handler → test) before moving to the next, rather than doing all handlers then all services.</li>
+    </ul>
+    <p>When the change is genuinely large, write out the decomposition explicitly and paste it into the first prompt: "I'm going to make this change in four steps. Here is step 1. Implement only step 1." This prevents the model from speculatively implementing steps 2–4 and creating a diff you can't review.</p>
+
+    <h2>Common Anti-Patterns</h2>
+    <p>Understanding failure modes is as useful as understanding best practices. These are the prompting anti-patterns that consistently produce bad output.</p>
+    <h3>The aspirational vague prompt</h3>
+    <p>"Refactor this to be cleaner and more maintainable." This gives the model unlimited latitude to restructure anything it considers suboptimal. You will get extensive changes that may or may not match your conventions, touching code you didn't mean to touch. Be specific about what "cleaner" means: "extract the three nested if-blocks in processPayment into named helper functions; do not change any other logic."</p>
+    <h3>The copy-paste cargo cult</h3>
+    <p>Pasting a large block of code with "fix the bug." Without a description of the symptom, the reproduction case, or which line the error appears on, the model will guess. It may guess correctly or it may "fix" a different part of the code and introduce a regression. Always include the observable failure: the stack trace, the failing test output, the wrong return value.</p>
+    <h3>The missing negative constraint</h3>
+    <p>Asking for new functionality without specifying what must not change. The model will often "improve" adjacent code, rename variables it finds confusing, or add dependencies it considers standard. These unasked-for changes muddy your diff and can introduce subtle breaks. Always include "do not change X" for anything you need to stay stable.</p>
+    <h3>The one-shot mega-prompt</h3>
+    <p>Trying to fully specify a complex feature in a single enormous prompt. This overloads the model's instruction-following capacity; the later constraints are underweighted relative to the earlier ones. For complex work, iterate: prompt for the plan, approve, prompt for step 1, review, continue. The total quality is higher even if the total number of turns is larger.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">anti-pattern vs. correct prompt</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## ❌ Anti-pattern: vague + no context + no constraints</span>
+Add pagination to the API.
+
+<span class="cm">## ✅ Correct: context + spec + constraints + acceptance criteria</span>
+File: handlers/products.go (pasted below)
+Current GET /products returns all rows, which causes OOM at scale.
+
+Add cursor-based pagination:
+- Query params: limit (int, default 20, max 100) and cursor (opaque string)
+- Response: add "next_cursor" field to the existing JSON envelope;
+  null if no more pages
+- Cursor encodes the last row's (created_at, id) as base64 JSON —
+  do not use offset
+- Return 400 {"error":"invalid_limit"} if limit &lt; 1 or &gt; 100
+- Do not change the shape of the Product objects in the response
+- Do not add any new SQL queries beyond what listProducts already uses;
+  add the WHERE clause to the existing query
+
+[paste handlers/products.go here]
+[paste store/products.go here]</code></pre>
+    </div>
+
+    <h3>Accepting the first output without review</h3>
+    <p>This is not a prompting anti-pattern per se — it is a workflow anti-pattern — but it is worth naming here because it is the failure mode that turns all the above techniques moot. Every AI-generated code block should be read, understood, and consciously accepted. If you cannot explain what a function does, you are not ready to merge it. The model is your pair programmer, not your code reviewer.</p>
+
+    <h2>Building a Prompting Intuition Over Time</h2>
+    <p>Prompting is a skill that compounds. Engineers who have been using AI coding tools for a year write dramatically better prompts than they did at the start, because they have internalised which techniques close which gaps and which failure modes to pre-empt.</p>
+    <p>A few habits that accelerate this learning curve:</p>
+    <ul>
+      <li><strong>Keep a prompt log</strong> — note prompts that worked unusually well or badly, and what made the difference. You will start to see patterns in what causes failure.</li>
+      <li><strong>Read your diffs carefully</strong> — every time you catch a subtle error in AI output, trace it back to what the prompt was missing. That trace is a prompting lesson.</li>
+      <li><strong>Experiment on safe ground</strong> — use test files or throwaway branches to try new prompting strategies before using them on production-critical changes.</li>
+      <li><strong>Share good prompts with your team</strong> — a shared library of high-quality prompts for common tasks (writing migration scripts, generating gRPC handlers, updating OpenAPI specs) raises the team floor, not just the individual ceiling.</li>
+    </ul>
+    <p>The best mental model for prompt engineering: you are writing a specification that will be executed by a highly capable but completely naive contractor. They will do exactly what you say, interpret ambiguity in whatever way seems most common, and never ask for clarification. Write specifications accordingly — unambiguous, complete, and with explicit constraints on what not to do.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Prompt engineering for code is really specification engineering. The techniques — context, acceptance criteria, planning-first, few-shot examples, decomposition, precise follow-up — all serve one goal: reducing the model's uncertainty so its considerable capability is aimed precisely at your actual problem. Master the specification, and the code quality follows.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why does context matter more than model size in AI coding tools?</strong> The context window is finite; the model can only reason about what's in it. Giving it the right files and error messages produces better output than a larger model working with vague prose.<br>
+      <strong>What is planning-first prompting and why does it help?</strong> Asking the model to outline its approach before coding surfaces design errors at the cheapest possible moment — before they get embedded in implementation — and forces the model to reason rather than pattern-match.<br>
+      <strong>What is the most dangerous AI coding anti-pattern?</strong> Accepting the first output without review. The model produces plausible-looking code even when it has subtly violated your constraints, and "plausible but wrong" is harder to catch than an obvious error.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/copilot-vs-cursor-vs-claude-code/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Copilot vs Cursor vs Claude Code</div>
+      </a>
+      <a href="/ai-coding/ai-assisted-coding-best-practices/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">AI-Assisted Coding: Best Practices &amp; Pitfalls</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

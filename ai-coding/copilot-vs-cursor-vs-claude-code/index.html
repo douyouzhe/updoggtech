@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="GitHub Copilot, Cursor, and Claude Code compared — how each AI coding tool works, their strengths and weaknesses, and when to use which.">
+<title>Copilot vs Cursor vs Claude Code — AI Coding Tools Compared | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/copilot-vs-cursor-vs-claude-code/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Copilot vs Cursor vs Claude Code — AI Coding Tools Compared">
+<meta property="og:description" content="GitHub Copilot, Cursor, and Claude Code compared — how each works, strengths and weaknesses, and when to use which.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/copilot-vs-cursor-vs-claude-code/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Copilot vs Cursor vs Claude Code">
+<meta name="twitter:description" content="The leading AI coding tools compared — how each works and when to use which.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Copilot vs Cursor vs Claude Code","description":"GitHub Copilot, Cursor, and Claude Code compared — how each AI coding tool works, their strengths and weaknesses, and when to use which.","datePublished":"2026-05-10","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/copilot-vs-cursor-vs-claude-code/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">copilot-vs-cursor-vs-claude-code</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Copilot vs Cursor vs Claude Code</h1>
+    <div class="article-meta">
+      <span>May 10, 2026</span>
+      <span class="separator">·</span>
+      <span>22 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>In just a few years, AI coding tools went from toy autocomplete to genuine pair programmers that can read a whole repo, plan a change, edit many files, run tests, and iterate. Three tools dominate the conversation today: <strong>GitHub Copilot</strong>, <strong>Cursor</strong>, and <strong>Claude Code</strong>. They overlap heavily but were designed around different center points — an IDE plugin, an AI-first editor, and a terminal-native agent. This guide breaks down how each works, where each shines, and how to pick.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Copilot</strong> — lives inside your existing editor (VS Code, JetBrains); best for inline completions and incremental edits with minimal workflow change.</li>
+        <li><strong>Cursor</strong> — a VS Code fork built AI-first; shines at multi-file edits with deep codebase indexing and a tight edit-review loop.</li>
+        <li><strong>Claude Code</strong> — terminal-native agent; strongest at autonomous, multi-step tasks that run commands, edit files, and verify by running tests.</li>
+        <li><strong>The real axis</strong> is autonomy: completion → assisted edit → agentic task. More autonomy means more leverage but more review burden.</li>
+        <li><strong>Context is everything</strong> — all three live or die by how well they pull the <em>right</em> code into the model's context window.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Copilot = frictionless completions in your current editor. Cursor = an AI-first editor for fast multi-file edits with a human in the loop. Claude Code = an autonomous terminal agent for larger tasks it can plan, execute, and verify. Most pros use more than one, picking by task size and how much autonomy they want.</p>
+    </div>
+
+    <h2>From Autocomplete to Agents</h2>
+    <p>It helps to see these tools on a spectrum of <strong>autonomy</strong>, because that single axis explains most of their differences:</p>
+    <ul>
+      <li><strong>Completion</strong> — the model suggests the next few lines; you accept or reject. Lowest friction, lowest risk, smallest unit of work.</li>
+      <li><strong>Assisted edit</strong> — you describe a change in natural language; the tool proposes a concrete diff across one or more files; you review and apply.</li>
+      <li><strong>Agentic task</strong> — you state a goal; the agent plans, edits multiple files, runs commands/tests, reads the output, and loops until done.</li>
+    </ul>
+    <p>More autonomy means more leverage per prompt — but also a bigger diff to review and more ways to go wrong. Picking a tool is largely picking where on this spectrum a given task belongs.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the autonomy spectrum</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>LOW AUTONOMY  ──────────────────────────────────▶  HIGH AUTONOMY
+
+  completion          assisted edit           agentic task
+  "next few lines"    "change these files"    "achieve this goal"
+  ───────────         ─────────────────       ──────────────────
+  Copilot             Cursor                  Claude Code
+  ghost text, Tab     Composer, multi-file    plan → act → verify
+
+  you review:
+  one line       ▸    one diff           ▸    a whole change set</code></pre>
+    </div>
+    <p>None of these tools sit at a single point — Copilot has added an agent mode, Cursor can run commands, and Claude Code can do small edits. But each has a <em>center of gravity</em>, and that's what the rest of this guide maps out.</p>
+
+    <h2>GitHub Copilot</h2>
+    <p>Copilot is the most widely adopted tool and the one that requires the least change to how you already work. It installs as an extension into VS Code, JetBrains IDEs, Neovim, and Visual Studio, and layers AI onto your existing setup.</p>
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Inline completions</strong> — as you type, it sends nearby code and open files as context and streams a suggestion (ghost text) you accept with Tab.</li>
+      <li><strong>Copilot Chat</strong> — a side panel for questions, explanations, and edits scoped to the current file or selection.</li>
+      <li><strong>Agent mode</strong> — newer versions add a multi-step agent that can edit across files and run tasks, narrowing the gap with Cursor and Claude Code.</li>
+    </ul>
+    <h3>How it reads your code</h3>
+    <p>Copilot's output is only as good as what it can see. The inline model is fed the code around your cursor, your open tabs, and recently edited files; newer versions layer in lightweight repository indexing and let you <code>@</code>-reference files or symbols in Chat. The practical takeaway: keep the relevant files open, and when a completion goes sideways it usually means the model can't see the type, helper, or interface it needs — not that it "can't code."</p>
+    <h3>A typical workflow</h3>
+    <p>You stay in your editor and let suggestions stream as you type, steering with a leading comment or a function signature and accepting with Tab:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">editor.ts — comment-driven completion</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// debounce: call fn only after `wait` ms of silence   ← you type this</span>
+<span class="kw">function</span> <span class="fn">debounce</span>(fn, wait) {            <span class="cm">← Copilot fills in ↓</span>
+  <span class="kw">let</span> t;
+  <span class="kw">return</span> (...args) =&gt; {
+    <span class="fn">clearTimeout</span>(t);
+    t = <span class="fn">setTimeout</span>(() =&gt; <span class="fn">fn</span>(...args), wait);
+  };
+}</code></pre>
+    </div>
+    <p>For anything bigger than a function you switch to Copilot Chat or Agent mode and describe the change in the side panel, but the day-to-day mode is this near-invisible completion that keeps you in flow.</p>
+    <h3>Models and where it runs</h3>
+    <p>Copilot is model-flexible — you can pick among frontier models (including GPT and Claude families) per task — and it runs anywhere its extensions do: VS Code, the JetBrains IDEs, Visual Studio, and Neovim. Billing is a flat per-seat subscription with free, pro, and business/enterprise tiers, which makes cost predictable and is a big reason it's the default in many organizations.</p>
+    <h3>Strengths &amp; weaknesses</h3>
+    <p><strong>Strengths:</strong> the lowest possible friction — it works in the editor you already use, it's excellent at boilerplate, repetitive edits, tests, and "finish this function," and per-seat pricing is easy to budget. <strong>Weaknesses:</strong> inline completion sees a narrow slice of context, so it has historically been weaker at whole-repo reasoning than Cursor; agent mode closes much of that gap but is newer and less battle-tested; and the experience is only ever as polished as the specific editor integration you're using.</p>
+
+    <h2>Cursor</h2>
+    <p>Cursor is a fork of VS Code rebuilt around AI as the primary interface. Because the team controls the whole editor, the AI is woven into the editing loop rather than bolted on.</p>
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Codebase indexing</strong> — Cursor builds embeddings of your repo so it can retrieve semantically relevant files into context, not just the ones you have open.</li>
+      <li><strong>Composer / multi-file edit</strong> — describe a change and Cursor proposes coordinated diffs across many files, shown in a review UI.</li>
+      <li><strong>Tab completion</strong> — a strong next-edit prediction that often jumps you to the next place you'll want to change.</li>
+    </ul>
+    <h3>How it pulls in context</h3>
+    <p>Because Cursor owns the whole editor, it can index your repo into embeddings and retrieve semantically relevant files automatically — not just the ones you have open. You can also steer context explicitly with <code>@</code>-mentions of files, folders, docs, or symbols, and add project rules (a <code>.cursor/rules</code> file) that travel with every prompt so the model consistently follows your conventions.</p>
+    <h3>A typical workflow</h3>
+    <p>The signature loop is Composer: describe a change, watch Cursor propose coordinated diffs across files, then accept or reject them hunk by hunk.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">cursor — composer</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">▸ you write:</span>
+Rename User.fullName to displayName everywhere — update the
+GraphQL schema, resolvers, and the React components that read it.
+
+<span class="cm">▸ Cursor proposes one reviewable change set:</span>
+  src/models/user.ts          ~ field + getter
+  src/graphql/schema.graphql  ~ type User
+  src/graphql/resolvers.ts    ~ resolver map
+  web/components/Profile.tsx  ~ 3 usages</code></pre>
+    </div>
+    <p>Day to day you alternate between Tab — a next-edit prediction that hops you to the next place you'll want to change — and Composer for anything spanning multiple files.</p>
+    <h3>Models and cost</h3>
+    <p>Cursor lets you choose among frontier models and offers an "auto" mode that routes each request to a suitable one. Pricing combines a subscription with usage-based costs for heavier model calls, so your bill scales with how much agentic work you push through it — generous on light days, noticeable when you lean on it hard.</p>
+    <h3>Strengths &amp; weaknesses</h3>
+    <p><strong>Strengths:</strong> best-in-class multi-file edits, a fast review loop, and strong repo-wide retrieval thanks to indexing; the Tab model alone is a real productivity boost. <strong>Weaknesses:</strong> it's a separate editor to adopt (a VS Code fork — most extensions carry over, but it's still a migration), indexing very large monorepos can need tuning, and usage-based costs can surprise you under heavy agent use.</p>
+
+    <h2>Claude Code</h2>
+    <p>Claude Code is a terminal-native coding agent. Instead of living in an editor, it runs in your shell (and integrates with IDEs), and is built around <strong>agentic</strong> work: give it a goal and it plans, edits files, runs commands, reads results, and iterates.</p>
+    <h3>How it works</h3>
+    <ul>
+      <li><strong>Tool use</strong> — it reads/writes files, runs shell commands, greps the codebase, and runs tests, using the output to decide its next step.</li>
+      <li><strong>Agentic loop</strong> — plan → act → observe → repeat, which lets it complete larger tasks end-to-end rather than one diff at a time.</li>
+      <li><strong>Composability</strong> — being terminal-native, it fits into scripts, CI, and headless automation, and can drive sub-agents for parallel work.</li>
+    </ul>
+    <h3>The agentic loop in practice</h3>
+    <p>You give it a goal in the terminal and watch it work: explore the repo, propose a plan, edit files, run commands, read the output, and correct course — looping until the goal is met or it needs your input.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">terminal — claude code</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">$ claude "the build is failing on main — find and fix it"</span>
+
+● running the build to see the error…
+  ✗ TS2345 in src/api/client.ts:42 — argument type mismatch
+
+● reading client.ts and its caller…
+● editing src/api/client.ts — thread the generic through fetchJson&lt;T&gt;
+
+● re-running the build to verify…
+  ✓ build succeeded
+
+Fixed: the return type of fetchJson&lt;T&gt; wasn't propagated to the
+caller. Patched and confirmed the build now passes.</code></pre>
+    </div>
+    <h3>Context: read on demand</h3>
+    <p>Rather than pre-indexing, Claude Code pulls context <em>on demand</em> — it greps, lists, and reads files as it reasons, the way a developer would. That keeps its view current with no stale index and lets it work in any repo with zero setup, at the cost of spending some early turns discovering structure.</p>
+    <h3>Extending it</h3>
+    <ul>
+      <li><strong>Sub-agents</strong> — delegate parallel or specialized work (search, review) so the main context stays clean.</li>
+      <li><strong>MCP</strong> — connect external tools and data sources (issue trackers, databases, browsers) through the Model Context Protocol.</li>
+      <li><strong>Hooks &amp; headless mode</strong> — enforce policies and run it non-interactively inside scripts and CI pipelines.</li>
+    </ul>
+    <h3>Strengths &amp; weaknesses</h3>
+    <p><strong>Strengths:</strong> the best fit for large, multi-step tasks — refactors, "fix this failing build," scaffolding a service — because it plans and, crucially, <em>verifies its own work</em> by running tests and reading the output; being terminal-native, it scripts into CI and headless automation and can fan out to sub-agents. <strong>Weaknesses:</strong> it's less of a hand-holding inline experience than an editor plugin, high autonomy produces larger diffs you must review carefully, and usage-based pricing means a big task costs more than a single completion.</p>
+
+    <h2>One Task, Three Tools</h2>
+    <p>The differences are easiest to feel on a single concrete task. Say you need to add request-rate limiting to an Express API. The same goal looks different depending on how much autonomy you reach for:</p>
+    <ul>
+      <li><strong>Copilot</strong> — you create <code>middleware/rateLimit.ts</code>, write a comment describing a token-bucket limiter, and let inline completion fill in the implementation function by function; you wire it into the app yourself.</li>
+      <li><strong>Cursor</strong> — you open Composer: <em>"add a token-bucket rate limiter middleware and apply it to the <code>/api</code> routes."</em> It proposes the new file plus the edits to <code>app.ts</code> and the route files as one reviewable change set.</li>
+      <li><strong>Claude Code</strong> — you say: <em>"add rate limiting to the API, with tests, and make sure they pass."</em> It writes the middleware, wires it up, adds a test, runs the suite, and iterates until green — then reports what it changed.</li>
+    </ul>
+    <p>Notice the trade-off. With Copilot you did the wiring and know every line intimately; with Claude Code you described an outcome and reviewed a finished, tested change. Same task — very different amounts of leverage and very different review surfaces.</p>
+
+    <h2>Head-to-Head</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>Copilot</th><th>Cursor</th><th>Claude Code</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Form factor</td><td>IDE extension</td><td>AI-first editor (VS Code fork)</td><td>Terminal agent</td></tr>
+        <tr><td>Sweet spot</td><td>Inline completions</td><td>Multi-file edits</td><td>Autonomous multi-step tasks</td></tr>
+        <tr><td>Codebase context</td><td>Open/nearby files (+ indexing)</td><td>Strong repo-wide embeddings</td><td>Reads/greps on demand via tools</td></tr>
+        <tr><td>Autonomy</td><td>Low–medium</td><td>Medium</td><td>High</td></tr>
+        <tr><td>Runs commands/tests</td><td>Limited (agent mode)</td><td>Yes</td><td>Yes, core to the loop</td></tr>
+        <tr><td>Adoption cost</td><td>Lowest (stay in your IDE)</td><td>Switch editors</td><td>Learn an agent workflow</td></tr>
+      </tbody>
+    </table>
+
+    <h2>What They All Share Under the Hood</h2>
+    <p>Despite the different shells, all three rest on the same machinery, and understanding it makes you better at using any of them:</p>
+    <ul>
+      <li><strong>A frontier LLM</strong> does the reasoning; the tool's job is mostly <em>context assembly</em> and <em>action execution</em>.</li>
+      <li><strong>Retrieval</strong> — picking which files/snippets to put in the limited context window largely determines output quality. Good retrieval beats a bigger model with bad context.</li>
+      <li><strong>The context window is finite</strong> — every tool prunes, summarizes, or indexes to fit. "Why did it ignore that file?" is usually a context problem.</li>
+      <li><strong>Tool use / function calling</strong> is what turns a chat model into an agent that can edit and verify (covered in our tool-use deep dive).</li>
+    </ul>
+
+    <h2>Pricing, Models &amp; Privacy</h2>
+    <p>Beyond raw capability, three practical dimensions decide a lot in real adoption:</p>
+    <ul>
+      <li><strong>Pricing model.</strong> Copilot is predictable per-seat. Cursor and Claude Code mix a subscription with usage-based costs, so heavy agentic work costs more — but also does more per prompt. Budget by how much autonomous work you'll actually run, not by sticker price alone.</li>
+      <li><strong>Model choice.</strong> All three let you target frontier models, and results vary by task; it's worth trying more than one. Just remember the tool's <em>context assembly</em> often matters more than which model you pick.</li>
+      <li><strong>Privacy &amp; governance.</strong> Your code leaves your machine to reach the model. Check retention and training policies, enterprise or zero-retention options, and your org's stance on AI-generated code before you standardize on one tool.</li>
+    </ul>
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>Capabilities, models, and pricing for all three move fast. Treat any specific here as a snapshot and re-check the current docs before a purchasing decision — but the autonomy-spectrum framing is the part that stays stable.</p>
+    </div>
+
+    <h2>Choosing the Right Tool</h2>
+    <ul>
+      <li><strong>Small, local edits all day</strong> → Copilot, for zero friction in the editor you already use.</li>
+      <li><strong>Feature work touching several files</strong> → Cursor, for its multi-file composer and repo-wide retrieval.</li>
+      <li><strong>Big tasks you can describe and walk away from</strong> (refactor a module, fix a failing test suite, scaffold a service) → Claude Code, for autonomous execution with self-verification.</li>
+      <li><strong>Honest answer:</strong> many engineers run two — a completion tool for flow plus an agent for heavy lifting.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">which tool?</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>How big is the change you're making?
+
+  a line or a function ............ Copilot      (stay in flow)
+  several files, you steer ........ Cursor       (Composer + review)
+  a whole task you can describe ... Claude Code  (plan → act → verify)
+     and walk away from
+
+  unsure? start lower on the spectrum and escalate.</code></pre>
+    </div>
+
+    <h2>Best Practices &amp; Pitfalls</h2>
+    <ul>
+      <li><strong>Review every diff.</strong> The faster the tool, the easier it is to merge subtly wrong code. You own what you commit.</li>
+      <li><strong>Give context deliberately</strong> — point the tool at the right files, paste the error, name the constraints. Vague prompts get generic code.</li>
+      <li><strong>Let agents verify</strong> — having the tool run tests/linters closes the loop and catches its own mistakes.</li>
+      <li><strong>Mind secrets &amp; licensing</strong> — be aware of what code leaves your machine and of your org's policy on AI-generated code.</li>
+      <li><strong>Pick by task size, not loyalty</strong> — the spectrum, not the brand, should drive the choice; many engineers keep two tools open.</li>
+      <li><strong>Don't outsource understanding</strong> — if you can't explain the generated code, you can't maintain it (or defend it in an interview).</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>These tools aren't really competitors so much as points on an autonomy spectrum: completion (Copilot), assisted multi-file edits (Cursor), and autonomous agentic tasks (Claude Code). Match the tool to the task size, always review the diff, and remember that context assembly — not the model alone — is what makes the output good.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do AI coding tools differ fundamentally?</strong> By autonomy: inline completion → assisted multi-file edit → autonomous agent that runs and verifies.<br>
+      <strong>Why does context matter more than model size?</strong> The window is finite; retrieving the <em>right</em> files determines output quality more than a marginally bigger model.<br>
+      <strong>What turns a chat model into a coding agent?</strong> Tool use / function calling plus a plan-act-observe loop, so it can edit files and run tests.<br>
+      <strong>When would you pick a terminal agent over an IDE plugin?</strong> For large, describable tasks you can hand off and verify — refactors, fixing a failing build — where autonomy and self-verification beat inline speed.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/" class="article-nav-card">
+        <div class="article-nav-label">← back to</div>
+        <div class="article-nav-title">AI Coding</div>
+      </a>
+      <a href="/ai-coding/prompt-engineering-for-code/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Prompt Engineering for Code</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

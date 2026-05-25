@@ -560,7 +560,7 @@
   /* ── CATEGORIES ── */
   .categories-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     gap: 20px;
     margin-bottom: 80px;
   }
@@ -581,6 +581,7 @@
   .cat-card:nth-child(1):hover { border-color: var(--accent); }
   .cat-card:nth-child(2):hover { border-color: var(--accent2); }
   .cat-card:nth-child(3):hover { border-color: var(--accent3); }
+  .cat-card:nth-child(4):hover { border-color: #a78bfa; }
 
   .cat-icon {
     width: 48px; height: 48px;
@@ -593,6 +594,7 @@
   .cat-card:nth-child(1) .cat-icon { background: rgba(74, 222, 128, 0.1); }
   .cat-card:nth-child(2) .cat-icon { background: rgba(56, 189, 248, 0.1); }
   .cat-card:nth-child(3) .cat-icon { background: rgba(244, 114, 182, 0.1); }
+  .cat-card:nth-child(4) .cat-icon { background: rgba(167, 139, 250, 0.1); }
 
   .cat-name {
     font-size: 20px;
@@ -696,6 +698,7 @@
       <ul class="nav-links">
         <li><a href="/system-design/"><span class="dot"></span>System Design</a></li>
         <li><a href="/tech-stacks/"><span class="dot"></span>Tech Stacks</a></li>
+        <li><a href="/ai-coding/"><span class="dot"></span>AI Coding</a></li>
         <li><a href="/ddia/"><span class="dot"></span>DDIA</a></li>
       </ul>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -801,6 +804,12 @@
       <p class="cat-desc">Condensed notes and takeaways from Designing Data-Intensive Applications — the SDE interview bible.</p>
       <span class="cat-count">3 articles</span>
     </a>
+    <a href="/ai-coding/" class="cat-card">
+      <div class="cat-icon">🤖</div>
+      <div class="cat-name">AI Coding</div>
+      <p class="cat-desc">AI coding tools, prompt engineering, agents, building on LLM APIs, and what it all means for interviews.</p>
+      <span class="cat-count">8 articles</span>
+    </a>
   </div>
 
   <!-- SYSTEM DESIGN POSTS -->
@@ -899,7 +908,7 @@
       </div>
       <ul class="footer-links">
         <li><a href="/system-design/">System Design</a></li>
-        <li><a href="/tech-stacks/">Tech Stacks</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
         <li><a href="/contact/">Contact</a></li>
       </ul>

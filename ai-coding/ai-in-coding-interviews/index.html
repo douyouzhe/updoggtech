@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="When can you use AI in a coding interview? A deep dive into where AI tools are banned, where they're allowed, how to prepare smarter with AI, and how to talk about it honestly with interviewers.">
+<title>Using AI in Coding Interviews | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/ai-in-coding-interviews/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Using AI in Coding Interviews">
+<meta property="og:description" content="When can you use AI in a coding interview? A deep dive into where AI tools are banned, where they're allowed, and how to prepare smarter with AI.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/ai-in-coding-interviews/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Using AI in Coding Interviews">
+<meta name="twitter:description" content="When AI is banned, when it's a gray area, and how to use it ethically in job interviews.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Using AI in Coding Interviews","description":"When can you use AI in a coding interview? A deep dive into where AI tools are banned, where they're allowed, how to prepare smarter with AI, and how to talk about it honestly with interviewers.","datePublished":"2026-05-22","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/ai-in-coding-interviews/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">ai-in-coding-interviews</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Using AI in Coding Interviews</h1>
+    <div class="article-meta">
+      <span>May 22, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+
+    <p>Every software engineer preparing for job interviews today faces a question that didn't exist five years ago: <em>can I use AI tools during this interview?</em> The answer is almost never a simple yes or no. It depends on the company, the interview format, the specific phase of the process, and — most importantly — whether the candidate can clearly distinguish between "AI as a tool" and "AI as a replacement for their own thinking." This guide cuts through the ambiguity: where AI is definitively off-limits, where it's a gray area, how companies are evolving their policies, and — crucially — how to use AI to prepare far more effectively than any previous generation of candidates.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Live coding rounds are almost universally AI-free</strong> — the whole point is to observe your reasoning in real time. No serious company allows Copilot or ChatGPT during a live algorithm screen.</li>
+        <li><strong>Take-home projects exist in a gray area</strong> — many companies implicitly allow AI as a productivity tool; what they won't forgive is submitting work you cannot explain or defend.</li>
+        <li><strong>Preparation is where AI shines hardest</strong> — mock sessions, personalized problem sets, solution explanations, and behavioral prep all benefit from an always-available AI tutor.</li>
+        <li><strong>The integrity line is about understanding, not tool use</strong> — submitting AI-generated code you don't understand is academic dishonesty in the job market; using AI to study is not.</li>
+        <li><strong>Interview formats are shifting</strong> — more companies are moving toward system design, code review, and debugging tasks precisely because these are harder to fake with AI alone.</li>
+        <li><strong>Talking about AI fluency is now expected</strong> — most SDE roles assume you use AI tools daily; being able to discuss your workflow clearly is itself a signal of seniority.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Don't use AI during live coding or algorithm screens — it's prohibited and defeats the purpose. In take-home assignments, check the rules first; if AI is allowed, use it but be ready to explain every line. In all preparation phases, AI is your most powerful tool: use it to generate problems, walk through solutions, and run mock interviews on demand. The line to never cross is submitting work you cannot understand and defend.</p>
+    </div>
+
+    <h2>The Landscape: Three Categories of Interview Formats</h2>
+
+    <p>To reason clearly about AI use, you need to separate coding interviews into distinct formats. Each has its own norms, risks, and opportunities.</p>
+
+    <h3>Live Coding Sessions</h3>
+
+    <p>This is the classic format: a candidate and interviewer share a screen in real time (CoderPad, HackerRank, Google Docs, or a whiteboard). The interviewer watches you type, asks follow-up questions, and observes how you handle being stuck. <strong>AI assistance is banned here, universally and unambiguously.</strong> This isn't a technicality — the entire evaluation is a live window into how you think. If an AI is thinking for you, there is no interview happening. The interviewer is just watching you relay outputs.</p>
+
+    <p>That said, there are practical nuances. Most live environments don't prevent you from opening another browser tab, but doing so would be detected instantly in a screen-share setup and would almost certainly end the interview and your candidacy. Some proctored online coding platforms (HackerRank, Codility, Karat) actively block or flag tab-switching, use browser focus APIs, and record your screen. Others rely on honor systems — but the reputational and professional risk of cheating in a live session is enormous relative to any short-term gain.</p>
+
+    <p>The deeper reason not to use AI in live sessions is self-defeating: if you get an offer by faking your way through the screen, you'll be in a job where you can't perform, and the discovery is painful for everyone. Live screens exist precisely to separate people who understand the material from people who have a shortcut to its surface.</p>
+
+    <h3>Take-Home Assignments</h3>
+
+    <p>Take-home projects — "build a small REST API," "implement a rate limiter," "add a feature to this existing codebase" — are the gray zone. Companies use them to see how you work over hours, not minutes, closer to actual job conditions. Policies vary significantly:</p>
+
+    <ul>
+      <li><strong>Explicitly allowed:</strong> Some companies (particularly startups and forward-thinking larger companies) have begun explicitly telling candidates to use whatever tools they normally would on the job, including AI. They've adapted their evaluation rubric to focus on the quality of the result and the candidate's ability to explain and defend choices in a follow-up conversation.</li>
+      <li><strong>Explicitly banned:</strong> A smaller but real set of companies still require take-homes to be completed without AI assistance, sometimes with an honor pledge. If the instructions say this, it's a clear line — don't cross it.</li>
+      <li><strong>Unstated:</strong> Most take-home instructions say nothing about AI. This is the genuine gray zone. The safest read is that reasonable productivity tools are implicitly allowed — you'd use your IDE's autocomplete, Stack Overflow, and documentation in real work. AI occupies a similar space. The critical constraint: you must be able to discuss every decision in your code during a follow-up debrief. If you can't explain a function you submitted, you've crossed a line regardless of tool policy.</li>
+    </ul>
+
+    <h3>System Design and Architecture Rounds</h3>
+
+    <p>System design interviews — designing a URL shortener, a distributed message queue, a ride-sharing backend — are almost always conversational and real-time. Even when conducted asynchronously (a written design document you submit), the follow-up is a live discussion where the interviewer probes your reasoning. AI cannot substitute for the ability to articulate trade-offs, defend decisions under questioning, and think on your feet about unfamiliar constraints introduced mid-conversation. AI can, however, make your preparation for these rounds dramatically more effective — more on that shortly.</p>
+
+    <h2>Company Policy Differences: What You're Actually Seeing</h2>
+
+    <p>Company attitudes toward AI in interviews fall on a spectrum, and they're moving fast. Here's a realistic picture of where different types of employers currently sit, based on widespread public reporting and industry discussion as of mid-2026:</p>
+
+    <h3>Large Tech (FAANG and equivalents)</h3>
+
+    <p>The major tech companies still run highly structured, proctored processes. Live algorithm screens at Google, Meta, Amazon, and Microsoft are conducted in controlled environments — CoderPad or proprietary platforms — with a human interviewer watching in real time. AI assistance during these rounds is not allowed and would be immediately apparent. Their take-home components (more common in certain teams or for senior roles) are evolving, but most still expect independent work because the subsequent debrief is calibrated to surface whether you actually wrote the code.</p>
+
+    <p>One important data point: large tech companies have simultaneously begun to interview for AI fluency explicitly. You may be asked about your AI tool usage, your workflow with tools like Copilot or Claude Code, and how you evaluate AI-generated code. Not being able to speak to this is itself a gap at the senior level. The message is: we expect you to use AI in your daily work; we do not want you to use it to fake your way through our interviews.</p>
+
+    <h3>Startups and Scale-Ups</h3>
+
+    <p>Smaller companies are more likely to have adapted their interview process to reflect modern working conditions. Many have moved away from pure algorithm screens entirely toward practical tasks — reviewing a pull request, debugging a failing test, extending an existing service — because these tasks more directly mirror the actual job. In this context, using AI during a take-home isn't just tolerated; it may be expected, because the company wants to see how you use it. The evaluation shifts from "can you write code" to "what do you build, how do you judge quality, and can you talk me through your thinking."</p>
+
+    <h3>Enterprise and Government</h3>
+
+    <p>More conservative organizations — large enterprises with formal HR processes, government contractors — tend to maintain strict traditional interview formats with no AI assistance permitted. Their compliance, security, and procurement processes make policy changes slow. If you're interviewing in these contexts, assume all AI tools are off-limits unless explicitly told otherwise.</p>
+
+    <h2>The Allowed vs. Banned Decision Table</h2>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Interview Context</th><th>AI Tools Allowed?</th><th>Rationale &amp; Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Live algorithm / coding screen (shared screen, real-time)</td>
+          <td>No — universally prohibited</td>
+          <td>Defeats the purpose; immediately detectable; proctoring enforces this on online platforms</td>
+        </tr>
+        <tr>
+          <td>Proctored online assessment (HackerRank, Codility, Karat)</td>
+          <td>No — enforced technically</td>
+          <td>Tab-switching flagged; browser focus monitored; camera proctoring on some platforms</td>
+        </tr>
+        <tr>
+          <td>Whiteboard coding (in-person)</td>
+          <td>No — physically impossible / inappropriate</td>
+          <td>Same evaluation logic as live screen; use of a phone would be immediately visible</td>
+        </tr>
+        <tr>
+          <td>Take-home: instructions explicitly ban AI</td>
+          <td>No — honor pledge involved</td>
+          <td>Clear ethical line; follow-up debrief will reveal if you didn't write the code</td>
+        </tr>
+        <tr>
+          <td>Take-home: instructions explicitly allow AI</td>
+          <td>Yes — but with full accountability</td>
+          <td>Must explain all code in debrief; AI use signals modern workflow awareness</td>
+        </tr>
+        <tr>
+          <td>Take-home: instructions silent on AI</td>
+          <td>Gray area — use with caution</td>
+          <td>Treat like a professional tool; never submit code you cannot explain; disclose proactively if unsure</td>
+        </tr>
+        <tr>
+          <td>System design interview (real-time verbal)</td>
+          <td>No — verbal reasoning being evaluated</td>
+          <td>AI can't reason on your behalf in a live conversation; preparation is where AI helps</td>
+        </tr>
+        <tr>
+          <td>Asynchronous design document submission</td>
+          <td>Situational — check instructions</td>
+          <td>AI can help structure and edit; you must own all technical content and defend it live</td>
+        </tr>
+        <tr>
+          <td>Behavioral / HR interview</td>
+          <td>No practical role during; yes in prep</td>
+          <td>Real-time conversation; AI invaluable for preparing STAR stories in advance</td>
+        </tr>
+        <tr>
+          <td>Interview preparation (practice, not the interview itself)</td>
+          <td>Yes — strongly recommended</td>
+          <td>Mock sessions, problem generation, solution walkthroughs, feedback — AI excels here</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>When AI Is Allowed: How to Use It Correctly</h2>
+
+    <p>If you're doing a take-home where AI is permitted — either explicitly or implicitly — the question shifts from "can I" to "how should I." Using AI well in a professional context, including a job interview context, is itself a skill. Here's how to do it in a way that represents you accurately and produces defensible work.</p>
+
+    <h3>Use AI for acceleration, not substitution</h3>
+
+    <p>The healthy model is: you hold the design and intent, AI helps with execution speed. You should be making all architectural decisions, choosing data structures, handling edge cases, and structuring the solution. AI can help you write boilerplate faster, suggest idiomatic library usage, catch syntax errors, and provide alternative implementations for you to evaluate. When AI proposes something you didn't intend, understand it, decide whether it's better, and modify it accordingly. Every line you submit should have passed through your judgment.</p>
+
+    <h3>Treat the debrief as the real exam</h3>
+
+    <p>In any take-home scenario, expect a follow-up conversation where an interviewer will walk through your submission with you. They'll ask why you chose a particular approach, what the trade-offs are, what you'd do differently with more time, and sometimes ask you to extend the code live. This debrief is where AI-generated work that you don't understand is instantly exposed. If you can't explain a function, a data structure choice, or an architectural decision in your own code, it doesn't matter how elegant the code looks — you've signaled that you're not the author of your own work. Practice reviewing and explaining your submission as if it were someone else's code before the debrief.</p>
+
+    <h3>Document your AI usage if appropriate</h3>
+
+    <p>Some candidates proactively note in their submission README: "I used AI tools including Copilot to accelerate implementation, particularly for boilerplate and test setup. All architectural decisions and business logic are my own." This is not required, but for roles at companies that care about AI fluency, it signals maturity and transparency rather than concealment. Read the instructions carefully — some companies may want this disclosure; others don't require it.</p>
+
+    <h3>Don't let AI write your code review response</h3>
+
+    <p>If the take-home includes a code review component — reviewing a PR provided by the company — be especially careful. The point is to see what you notice, what you prioritize, and how you communicate feedback. Asking an AI to write your review comments entirely hands away the very signals the company is trying to collect. You can use AI to verify your understanding of a pattern or check whether a potential bug is real, but your judgments and your voice should be yours.</p>
+
+    <h2>Proctoring and Anti-Cheating: What Actually Detects It</h2>
+
+    <p>It's worth being clear about what modern interview proctoring can and cannot detect, not as a guide to circumventing it — which is inadvisable on both ethical and practical grounds — but so candidates understand what they're navigating.</p>
+
+    <h3>What proctored platforms can detect</h3>
+    <ul>
+      <li><strong>Tab switching and focus loss</strong> — HackerRank and Codility use the JavaScript <code>visibilitychange</code> and <code>blur</code> events to log when you leave the coding window. Flagged events are reported to recruiters. Even a few switches can raise red flags.</li>
+      <li><strong>Keystroke dynamics</strong> — Some advanced platforms analyze typing patterns: are you typing code character by character (organic), or pasting large blocks (suspicious)?</li>
+      <li><strong>Camera and screen recording</strong> — Proctored enterprise assessments (used by some large companies and third-party screening vendors) record your webcam and screen, with AI analysis flagging unusual eye movement patterns or off-screen glances.</li>
+      <li><strong>Code plagiarism detection</strong> — Solutions are run through automated similarity detection against a corpus of known solutions, LLM outputs, and other candidates' submissions from the same assessment window.</li>
+      <li><strong>Timing analysis</strong> — Submitting a complex solution in two minutes is flagged for human review. Interviewers are experienced enough to know what a plausible completion time looks like.</li>
+    </ul>
+
+    <h3>What live human interviewers detect</h3>
+    <p>In a live session with a human interviewer, proctoring software is almost irrelevant — the human is watching. An experienced interviewer will notice immediately if: you stop speaking while secretly querying an AI, your solution jumps from nothing to complete without the incremental reasoning steps you'd normally talk through, your explanation of your own code is halting or inconsistent with the code's structure, or you can't answer follow-up questions about the code you just "wrote." Interviewers at top companies conduct dozens of sessions; the pattern of AI-assisted performance is identifiable.</p>
+
+    <h2>Using AI for Interview Preparation: The Real Win</h2>
+
+    <p>This is where AI transforms the preparation experience, and it's entirely ethical. The constraints of AI-assisted preparation are zero — you're studying, not being evaluated. The leverage is enormous.</p>
+
+    <h3>Generating targeted practice problems</h3>
+
+    <p>Traditional LeetCode grinding has a well-known problem: it's repetitive and poorly calibrated to your specific weaknesses. AI allows you to escape this. You can prompt an AI to generate novel variants of problem types you're struggling with, constrained to specific companies' historical patterns, at specific difficulty levels, with or without specific data structures. Some examples of prompts that generate high-quality practice material:</p>
+
+    <ul>
+      <li>"Give me five medium-difficulty graph problems focused on BFS traversal with variations I haven't seen before. Include edge cases involving disconnected components."</li>
+      <li>"Create a dynamic programming problem about interval scheduling. Provide the problem statement, then walk me through the optimal substructure before giving the solution."</li>
+      <li>"Simulate a Google-style coding interview. Give me a problem, wait for my pseudocode approach, then ask follow-up questions about time complexity before revealing the full solution."</li>
+    </ul>
+
+    <p>This kind of targeted, interactive generation is more effective than scrolling through a problem bank because it's calibrated to your gaps in real time.</p>
+
+    <h3>On-demand solution walkthroughs</h3>
+
+    <p>When you're stuck on a problem, the ideal learning path is: try hard, get stuck, get a hint, try again — not jump straight to the solution. AI tutors this process perfectly. You can ask for a hint about the key insight without revealing the full approach, get confirmation that your data structure choice is correct before spending time implementing, or ask for an explanation of the solution at whatever level of detail you need — from high-level intuition to line-by-line code walkthrough. This is dramatically better than reading a static editorial that gives you the answer without the pedagogical scaffolding.</p>
+
+    <h3>Complexity analysis practice</h3>
+
+    <p>Time and space complexity reasoning is a core interview skill that many candidates underinvest in. AI makes it easy to build fluency: after writing any practice solution, ask the AI to verify your complexity analysis, push back if you're wrong, and explain why. Ask it to walk you through analyzing nested loops, recursive calls, or amortized analysis for data structures. The AI's ability to explain at multiple levels of rigor is useful — you can ask for an intuitive explanation, then a formal derivation, then edge cases where the naive analysis is wrong.</p>
+
+    <h3>Running simulated mock interviews</h3>
+
+    <p>The most underrated use of AI for interview prep is running full mock interview sessions. Ask the AI to act as a technical interviewer: it gives you a problem, waits for you to think out loud (you type your reasoning), asks follow-up questions, and evaluates your communication. This builds the habits that live interviews require: narrating your approach before coding, checking complexity before optimizing, asking clarifying questions about constraints, and gracefully handling hints. These are skills that only develop through practice under interview-like conditions, and AI gives you unlimited reps.</p>
+
+    <h3>System design preparation</h3>
+
+    <p>System design is notoriously hard to practice alone because it requires a conversational partner who can introduce constraints, challenge your assumptions, and probe your reasoning. AI is an excellent substitute. Prompt it to act as an interviewer for a given system — "Interview me on designing a distributed task queue. Start by giving me the requirements, then ask probing questions as I work through the design." The AI can introduce realistic complexity: "What happens if a consumer crashes mid-processing? How would you handle exactly-once delivery?" This kind of dynamic probing builds the mental flexibility that system design rounds demand.</p>
+
+    <h3>Behavioral and STAR story preparation</h3>
+
+    <p>Behavioral interviews get less attention in AI-assisted prep, but they reward it equally. Give an AI your resume and a target job description, and ask it to generate the behavioral questions most likely to be asked, calibrated to the seniority level. Then walk through your answers and ask it to evaluate them against STAR structure (Situation, Task, Action, Result), flag where your answers are vague, and suggest how to make the impact more concrete. This is far more efficient than rehearsing in front of a mirror.</p>
+
+    <h2>The Interviewer's Perspective: What They're Actually Looking For</h2>
+
+    <p>Understanding what interviewers evaluate reframes how you think about AI use. Interviewers at serious companies are not testing whether you know the syntax of a graph traversal algorithm. They are evaluating a cluster of signals that AI cannot fake in a live setting:</p>
+
+    <h3>Problem decomposition</h3>
+    <p>Can you break an ambiguous problem into clear sub-problems? Do you identify constraints before jumping to solutions? Can you spot when a problem has a simpler structure than it first appears? These are observable in how you think before you type, and AI cannot supply them for you in a live session.</p>
+
+    <h3>Communication under uncertainty</h3>
+    <p>Do you talk through your reasoning, or do you go quiet and panic? Can you say "I'm not sure about this part — let me think about it differently" productively? Can you communicate trade-offs clearly? Interviewers learn as much from your uncertainty management as from your correct answers.</p>
+
+    <h3>Debugging and course correction</h3>
+    <p>When your first approach is wrong, how do you respond? Do you recognize it? Can you articulate why it fails and pivot to a better one? This is highly predictive of on-the-job performance and completely invisible to AI during a real-time session.</p>
+
+    <h3>Conceptual depth</h3>
+    <p>Can you explain why your solution works, not just that it does? Can you generalize it to related problems? Do you know the underlying algorithmic properties — why this data structure has these time bounds, why this approach has optimal substructure? This is the layer that AI-generated code cannot supply.</p>
+
+    <h2>How to Talk About AI Tools in Interviews</h2>
+
+    <p>For senior and staff engineering roles especially, expect to be asked directly about your relationship with AI coding tools. This is no longer a hypothetical — it's a proxy for your engineering judgment and your ability to work with and evaluate AI-generated code. Here's how to handle common questions:</p>
+
+    <h3>"What AI tools do you use in your daily work?"</h3>
+    <p>Be specific and honest. Name the tools (Copilot, Cursor, Claude Code, ChatGPT), the specific contexts where you find each useful, and — critically — where you don't find them useful. "I use Copilot for boilerplate and test generation, but I find it unreliable for complex algorithmic logic where I need to reason carefully about edge cases, so I write that manually and use AI to review it afterward." This signals genuine experience, not a performance of buzzword fluency.</p>
+
+    <h3>"How do you evaluate AI-generated code for correctness?"</h3>
+    <p>A good answer covers multiple levels: you review for obvious logic errors, you run the tests (and think about whether the tests themselves are adequate), you check edge cases the AI might have missed, you consider whether the solution is idiomatic for the language and codebase, and you look for subtle issues like off-by-one errors or race conditions in concurrent code. Saying "I run the tests and they pass" is a weak answer; it signals you're outsourcing judgment.</p>
+
+    <h3>"What are the limitations of AI coding tools?"</h3>
+    <p>Strong candidates can articulate genuine limitations: AI lacks full context about your codebase and tends to hallucinate plausible-looking but incorrect APIs; it can produce code that compiles and passes tests but misses the actual requirement; it struggles with problems that require sustained reasoning across many interdependent constraints; it can produce security vulnerabilities in domains like authentication, cryptography, or SQL query construction if not carefully reviewed. Knowing these limitations is a senior signal — it shows you've used AI enough to encounter its failure modes.</p>
+
+    <h3>"Have you ever had to fix AI-generated code? What happened?"</h3>
+    <p>Have a specific story ready. Interviewers asking this want to hear that you've caught AI errors — it confirms you're reviewing rather than rubber-stamping. Describe the bug concretely, how you spotted it, and what the fix was. Even better if you can describe what in your review process caught it and what you'd add to your review checklist as a result.</p>
+
+    <h2>The Integrity Line: Where "Using AI" Becomes Cheating</h2>
+
+    <p>The ethical framework is actually simpler than all the case-by-case analysis suggests. The integrity line is about <strong>understanding and representation</strong>, not tool use. Here is the principle:</p>
+
+    <p><em>If you would be comfortable, under follow-up questioning, explaining exactly what you did and why every decision was made, you are on the right side of the line. If you're hoping no one asks, you're not.</em></p>
+
+    <p>This principle is consistent and technology-independent. It applied to copying solutions from textbooks in 1995, to copy-pasting from Stack Overflow in 2010, and to using AI in 2026. The mechanism changes; the ethical test doesn't. Using AI to learn faster, to generate practice material, to get unstuck on preparation problems, to check your understanding — none of this is in tension with integrity. Using AI to produce work that represents your capabilities when it doesn't, in a context where that representation matters for an employment decision, is a problem regardless of what the tool instructions say.</p>
+
+    <p>Beyond ethics, there's a practical argument: the job is what comes after the interview. If you get a role by misrepresenting your abilities, the gap between what was advertised and what you can deliver will surface quickly and painfully. The interview process exists partly to calibrate fit; circumventing the calibration doesn't eliminate the reality it was measuring.</p>
+
+    <h2>Building Skills That Don't Depend on AI</h2>
+
+    <p>The most important long-term preparation strategy is building skills that hold up whether or not AI is available. This isn't about being anti-AI — it's about understanding that your value as an engineer is the reasoning layer that uses AI, not the AI itself. The skills that survive and compound regardless of AI capability:</p>
+
+    <ul>
+      <li><strong>Algorithmic intuition</strong> — knowing which class of algorithm fits a problem before you implement it; recognizing that a graph problem is really a cycle detection problem; seeing that a two-pointer approach collapses a naive O(n²) solution to O(n). This intuition comes from solving many problems with your own reasoning, not from accepting AI suggestions.</li>
+      <li><strong>Complexity analysis fluency</strong> — being able to derive time and space bounds on the fly and compare them under different constraints. An interviewer who asks "what happens to your approach when n approaches 10⁸" expects a real-time answer.</li>
+      <li><strong>Code reading and debugging</strong> — understanding code you didn't write, tracing execution through unfamiliar control flow, spotting where a bug must be hiding from indirect symptoms. This is increasingly what jobs actually require, and AI makes it more important, not less.</li>
+      <li><strong>System design instincts</strong> — knowing which distributed systems patterns apply to which problems; having mental models of how databases, caches, queues, and load balancers interact; understanding what "consistent" and "available" mean in practice, not just in theory.</li>
+      <li><strong>Communication</strong> — the ability to explain technical decisions clearly to people with different levels of context. This compounds with seniority and cannot be automated.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>AI is banned in live coding rounds, negotiable in take-homes, and unrestricted in preparation. In the gray zones, the test is always the same: can you explain and defend everything you submit? Use AI as a preparation multiplier — mock interviews, targeted problem generation, solution walkthroughs, complexity analysis feedback — and build the underlying skills that hold up in any format. Represent yourself accurately, because the interview is the beginning of a working relationship, not its end.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>When is it okay to use AI in a coding interview?</strong> During preparation, always. During a take-home if the instructions allow or are silent, but only for work you can fully explain. Never during a live coding or algorithm screen — it's universally prohibited and defeats the evaluation entirely.<br>
+      <strong>What do interviewers actually detect when someone uses AI to cheat?</strong> In live sessions, they see the behavioral signatures: silence during "typing," code that appears without incremental reasoning, and inability to explain your own solution under follow-up. Proctored platforms add technical signals: tab-switching logs, keystroke dynamics, timing analysis, and code plagiarism detection.<br>
+      <strong>How should you talk about AI tools in a senior SDE interview?</strong> Specifically and honestly — name the tools, describe where they help and where they don't, give concrete examples of catching AI errors, and articulate the limitations you've encountered. Vague buzzword answers read as inexperience; the ability to discuss failure modes signals genuine daily use.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/tool-use-function-calling-mcp/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Tool Use, Function Calling &amp; MCP</div>
+      </a>
+      <a href="/ai-coding/sde-interviews-in-the-ai-era/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">SDE Interviews in the AI Era</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

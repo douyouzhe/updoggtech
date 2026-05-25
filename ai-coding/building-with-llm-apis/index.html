@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A comprehensive guide to building with the Claude and OpenAI APIs — Messages API, streaming, prompt caching, token costs, latency optimization, structured output, and security.">
+<title>Building with the Claude &amp; OpenAI APIs | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/building-with-llm-apis/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Building with the Claude &amp; OpenAI APIs">
+<meta property="og:description" content="A comprehensive guide to building with the Claude and OpenAI APIs — Messages API, streaming, prompt caching, token costs, latency, structured output, and security.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/building-with-llm-apis/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Building with the Claude &amp; OpenAI APIs">
+<meta name="twitter:description" content="Everything you need to build with LLM APIs: Messages structure, streaming, caching, costs, latency, structured output, and key management.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Building with the Claude & OpenAI APIs","description":"A comprehensive guide to building with the Claude and OpenAI APIs — Messages API, streaming, prompt caching, token costs, latency optimization, structured output, and security.","datePublished":"2026-05-18","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/building-with-llm-apis/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">building-with-llm-apis</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Building with the Claude &amp; OpenAI APIs</h1>
+    <div class="article-meta">
+      <span>May 18, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Every AI coding tool, chatbot, document analyzer, and autonomous agent running today is built on the same foundation: an HTTP API that takes a list of messages and returns a completion. Claude's Messages API and OpenAI's Chat Completions API are structurally nearly identical, and mastering either one gives you a transferable mental model for both. But knowing the basic call is a starting point, not the whole story. Production applications need to handle streaming for perceived responsiveness, prompt caching to keep costs in check, structured output for reliable parsing, exponential backoff for transient errors, and tight key management to keep secrets secret. This article covers all of it.</p>
+
+    <p>We will build up from the basic API structure, then layer on each production concern in turn. By the end you will have a complete picture of what is required to ship a reliable, cost-effective, low-latency LLM-powered feature — not just get a response back in your terminal.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>The Messages API has three roles</strong> — <code>system</code>, <code>user</code>, <code>assistant</code> — and understanding each is the foundation of prompt design. The system role sets persistent instructions; user/assistant alternate to form the conversation.</li>
+        <li><strong>Streaming is almost always the right default</strong> for user-facing features. First-token latency feels dramatically faster than waiting for the entire response, even if total time is the same.</li>
+        <li><strong>Prompt caching can cut costs by 80–90%</strong> for workloads with a large, stable prefix (system prompt, document, codebase). Cache hits are also 3–5× faster than full inference.</li>
+        <li><strong>Token costs compound fast.</strong> Understand your input/output token ratio, measure it empirically, and design your prompt to minimize unnecessary input repetition.</li>
+        <li><strong>Structured output</strong> (JSON mode or schema-constrained generation) is essential when downstream code parses the model's response. Never regex-parse free text if you can constrain the output format instead.</li>
+        <li><strong>Key hygiene matters at day one.</strong> API keys are bearer tokens; anyone who has yours can spend your budget and read your prompts. Use environment variables, secret managers, and server-side proxies — never embed keys in client-side code.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>The Claude and OpenAI APIs share the same messages-based structure. For production: use streaming for responsiveness, prompt caching for cost on large stable contexts, structured output for reliable parsing, exponential backoff for errors, and a server-side proxy so API keys never reach the client. Model choice is a cost/capability tradeoff — measure empirically.</p>
+    </div>
+
+    <h2>The Messages API: Structure and Roles</h2>
+    <p>Every call to the Messages API is a list of message objects, each with a <code>role</code> and <code>content</code>. The three roles have distinct semantics:</p>
+
+    <ul>
+      <li><strong>system</strong> — sent once, before any user turn. Sets the model's persona, task constraints, output format, and any persistent instructions. The model treats this with higher authority than user messages. This is where you put "You are a senior Python engineer. Always return valid JSON. Never include markdown code fences."</li>
+      <li><strong>user</strong> — messages from the human (or the application posing as the human). Each turn of the conversation adds a user message.</li>
+      <li><strong>assistant</strong> — the model's previous responses. When you build multi-turn conversations, you include prior assistant messages in the list so the model can maintain context. For single-turn calls you omit these.</li>
+    </ul>
+
+    <p>Anthropic's API handles system messages as a top-level parameter rather than a message in the list, but the conceptual role is identical. OpenAI includes system as the first object in the messages array. Both behave the same way in practice.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — basic Messages API call (Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()  <span class="cm"># reads ANTHROPIC_API_KEY from env</span>
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    system=<span class="str">"You are a concise technical writer. Reply in plain text, no markdown."</span>,
+    messages=[
+        {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Explain what a context window is in one paragraph."</span>},
+    ],
+)
+
+<span class="fn">print</span>(response.content[<span class="num">0</span>].text)
+<span class="fn">print</span>(<span class="str">f"Input tokens: {response.usage.input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Output tokens: {response.usage.output_tokens}"</span>)</code></pre>
+    </div>
+
+    <h3>Key Parameters and What They Do</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Parameter</th><th>Type</th><th>What it controls</th><th>Typical value</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>model</code></td><td>string</td><td>Which model to use</td><td>"claude-opus-4-5", "gpt-4o"</td></tr>
+        <tr><td><code>max_tokens</code></td><td>int</td><td>Maximum output tokens before truncation</td><td>256–4096 depending on task</td></tr>
+        <tr><td><code>temperature</code></td><td>float 0–1</td><td>Randomness: 0 = deterministic, 1 = creative</td><td>0 for code/JSON, 0.7 for prose</td></tr>
+        <tr><td><code>top_p</code></td><td>float 0–1</td><td>Nucleus sampling: alternative to temperature</td><td>Don't use both simultaneously</td></tr>
+        <tr><td><code>stop_sequences</code></td><td>list[str]</td><td>Stop generating when any string is produced</td><td>["</s>", "###"] for structured prompts</td></tr>
+        <tr><td><code>stream</code></td><td>bool</td><td>Return tokens as they are generated</td><td>true for user-facing features</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Temperature vs. top_p:</strong> use temperature for most applications. Set it low (0–0.2) when you want deterministic, factual output (parsing, code generation, JSON extraction). Set it higher (0.6–0.9) when creativity or variation is desirable. Avoid changing both simultaneously — they interact in ways that are hard to reason about.</p>
+
+    <h2>Streaming: First Token Wins the User's Attention</h2>
+    <p>Without streaming, your app waits for the entire response before displaying anything — which for a long response can be 5–20 seconds of a blank screen. With streaming, tokens arrive as the model generates them, and the user sees text appearing within a few hundred milliseconds of sending the request. Total latency is often identical, but <em>perceived</em> latency is dramatically lower. For any user-facing feature, streaming is almost always the right default.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — streaming response (Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="kw">with</span> client.messages.<span class="fn">stream</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Write a merge sort in Python."</span>}],
+) <span class="kw">as</span> stream:
+    <span class="kw">for</span> text <span class="kw">in</span> stream.<span class="fn">text_stream</span>():
+        <span class="fn">print</span>(text, end=<span class="str">""</span>, flush=<span class="kw">True</span>)  <span class="cm"># each chunk arrives as generated</span>
+
+final = stream.<span class="fn">get_final_message</span>()
+<span class="fn">print</span>(<span class="str">f"\nTotal tokens: {final.usage.input_tokens + final.usage.output_tokens}"</span>)</code></pre>
+    </div>
+
+    <p>In a web application, you typically proxy the stream from your server to the browser using Server-Sent Events (SSE) or WebSockets. The browser renders each chunk as it arrives. Most LLM API SDKs handle the SSE framing for you on the server side — you just iterate over the stream.</p>
+
+    <h3>Streaming in JavaScript</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">javascript — streaming with OpenAI SDK</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">"openai"</span>;
+
+<span class="kw">const</span> client = <span class="kw">new</span> <span class="fn">OpenAI</span>();  <span class="cm">// reads OPENAI_API_KEY from env</span>
+
+<span class="kw">const</span> stream = <span class="kw">await</span> client.chat.completions.<span class="fn">create</span>({
+  model: <span class="str">"gpt-4o"</span>,
+  stream: <span class="kw">true</span>,
+  messages: [{ role: <span class="str">"user"</span>, content: <span class="str">"Explain async/await in JavaScript."</span> }],
+});
+
+<span class="kw">for await</span> (<span class="kw">const</span> chunk <span class="kw">of</span> stream) {
+  <span class="kw">const</span> delta = chunk.choices[<span class="num">0</span>]?.delta?.content ?? <span class="str">""</span>;
+  process.stdout.<span class="fn">write</span>(delta);  <span class="cm">// stream to browser via SSE in production</span>
+}</code></pre>
+    </div>
+
+    <h2>Prompt Caching: The Single Best Cost Optimization</h2>
+    <p>LLM inference is expensive because the model must process every input token from scratch on every call. But many production workloads have a large, stable prefix: a long system prompt, a document being analyzed, or an entire codebase being processed query-by-query. Prompt caching lets the API pre-process this stable prefix once and reuse the KV cache for subsequent calls with the same prefix — dramatically cutting both cost and latency.</p>
+
+    <h3>How Cache Economics Work</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Token type</th><th>Relative cost</th><th>Latency impact</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Regular input tokens</td><td>1×</td><td>Full inference time</td></tr>
+        <tr><td>Cache write (first call)</td><td>~1.25× (slight premium to populate)</td><td>Slightly higher on first call</td></tr>
+        <tr><td>Cache read (subsequent calls)</td><td>~0.10× (90% discount)</td><td>3–5× faster than full input processing</td></tr>
+        <tr><td>Output tokens</td><td>3–5× input cost</td><td>Determined by output length</td></tr>
+      </tbody>
+    </table>
+
+    <p>The math is compelling: if your system prompt is 10,000 tokens and you make 100 calls per day, naively that is 1,000,000 input tokens. With caching, it is 10,000 cache-write tokens (on the first call or TTL refresh) plus 90,000 cache-read tokens for the rest — roughly a 90% reduction in input token cost for that portion of the prompt.</p>
+
+    <h3>Implementing Prompt Caching with Claude</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — prompt caching with cache_control (Claude)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="cm"># A long system prompt that stays stable across many calls</span>
+LONG_SYSTEM_PROMPT = <span class="str">"""
+You are a senior Python engineer reviewing code for a fintech company.
+[... 5,000 tokens of detailed coding standards, style rules, security
+ requirements, and example patterns ...]
+"""</span>
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-opus-4-5"</span>,
+    max_tokens=<span class="num">1024</span>,
+    system=[
+        {
+            <span class="str">"type"</span>: <span class="str">"text"</span>,
+            <span class="str">"text"</span>: LONG_SYSTEM_PROMPT,
+            <span class="str">"cache_control"</span>: {<span class="str">"type"</span>: <span class="str">"ephemeral"</span>},  <span class="cm"># mark for caching</span>
+        }
+    ],
+    messages=[
+        {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Review this function: def process(x): return x*2"</span>}
+    ],
+)
+
+usage = response.usage
+<span class="fn">print</span>(<span class="str">f"Cache write tokens: {usage.cache_creation_input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Cache read tokens:  {usage.cache_read_input_tokens}"</span>)
+<span class="fn">print</span>(<span class="str">f"Regular input tokens: {usage.input_tokens}"</span>)</code></pre>
+    </div>
+
+    <p>Cache TTL on Claude is 5 minutes by default. As long as calls arrive within the TTL, subsequent requests hit the cache. For high-traffic applications this is essentially always; for low-traffic apps, you may need to implement a keep-alive ping to keep the cache warm between real calls.</p>
+
+    <h3>When Caching Helps Most</h3>
+    <ul>
+      <li><strong>Document Q&amp;A:</strong> embed the full document in the prompt once; each user question is a cache-read on the document prefix.</li>
+      <li><strong>Code review pipelines:</strong> include your entire coding standards document in the system prompt; review each PR against the same cached standards.</li>
+      <li><strong>Multi-turn chat with a long system prompt:</strong> the system prompt is stable across all turns; cache it and only pay full price for each new user message.</li>
+      <li><strong>Batch processing:</strong> if you process 10,000 documents through the same template, the template prefix is cached after the first request.</li>
+    </ul>
+
+    <h2>Token Costs and Cost Estimation</h2>
+    <p>Every API call is billed by tokens consumed: input tokens (your prompt + conversation history) and output tokens (the model's response). Output tokens cost 3–5× more than input tokens on most models, reflecting the additional compute required for autoregressive generation. Understanding this ratio is essential for cost-aware application design.</p>
+
+    <h3>Estimating Costs Before You Build</h3>
+    <p>A rough rule of thumb: 1 token ≈ 0.75 English words. A 1,000-word document is roughly 1,333 tokens. Common input/output ratios by application type:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Application type</th><th>Typical input:output ratio</th><th>Cost bottleneck</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Code review / analysis</td><td>10:1 to 20:1</td><td>Input (the code to review)</td></tr>
+        <tr><td>Content generation</td><td>1:5 to 1:10</td><td>Output (the generated text)</td></tr>
+        <tr><td>Classification / extraction</td><td>20:1 to 100:1</td><td>Input (document being processed)</td></tr>
+        <tr><td>Conversational assistant</td><td>3:1 to 5:1</td><td>Mix — depends on history length</td></tr>
+        <tr><td>Agent task execution</td><td>50:1 to 200:1</td><td>Input (tool outputs, context)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Measure your actual token usage on real inputs before pricing your product. The <code>usage</code> object in the API response always contains precise token counts — log them. Your estimates will often be wrong by 2–3×, and that matters for unit economics.</p>
+
+    <h3>Cost Reduction Levers</h3>
+    <ul>
+      <li><strong>Prompt caching</strong> — largest single lever for stable-prefix workloads.</li>
+      <li><strong>Smaller models for simpler tasks</strong> — Haiku or GPT-4o-mini are 10–20× cheaper than Opus or GPT-4o; many classification and extraction tasks don't need the largest model.</li>
+      <li><strong>Limit max_tokens</strong> — set a tight cap appropriate for your task. A function that extracts a single field from a document does not need 4096 output tokens.</li>
+      <li><strong>Truncate conversation history</strong> — multi-turn applications accumulate history; trim or summarize old turns to avoid paying for stale context repeatedly.</li>
+      <li><strong>Batch API</strong> — both Anthropic and OpenAI offer asynchronous batch endpoints at roughly 50% of the synchronous price, suitable for non-real-time workloads.</li>
+    </ul>
+
+    <h2>Latency Optimization</h2>
+    <p>Latency has two distinct components: <strong>time to first token (TTFT)</strong> — how long before the user sees anything — and <strong>total completion time</strong> — how long before the full response is available. Streaming addresses TTFT. Total time depends on model size, prompt length, and output length.</p>
+
+    <h3>Reducing Time to First Token</h3>
+    <ul>
+      <li><strong>Stream responses.</strong> TTFT drops to the time the model starts generating the first token — typically 200–800ms for major APIs — regardless of total response length.</li>
+      <li><strong>Use prompt caching.</strong> Cache hits skip input processing, reducing TTFT by 3–5× for large cached prefixes.</li>
+      <li><strong>Use a geographically close API endpoint.</strong> Round-trip latency to the API server adds directly to TTFT. Both Anthropic and OpenAI offer regional endpoints.</li>
+      <li><strong>Reduce input size.</strong> Smaller prompts start processing faster. If you are loading an entire large document, consider retrieval (fetch only relevant chunks) instead.</li>
+    </ul>
+
+    <h3>Reducing Total Completion Time</h3>
+    <ul>
+      <li><strong>Use a smaller, faster model</strong> where the task allows it. Haiku generates tokens at roughly 3–4× the speed of Opus.</li>
+      <li><strong>Set a tight max_tokens.</strong> The model generates until it hits max_tokens or a stop sequence. Unnecessarily high limits don't cause the model to generate more — but they don't cause it to stop sooner either. Match max_tokens to the realistic output length.</li>
+      <li><strong>Parallelize independent calls.</strong> If you need two separate LLM outputs that don't depend on each other, fire both API calls concurrently with <code>asyncio.gather</code> or <code>Promise.all</code>.</li>
+    </ul>
+
+    <h2>Error Handling and Retry Logic</h2>
+    <p>LLM APIs are network services and will occasionally return errors. The two most common classes are transient errors (rate limits, temporary overload) and permanent errors (invalid input, authentication failure). Treating them identically — either always retrying or never retrying — is wrong. A well-designed client distinguishes between them.</p>
+
+    <h3>HTTP Status Codes and What to Do</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Status</th><th>Meaning</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>200</td><td>Success</td><td>Process response normally</td></tr>
+        <tr><td>400</td><td>Bad request (invalid params, content policy)</td><td>Fix the request — do not retry</td></tr>
+        <tr><td>401</td><td>Invalid API key</td><td>Fix auth — do not retry</td></tr>
+        <tr><td>429</td><td>Rate limit exceeded</td><td>Retry with exponential backoff; respect Retry-After header</td></tr>
+        <tr><td>500, 529</td><td>Server error / overloaded</td><td>Retry with exponential backoff, up to 5 attempts</td></tr>
+        <tr><td>413</td><td>Request too large</td><td>Truncate prompt — do not retry as-is</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — exponential backoff with jitter</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time, random, anthropic
+<span class="kw">from</span> anthropic <span class="kw">import</span> RateLimitError, APIStatusError
+
+<span class="kw">def</span> <span class="fn">call_with_retry</span>(client, max_retries=<span class="num">5</span>, **kwargs):
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+        <span class="kw">try</span>:
+            <span class="kw">return</span> client.messages.<span class="fn">create</span>(**kwargs)
+
+        <span class="kw">except</span> RateLimitError <span class="kw">as</span> e:
+            <span class="kw">if</span> attempt == max_retries - <span class="num">1</span>:
+                <span class="kw">raise</span>
+            wait = (<span class="num">2</span> ** attempt) + random.<span class="fn">uniform</span>(<span class="num">0</span>, <span class="num">1</span>)  <span class="cm"># exponential + jitter</span>
+            <span class="fn">print</span>(<span class="str">f"rate limit hit, retry {attempt+1} in {wait:.1f}s"</span>)
+            time.<span class="fn">sleep</span>(wait)
+
+        <span class="kw">except</span> APIStatusError <span class="kw">as</span> e:
+            <span class="kw">if</span> e.status_code <span class="kw">in</span> (<span class="num">500</span>, <span class="num">529</span>) <span class="kw">and</span> attempt &lt; max_retries - <span class="num">1</span>:
+                wait = (<span class="num">2</span> ** attempt) + random.<span class="fn">uniform</span>(<span class="num">0</span>, <span class="num">1</span>)
+                time.<span class="fn">sleep</span>(wait)
+            <span class="kw">else</span>:
+                <span class="kw">raise</span>  <span class="cm"># 4xx errors: don't retry</span></code></pre>
+    </div>
+
+    <p>Add jitter (the <code>random.uniform(0, 1)</code>) to avoid the thundering herd problem: if 100 clients all hit a rate limit simultaneously and all retry at exactly 2 seconds, 4 seconds, 8 seconds — they all hammer the API together at each retry point. Jitter spreads retries across a window and significantly reduces retry-induced load spikes.</p>
+
+    <h2>Structured Output: Making Responses Parseable</h2>
+    <p>When your application parses the model's response programmatically — extracting fields, populating a database, triggering downstream logic — you need the output in a predictable format. Free text is not that. A model that returns "The answer is 42." when you needed <code>{"answer": 42}</code> breaks your parser. Structured output solves this by constraining what the model can generate.</p>
+
+    <h3>Three Approaches, by Reliability</h3>
+    <ol>
+      <li><strong>Prompt-only JSON:</strong> instruct the model to "return valid JSON" in the system prompt and provide an example. Works 80–95% of the time on strong models; the remaining cases produce JSON with trailing text, missing quotes, or invalid escape sequences. Not acceptable for production without a validation + retry loop.</li>
+      <li><strong>JSON mode:</strong> a parameter (<code>response_format: {type: "json_object"}</code> on OpenAI) that constrains the model to always produce valid JSON. Solves syntax errors; does not guarantee the schema (keys, types, nesting) matches what you expect.</li>
+      <li><strong>Schema-constrained generation (tool use as output):</strong> define the expected output as a JSON Schema via the tool definitions; the model is forced to emit a tool call matching that schema. This is the most reliable approach and the one we recommend for production.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — schema-constrained structured output via tool use</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> json, anthropic
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="cm"># Define the expected output shape as a tool</span>
+extract_tool = {
+    <span class="str">"name"</span>: <span class="str">"extract_bug_report"</span>,
+    <span class="str">"description"</span>: <span class="str">"Extract structured data from a bug report."</span>,
+    <span class="str">"input_schema"</span>: {
+        <span class="str">"type"</span>: <span class="str">"object"</span>,
+        <span class="str">"properties"</span>: {
+            <span class="str">"severity"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"enum"</span>: [<span class="str">"low"</span>, <span class="str">"medium"</span>, <span class="str">"high"</span>, <span class="str">"critical"</span>]},
+            <span class="str">"affected_component"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>},
+            <span class="str">"reproduction_steps"</span>: {<span class="str">"type"</span>: <span class="str">"array"</span>, <span class="str">"items"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>}},
+            <span class="str">"is_regression"</span>: {<span class="str">"type"</span>: <span class="str">"boolean"</span>},
+        },
+        <span class="str">"required"</span>: [<span class="str">"severity"</span>, <span class="str">"affected_component"</span>, <span class="str">"is_regression"</span>],
+    },
+}
+
+response = client.messages.<span class="fn">create</span>(
+    model=<span class="str">"claude-haiku-4-5"</span>,  <span class="cm"># extraction task → use cheaper model</span>
+    max_tokens=<span class="num">512</span>,
+    tools=[extract_tool],
+    tool_choice={<span class="str">"type"</span>: <span class="str">"tool"</span>, <span class="str">"name"</span>: <span class="str">"extract_bug_report"</span>},  <span class="cm"># force tool use</span>
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: BUG_REPORT_TEXT}],
+)
+
+<span class="cm"># The model MUST emit a valid tool call matching the schema</span>
+tool_call = response.content[<span class="num">0</span>]
+extracted = tool_call.input  <span class="cm"># already a parsed dict, no json.loads() needed</span>
+<span class="fn">print</span>(extracted[<span class="str">"severity"</span>], extracted[<span class="str">"affected_component"</span>])</code></pre>
+    </div>
+
+    <p>By setting <code>tool_choice</code> to force the specific tool, you guarantee that the model's entire output is a valid JSON object matching your schema. No regex, no try/except on json.loads, no retry loops for malformed output.</p>
+
+    <h2>API Key Management and Security</h2>
+    <p>API keys are bearer tokens: whoever has one can make API calls billed to your account, read any prompts you send, and potentially access conversation history. Treating them carelessly is the fastest way to get a surprise invoice and a data breach simultaneously.</p>
+
+    <h3>The Cardinal Rules</h3>
+    <ul>
+      <li><strong>Never embed keys in client-side code.</strong> JavaScript bundles are inspectable. Mobile apps are reversible. Anyone who downloads your app can extract hardcoded keys. Always proxy through your server.</li>
+      <li><strong>Never commit keys to version control.</strong> Even in a private repo, git history is permanent and repos get shared. Use <code>.gitignore</code> for <code>.env</code> files and run a pre-commit hook that blocks accidental commits of secrets.</li>
+      <li><strong>Read keys from environment variables.</strong> All LLM SDKs read <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> from the environment automatically if you do not pass them explicitly. This is the minimum correct practice.</li>
+      <li><strong>Use a secrets manager in production.</strong> AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault, and Doppler all provide centralized, audited, rotatable secret storage. Your application retrieves the key at startup rather than storing it in env vars in a config file.</li>
+      <li><strong>Rotate keys regularly</strong> and immediately if you suspect exposure. Both APIs allow multiple keys simultaneously, so rotation is non-disruptive: create new key → update all services → revoke old key.</li>
+    </ul>
+
+    <h3>Server-Side Proxy Pattern</h3>
+    <p>For browser applications, the correct architecture is: your backend holds the API key, your frontend sends requests to your own backend, and your backend forwards them to the LLM API. This pattern also lets you add rate limiting per user, content filtering, logging, and cost attribution — all at the proxy layer, without touching client code.</p>
+
+    <h2>Choosing the Right Model</h2>
+    <p>Both Anthropic and OpenAI offer a tiered model lineup: a large capable model (Opus, GPT-4o), a fast balanced model (Sonnet, GPT-4o-mini), and a cheap fast model (Haiku, GPT-4o-mini on discount tiers). The instinct to "always use the best model" is economically wrong. Task-model matching is a real engineering decision.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Task type</th><th>Recommended tier</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Simple classification, extraction, routing</td><td>Small (Haiku, mini)</td><td>10–20× cheaper; quality difference negligible for clear-cut tasks</td></tr>
+        <tr><td>Code generation, multi-step reasoning</td><td>Medium (Sonnet, GPT-4o)</td><td>Balanced capability/cost; handles most engineering tasks well</td></tr>
+        <tr><td>Complex architecture, nuanced judgment, research</td><td>Large (Opus, GPT-4o for hard tasks)</td><td>Quality difference justifies cost for high-stakes decisions</td></tr>
+        <tr><td>Long-running agents with many tool calls</td><td>Medium + caching</td><td>Cost accumulates fast; caching reduces input cost dramatically</td></tr>
+      </tbody>
+    </table>
+
+    <p>The right way to choose is empirically: run both models on 50–100 real examples, compare quality on your specific task, compute the cost difference, and decide whether the quality delta justifies the price delta. Do not assume — measure.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Building with LLM APIs is not hard, but building <em>well</em> requires understanding the layered concerns: get the message structure right, stream for perceived latency, cache stable prefixes to control costs, constrain output format for reliable parsing, handle errors with exponential backoff, and keep keys server-side. Each layer compounds with the others — an application that does all of these is not just cheaper and faster, it is fundamentally more reliable and maintainable.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What is prompt caching and why does it matter?</strong> The API pre-processes a stable input prefix (system prompt, document) and reuses the KV cache for subsequent calls with the same prefix — yielding 90% cost reduction and 3–5× latency improvement on the cached portion. Essential for document Q&amp;A, code review pipelines, and any high-volume workload with a fixed context.<br><br>
+      <strong>How do you guarantee structured output from an LLM?</strong> Define the expected schema as a JSON Schema in a tool definition and force the model to call that tool via <code>tool_choice</code>. The model cannot produce anything that doesn't match the schema. Prompt-only instructions for "return JSON" work most of the time but fail in production — schema-constrained tool use is the reliable approach.<br><br>
+      <strong>Why is model selection an engineering decision, not a "always use the best" decision?</strong> Output tokens cost 3–5× input tokens; larger models are 10–20× more expensive than smaller ones. For classification, extraction, and routing tasks, smaller models match larger ones on quality while reducing cost by an order of magnitude. Measure quality on your task and compute the cost/quality tradeoff empirically.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/how-ai-coding-agents-work/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">How AI Coding Agents Work</div>
+      </a>
+      <a href="/ai-coding/tool-use-function-calling-mcp/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Tool Use, Function Calling &amp; MCP</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

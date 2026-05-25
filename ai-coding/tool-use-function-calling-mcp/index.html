@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A deep dive into function calling, tool use, and the Model Context Protocol (MCP) — how models call tools, JSON schema definitions, parallel calls, and why MCP matters for agent ecosystems.">
+<title>Tool Use, Function Calling &amp; MCP | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Tool Use, Function Calling &amp; MCP">
+<meta property="og:description" content="A deep dive into function calling, tool use, and MCP — how models call tools, define schemas, run in parallel, and how MCP standardizes agent ecosystems.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Tool Use, Function Calling &amp; MCP">
+<meta name="twitter:description" content="Everything about function calling and MCP: tool schemas, the tool-use loop, parallel calls, structured output, and MCP architecture explained.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Tool Use, Function Calling & MCP","description":"A deep dive into function calling, tool use, and the Model Context Protocol (MCP) — how models call tools, JSON schema definitions, parallel calls, and why MCP matters for agent ecosystems.","datePublished":"2026-05-20","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">tool-use-function-calling-mcp</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Tool Use, Function Calling &amp; MCP</h1>
+    <div class="article-meta">
+      <span>May 20, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A language model, by itself, is a sophisticated text transformer: it reads text and produces text. Everything we call an "agent" — a system that can read files, query databases, call APIs, run code, and interact with the world — is a language model equipped with tools. <strong>Function calling</strong> (Anthropic calls it "tool use"; OpenAI calls it "function calling"; they are the same concept) is the mechanism that bridges the gap between a model that can <em>describe</em> an action and one that can actually <em>take</em> it.</p>
+
+    <p>Understanding function calling deeply — how schemas work, how the execution loop is structured, what parallel calling looks like, and how it relates to structured output — is foundational for anyone building LLM-powered applications. Then there is a newer layer on top: the <strong>Model Context Protocol (MCP)</strong>, an open standard from Anthropic that standardizes how agents connect to tools across a diverse ecosystem. MCP is to agents what REST is to web services: a common interface that makes components interoperable without bespoke integrations. This article covers both in full depth.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Function calling is the execution layer.</strong> The model doesn't run code — it emits a structured tool call (name + arguments); your controller executes the actual function and feeds the result back. The model only sees inputs and outputs, never the implementation.</li>
+        <li><strong>JSON Schema defines the contract.</strong> Every tool is described by a name, a description the model uses to decide when to call it, and a JSON Schema that constrains the arguments. Good descriptions are critical — the model decides which tool to call based on them.</li>
+        <li><strong>The tool-use loop is multi-turn by design.</strong> A single task may involve dozens of tool calls, each observing the previous result. The loop ends when the model emits a text response instead of a tool call.</li>
+        <li><strong>Parallel tool calls cut latency.</strong> Models can emit multiple tool calls in a single turn; you fan them out concurrently and return all results at once, reducing wall-clock time for independent reads.</li>
+        <li><strong>MCP standardizes the tool surface.</strong> Instead of writing a custom integration for every tool in every agent, MCP servers expose tools via a standard protocol — any MCP-compatible host (Claude Code, Cursor, etc.) can connect to any MCP server without custom glue code.</li>
+        <li><strong>MCP and RAG solve different problems.</strong> RAG retrieves read-only context; MCP provides stateful, actionable tools. They are complementary, not alternatives.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Function calling is the mechanism: model outputs a tool call → your code executes it → result goes back → model continues. MCP is the standardization layer: a protocol that makes tools (as MCP servers) reusable across any compliant agent host. Master both to build agents that are both powerful and maintainable.</p>
+    </div>
+
+    <h2>How Function Calling Works: The Mechanism</h2>
+    <p>The key mental model: <strong>the model does not execute functions</strong>. It never touches your database, filesystem, or any external API. What the model does is produce a structured output that says "I would like to call function X with arguments Y." Your application code receives that output, validates it, runs the actual function, and returns the result to the model as a new message. The model then decides what to do next.</p>
+
+    <p>This design is deliberate. Execution happens in your code, under your control, with your permissions and your error handling. The model is sandboxed to producing intents; you are responsible for acting on them. This separation makes function-calling systems auditable, testable, and safe — you can mock tool responses in tests, log every call, rate-limit expensive tools, and require confirmation before side-effecting operations, all without touching the model at all.</p>
+
+    <h3>The Three-Phase Interaction</h3>
+    <ol>
+      <li><strong>Model produces a tool call.</strong> When the model decides it needs a tool, it emits a structured tool-use block instead of (or in addition to) text. The block contains the tool name and a JSON object of arguments that conform to the tool's schema.</li>
+      <li><strong>Controller executes the tool.</strong> Your code deserializes the tool-use block, validates the arguments, calls the actual function, and collects the result (success or error).</li>
+      <li><strong>Result is fed back.</strong> You append the tool result as a new message (role: <code>tool</code> on Anthropic, role: <code>tool</code> with a <code>tool_call_id</code> on OpenAI) and call the API again. The model sees the result and decides what to do next — either make another tool call or produce a final text response.</li>
+    </ol>
+
+    <h2>Defining Tools with JSON Schema</h2>
+    <p>Every tool is defined by three things: a <strong>name</strong> the model uses to identify it, a <strong>description</strong> the model reads to decide when to use it, and an <strong>input_schema</strong> (JSON Schema) that defines what arguments are valid. All three matter.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — tool definition with JSON Schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>tools = [
+    {
+        <span class="str">"name"</span>: <span class="str">"search_codebase"</span>,
+        <span class="str">"description"</span>: <span class="str">"""Search the repository for files or code matching a query.
+Use this to find relevant files before reading them. Returns a list of
+file paths and matching line snippets. Prefer this over read_file when
+you don't know which file contains what you need."""</span>,
+        <span class="str">"input_schema"</span>: {
+            <span class="str">"type"</span>: <span class="str">"object"</span>,
+            <span class="str">"properties"</span>: {
+                <span class="str">"query"</span>: {
+                    <span class="str">"type"</span>: <span class="str">"string"</span>,
+                    <span class="str">"description"</span>: <span class="str">"The search query — function name, variable, error message, or concept."</span>,
+                },
+                <span class="str">"file_pattern"</span>: {
+                    <span class="str">"type"</span>: <span class="str">"string"</span>,
+                    <span class="str">"description"</span>: <span class="str">"Optional glob pattern to restrict search, e.g. '*.py' or 'src/**/*.ts'."</span>,
+                },
+                <span class="str">"max_results"</span>: {
+                    <span class="str">"type"</span>: <span class="str">"integer"</span>,
+                    <span class="str">"description"</span>: <span class="str">"Maximum number of results to return. Default 10."</span>,
+                    <span class="str">"default"</span>: <span class="num">10</span>,
+                },
+            },
+            <span class="str">"required"</span>: [<span class="str">"query"</span>],
+        },
+    },
+    {
+        <span class="str">"name"</span>: <span class="str">"run_tests"</span>,
+        <span class="str">"description"</span>: <span class="str">"""Run the test suite and return results. Use after making code changes
+to verify correctness. Returns pass/fail status and any error output."""</span>,
+        <span class="str">"input_schema"</span>: {
+            <span class="str">"type"</span>: <span class="str">"object"</span>,
+            <span class="str">"properties"</span>: {
+                <span class="str">"test_path"</span>: {
+                    <span class="str">"type"</span>: <span class="str">"string"</span>,
+                    <span class="str">"description"</span>: <span class="str">"Specific test file or directory. Omit to run all tests."</span>,
+                },
+                <span class="str">"flags"</span>: {
+                    <span class="str">"type"</span>: <span class="str">"array"</span>,
+                    <span class="str">"items"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>},
+                    <span class="str">"description"</span>: <span class="str">"Additional pytest flags, e.g. ['-x', '--tb=short']."</span>,
+                },
+            },
+            <span class="str">"required"</span>: [],
+        },
+    },
+]</code></pre>
+    </div>
+
+    <h3>Writing Descriptions the Model Will Use Correctly</h3>
+    <p>The model uses your description — not the schema — to decide which tool to call. Descriptions are prompt text, and prompt quality matters here as much as anywhere. Weak descriptions lead to wrong tool choices:</p>
+
+    <ul>
+      <li><strong>Too vague:</strong> <code>"Search for things."</code> — the model does not know when to use this versus read_file or grep.</li>
+      <li><strong>Too implementation-focused:</strong> <code>"Runs ripgrep with -r flag."</code> — the model cannot infer from this when a search is the right move.</li>
+      <li><strong>Good:</strong> Describe what the tool does, what inputs it expects conceptually, when to prefer it over alternatives, and what it returns. Treat the description as instruction to a junior engineer.</li>
+    </ul>
+
+    <p>Similarly, property descriptions in the schema matter. <code>"query"</code> with no description is underspecified; <code>"The search query — function name, variable, error message, or concept"</code> tells the model how to formulate the input.</p>
+
+    <h2>The Tool-Use Loop in Detail</h2>
+    <p>Let us trace a complete multi-tool interaction to make the mechanics concrete. The task: "Find and fix the bug causing test_auth to fail."</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — full tool-use loop with result routing</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> anthropic, json
+
+client = anthropic.<span class="fn">Anthropic</span>()
+
+<span class="kw">def</span> <span class="fn">execute_tool</span>(name: <span class="ty">str</span>, args: <span class="ty">dict</span>) -> <span class="ty">str</span>:
+    <span class="cm"># Dispatch to actual implementations</span>
+    <span class="kw">if</span> name == <span class="str">"run_tests"</span>:
+        <span class="kw">import</span> subprocess
+        cmd = [<span class="str">"python"</span>, <span class="str">"-m"</span>, <span class="str">"pytest"</span>] + args.<span class="fn">get</span>(<span class="str">"flags"</span>, [])
+        <span class="kw">if</span> <span class="str">"test_path"</span> <span class="kw">in</span> args:
+            cmd.<span class="fn">append</span>(args[<span class="str">"test_path"</span>])
+        result = subprocess.<span class="fn">run</span>(cmd, capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+        <span class="kw">return</span> result.stdout + result.stderr
+    <span class="kw">elif</span> name == <span class="str">"read_file"</span>:
+        <span class="kw">return</span> <span class="fn">open</span>(args[<span class="str">"path"</span>]).<span class="fn">read</span>()
+    <span class="kw">elif</span> name == <span class="str">"write_file"</span>:
+        <span class="kw">with</span> <span class="fn">open</span>(args[<span class="str">"path"</span>], <span class="str">"w"</span>) <span class="kw">as</span> f:
+            f.<span class="fn">write</span>(args[<span class="str">"content"</span>])
+        <span class="kw">return</span> <span class="str">f"Written {len(args['content'])} chars to {args['path']}"</span>
+    <span class="kw">return</span> <span class="str">f"Unknown tool: {name}"</span>
+
+messages = [{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Find and fix the bug causing test_auth to fail."</span>}]
+
+<span class="kw">while True</span>:
+    response = client.messages.<span class="fn">create</span>(
+        model=<span class="str">"claude-opus-4-5"</span>, max_tokens=<span class="num">4096</span>,
+        tools=tools, messages=messages,
+    )
+
+    <span class="cm"># Append assistant turn to conversation</span>
+    messages.<span class="fn">append</span>({<span class="str">"role"</span>: <span class="str">"assistant"</span>, <span class="str">"content"</span>: response.content})
+
+    <span class="kw">if</span> response.stop_reason == <span class="str">"end_turn"</span>:
+        <span class="cm"># Model produced a final text response — done</span>
+        <span class="fn">print</span>(response.content[<span class="num">0</span>].text)
+        <span class="kw">break</span>
+
+    <span class="cm"># Collect all tool calls in this turn (may be multiple)</span>
+    tool_results = []
+    <span class="kw">for</span> block <span class="kw">in</span> response.content:
+        <span class="kw">if</span> block.type == <span class="str">"tool_use"</span>:
+            result = <span class="fn">execute_tool</span>(block.name, block.input)
+            tool_results.<span class="fn">append</span>({
+                <span class="str">"type"</span>: <span class="str">"tool_result"</span>,
+                <span class="str">"tool_use_id"</span>: block.id,
+                <span class="str">"content"</span>: result,
+            })
+
+    <span class="cm"># Feed results back to model</span>
+    messages.<span class="fn">append</span>({<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: tool_results})</code></pre>
+    </div>
+
+    <p>Notice that the loop is completely generic. It does not know anything about the specific task — that knowledge lives in the model. The controller only knows how to: (1) call the API, (2) check whether the model is done, (3) execute any tool calls it finds, and (4) return the results. This is the standard pattern for every function-calling application.</p>
+
+    <h2>Parallel Tool Calls: Eliminating Unnecessary Latency</h2>
+    <p>In the basic loop above, if the model decides to read three files, it does so in three sequential turns: request file A, get A, request file B, get B, request file C, get C. That is 3× the round-trip time needed. Modern models support emitting multiple tool calls in a single turn, which your controller should fan out concurrently.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — parallel tool execution with asyncio</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> asyncio, anthropic
+
+<span class="kw">async def</span> <span class="fn">execute_tool_async</span>(name: <span class="ty">str</span>, args: <span class="ty">dict</span>) -> <span class="ty">str</span>:
+    <span class="cm"># Async versions of tool implementations</span>
+    <span class="kw">if</span> name == <span class="str">"read_file"</span>:
+        <span class="kw">import</span> aiofiles
+        <span class="kw">async with</span> aiofiles.<span class="fn">open</span>(args[<span class="str">"path"</span>]) <span class="kw">as</span> f:
+            <span class="kw">return</span> <span class="kw">await</span> f.<span class="fn">read</span>()
+    <span class="cm"># ... other tools</span>
+
+<span class="kw">async def</span> <span class="fn">handle_tool_calls</span>(tool_use_blocks):
+    <span class="cm"># Fan out ALL tool calls in this turn concurrently</span>
+    tasks = [
+        <span class="fn">execute_tool_async</span>(block.name, block.input)
+        <span class="kw">for</span> block <span class="kw">in</span> tool_use_blocks
+        <span class="kw">if</span> block.type == <span class="str">"tool_use"</span>
+    ]
+    results = <span class="kw">await</span> asyncio.<span class="fn">gather</span>(*tasks)  <span class="cm"># all run in parallel</span>
+
+    <span class="kw">return</span> [
+        {
+            <span class="str">"type"</span>: <span class="str">"tool_result"</span>,
+            <span class="str">"tool_use_id"</span>: block.id,
+            <span class="str">"content"</span>: result,
+        }
+        <span class="kw">for</span> block, result <span class="kw">in</span> <span class="fn">zip</span>(
+            [b <span class="kw">for</span> b <span class="kw">in</span> tool_use_blocks <span class="kw">if</span> b.type == <span class="str">"tool_use"</span>],
+            results
+        )
+    ]
+<span class="cm"># If model requests read_file("auth.py"), read_file("utils.py"), read_file("tests/test_auth.py")
+# → all three reads happen concurrently; latency = max(read_time) not sum(read_time)</span></code></pre>
+    </div>
+
+    <p>The speedup is real: reading 5 files in parallel takes roughly as long as reading 1 file. For agents that do extensive exploration (reading many files to understand a codebase), parallel tool calls can cut exploration time by 3–5×.</p>
+
+    <h3>When Parallel Calls Are Not Safe</h3>
+    <p>Fan-out is only correct for independent operations. If tool call B depends on the result of tool call A (e.g., "search for a file, then read the result"), they must be sequential — B uses information from A's result. The model usually handles this correctly by emitting sequential turns for dependent calls. Your controller's job is to execute whatever the model emits in a single turn concurrently, without trying to impose its own ordering on independent calls.</p>
+
+    <h2>Tool Use as Structured Output</h2>
+    <p>Tool use is not just for agents — it is also the most reliable way to extract structured output from a model. When you want the model to return a specific data shape (for parsing by downstream code), defining that shape as a tool schema and setting <code>tool_choice</code> to force that tool is far more reliable than asking the model to "return JSON."</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Method</th><th>Syntax reliability</th><th>Schema reliability</th><th>Use when</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Prompt: "return JSON"</td><td>80–95%</td><td>Low</td><td>Quick experiments only</td></tr>
+        <tr><td>JSON mode</td><td>100%</td><td>Low (valid JSON, wrong shape)</td><td>When any valid JSON is acceptable</td></tr>
+        <tr><td>Forced tool call</td><td>100%</td><td>High (schema-constrained)</td><td>Production extraction pipelines</td></tr>
+      </tbody>
+    </table>
+
+    <p>The forced tool call approach works because the model is trained to produce arguments that conform to the schema. The API validates the output before returning it — a malformed tool call would be a model error, not an application error. You can treat the result as a typed dict without defensive parsing.</p>
+
+    <h2>What Is MCP?</h2>
+    <p>Function calling as described above requires you to write the tool definitions (schemas), implement the execution logic, and wire everything together in your application. Every agent application reimplements this wheel independently. If you want your agent to talk to GitHub, you write a GitHub tool. If you want it to talk to Postgres, you write a Postgres tool. If someone else builds a different agent, they write their own GitHub tool. There is no reuse.</p>
+
+    <p>The <strong>Model Context Protocol (MCP)</strong>, released by Anthropic in late 2024, addresses this directly. MCP is an open standard that defines a common protocol for exposing tools (and other capabilities) that any compliant host can consume without custom integration work. It is to agents what USB is to peripherals: a standard interface that makes components interoperable.</p>
+
+    <h3>The Core Idea in One Sentence</h3>
+    <p>MCP separates the tool <em>implementation</em> (an MCP server) from the tool <em>consumer</em> (an MCP host), with a standard protocol in between, so that any server works with any host.</p>
+
+    <h2>MCP Architecture: Host, Client, Server</h2>
+    <p>MCP defines three roles:</p>
+
+    <ul>
+      <li><strong>MCP Host:</strong> the application that runs the LLM and manages the agentic loop. Claude Code, Cursor, a custom agent — any application that wants to use tools can be an MCP host. The host contains an MCP client for each server it connects to.</li>
+      <li><strong>MCP Client:</strong> a thin layer inside the host that maintains a persistent connection to one MCP server and handles the protocol framing (connection, capability negotiation, request/response).</li>
+      <li><strong>MCP Server:</strong> a process that exposes a set of tools (and optionally resources and prompts) over the MCP protocol. The server is where the actual functionality lives: it might wrap a GitHub API client, a database connection, a filesystem layer, a web browser, or anything else.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">text — MCP architecture diagram</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">┌─────────────────────────────────────────────┐</span>
+<span class="cm">│                  MCP HOST                   │</span>
+<span class="cm">│  (Claude Code, Cursor, custom agent app)    │</span>
+<span class="cm">│                                             │</span>
+<span class="cm">│  ┌──────────┐   ┌──────────┐   ┌─────────┐ │</span>
+<span class="cm">│  │ LLM      │   │ MCP      │   │ MCP     │ │</span>
+<span class="cm">│  │ (Claude  │◄──│ Client   │   │ Client  │ │</span>
+<span class="cm">│  │  /GPT)   │   │    A     │   │    B    │ │</span>
+<span class="cm">│  └──────────┘   └────┬─────┘   └────┬────┘ │</span>
+<span class="cm">└────────────────────────────────────────────-┘</span>
+                        <span class="cm">│                  │</span>
+              <span class="cm">MCP Protocol         MCP Protocol</span>
+              <span class="cm">(JSON-RPC 2.0)       (JSON-RPC 2.0)</span>
+                        <span class="cm">│                  │</span>
+               <span class="cm">┌────────▼───────┐  ┌─▼──────────────┐</span>
+               <span class="cm">│  MCP Server A  │  │  MCP Server B  │</span>
+               <span class="cm">│  (GitHub API)  │  │  (PostgreSQL)  │</span>
+               <span class="cm">│                │  │                │</span>
+               <span class="cm">│  tools:        │  │  tools:        │</span>
+               <span class="cm">│  - list_repos  │  │  - run_query   │</span>
+               <span class="cm">│  - create_pr   │  │  - list_tables │</span>
+               <span class="cm">│  - get_issues  │  │  - describe_db │</span>
+               <span class="cm">└────────────────┘  └────────────────┘</span></code></pre>
+    </div>
+
+    <p>The transport layer is JSON-RPC 2.0, typically over stdio (for local servers) or HTTP with Server-Sent Events (for remote servers). The framing is standardized; what varies is the tools each server exposes and their schemas — which the server advertises at connection time via a capability negotiation handshake.</p>
+
+    <h3>The Three Primitives MCP Servers Expose</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Primitive</th><th>What it is</th><th>Analogy</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Tools</strong></td><td>Functions the model can invoke; take arguments, have side effects, return results</td><td>REST API endpoints (POST/PUT/DELETE)</td></tr>
+        <tr><td><strong>Resources</strong></td><td>Read-only data the host can load into context; identified by URI</td><td>REST API endpoints (GET) or files</td></tr>
+        <tr><td><strong>Prompts</strong></td><td>Pre-written prompt templates the server exposes for common tasks</td><td>Canned SQL queries / saved searches</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Tools</strong> are the most important primitive and what most MCP servers focus on. Resources provide a lightweight way for a server to surface data (e.g., a database schema, a document index) without requiring the model to invoke a tool. Prompts allow servers to package up task-specific prompt templates that hosts can inject into the conversation.</p>
+
+    <h3>Writing a Minimal MCP Server</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python — minimal MCP server with mcp SDK</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> mcp.server.fastmcp <span class="kw">import</span> FastMCP
+<span class="kw">import</span> subprocess, pathlib
+
+mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
+
+<span class="cm">@mcp.tool()</span>
+<span class="kw">def</span> <span class="fn">run_tests</span>(test_path: <span class="ty">str</span> = <span class="str">""</span>, flags: <span class="ty">list</span>[<span class="ty">str</span>] = []) -> <span class="ty">str</span>:
+    <span class="str">"""Run the project test suite. Pass test_path to run a specific file.
+    Returns combined stdout+stderr from pytest."""</span>
+    cmd = [<span class="str">"python"</span>, <span class="str">"-m"</span>, <span class="str">"pytest"</span>] + flags
+    <span class="kw">if</span> test_path:
+        cmd.<span class="fn">append</span>(test_path)
+    result = subprocess.<span class="fn">run</span>(cmd, capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+    <span class="kw">return</span> result.stdout + result.stderr
+
+<span class="cm">@mcp.tool()</span>
+<span class="kw">def</span> <span class="fn">list_changed_files</span>() -> <span class="ty">str</span>:
+    <span class="str">"""Return files changed since the last git commit. Useful for scoping reviews."""</span>
+    result = subprocess.<span class="fn">run</span>([<span class="str">"git"</span>, <span class="str">"diff"</span>, <span class="str">"--name-only"</span>, <span class="str">"HEAD"</span>],
+                            capture_output=<span class="kw">True</span>, text=<span class="kw">True</span>)
+    <span class="kw">return</span> result.stdout <span class="kw">or</span> <span class="str">"No changed files."</span>
+
+<span class="cm">@mcp.resource("file://{path}")</span>
+<span class="kw">def</span> <span class="fn">read_project_file</span>(path: <span class="ty">str</span>) -> <span class="ty">str</span>:
+    <span class="str">"""Expose project files as resources for context loading."""</span>
+    <span class="kw">return</span> pathlib.Path(path).<span class="fn">read_text</span>()
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    mcp.<span class="fn">run</span>()  <span class="cm"># serves over stdio by default</span></code></pre>
+    </div>
+
+    <p>This server exposes two tools (<code>run_tests</code> and <code>list_changed_files</code>) and one resource (<code>file://</code>). Any MCP host — Claude Code, a custom agent, Cursor — can connect to this server over stdio and discover these capabilities automatically via the protocol handshake. No custom integration code needed on the host side.</p>
+
+    <h2>MCP vs. Traditional Function Calling</h2>
+    <p>Traditional function calling (as covered earlier in this article) is per-application: you define tools in your agent's code, implement the execution logic inline, and wire everything together. It works, but it does not compose across applications.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>Traditional function calling</th><th>MCP</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Reusability</td><td>Per-application; each agent reimplements the same tools</td><td>Servers are reusable across any MCP-compatible host</td></tr>
+        <tr><td>Discovery</td><td>Tools hardcoded into agent code</td><td>Dynamic: host discovers tools at runtime via capability negotiation</td></tr>
+        <tr><td>Deployment</td><td>Tool logic is inside the agent process</td><td>Servers are separate processes, independently deployable and scalable</td></tr>
+        <tr><td>Ecosystem</td><td>Proprietary per-team</td><td>Open standard; growing library of pre-built MCP servers</td></tr>
+        <tr><td>Complexity</td><td>Simpler for small, self-contained agents</td><td>More setup; pays off at scale and when reuse matters</td></tr>
+      </tbody>
+    </table>
+
+    <p>For a small, single-purpose agent where you control both the LLM loop and all the tools, traditional function calling is simpler. MCP's value compounds as you have more agents, more tools, or want to share tool implementations across teams. Think of it like the REST vs. direct database access tradeoff: direct is simpler for one use case; a standard interface wins when you have many clients.</p>
+
+    <h2>MCP vs. RAG: Complementary, Not Competing</h2>
+    <p>Retrieval-Augmented Generation (RAG) fetches relevant documents and inserts them into the model's context before generation. It is read-only and passive: the model does not request retrieval; the application retrieves for the model. MCP tools are active and on-demand: the model decides when to call a tool and what to ask for.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>RAG</th><th>MCP Tools</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Initiation</td><td>Application pre-fetches before model turn</td><td>Model requests at runtime during its turn</td></tr>
+        <tr><td>Side effects</td><td>None — read-only</td><td>Can write, delete, call APIs, run commands</td></tr>
+        <tr><td>Specificity</td><td>Approximate — retrieval by semantic similarity</td><td>Exact — model specifies precise arguments</td></tr>
+        <tr><td>Latency</td><td>Adds to pre-generation latency</td><td>Adds to mid-generation latency (each tool call)</td></tr>
+        <tr><td>Best for</td><td>Providing background knowledge the model didn't have</td><td>Taking actions, fetching precise data, verifying output</td></tr>
+      </tbody>
+    </table>
+
+    <p>In practice, sophisticated agents use both: RAG to seed the context with background knowledge (codebase overview, documentation, recent issues), and MCP tools for precise runtime operations (reading a specific file, running a specific test, querying a specific database row). RAG reduces the number of tool calls needed for exploration; tools handle everything that requires precision or side effects.</p>
+
+    <h2>The MCP Ecosystem in Practice</h2>
+    <p>A key benefit of MCP being an open standard is that pre-built servers accumulate into a reusable ecosystem. As of 2026, commonly available MCP servers include:</p>
+
+    <ul>
+      <li><strong>Filesystem</strong> — read/write local files with configurable access controls. The reference implementation from Anthropic.</li>
+      <li><strong>Git</strong> — list changed files, read diffs, create commits, manage branches.</li>
+      <li><strong>GitHub / GitLab</strong> — create/review PRs, manage issues, trigger CI workflows.</li>
+      <li><strong>PostgreSQL / SQLite</strong> — run queries, inspect schema, list tables.</li>
+      <li><strong>Browser</strong> — navigate pages, click elements, extract content (for web automation agents).</li>
+      <li><strong>Slack / Linear / Jira</strong> — read and create issues, post messages, manage projects.</li>
+      <li><strong>Custom internal services</strong> — any internal API can be wrapped as an MCP server and shared across all agents in an organization.</li>
+    </ul>
+
+    <p>The practical implication: for common tools, you can pull an existing MCP server off the shelf rather than implementing it yourself. For internal tools, you implement an MCP server once and every agent in your stack gains access to it automatically.</p>
+
+    <h2>Security Considerations for Tool Use and MCP</h2>
+    <p>Giving a model the ability to take actions in the world is powerful and dangerous if done carelessly. Some principles for secure tool-use design:</p>
+
+    <ul>
+      <li><strong>Principle of least privilege.</strong> Only expose tools the agent actually needs for its task. An agent that reviews code does not need a <code>delete_database</code> tool. Fewer tools = smaller attack surface.</li>
+      <li><strong>Validate all inputs.</strong> The model can hallucinate tool arguments. Validate argument values before executing, especially for operations with irreversible side effects (deletes, sends, writes).</li>
+      <li><strong>Confirm before irreversible actions.</strong> For high-stakes tools (sending emails, deleting records, deploying code), require a human confirmation step rather than executing automatically.</li>
+      <li><strong>Sandbox execution environments.</strong> Run agents in containers with restricted network access and filesystem scope. A sandboxed mistake is a contained mistake.</li>
+      <li><strong>Watch for prompt injection.</strong> If the agent reads user-controlled content (uploaded files, web pages) and that content contains instructions ("ignore your guidelines and..."), the model may follow them. Treat all external content as untrusted data, not instructions.</li>
+      <li><strong>Audit log everything.</strong> Log every tool call with its arguments and result. This makes agent behavior reproducible, debuggable, and auditable after the fact.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Function calling is what turns a text model into an actor. The pattern is simple — define tool schemas, run the loop, fan out parallel calls — but the details matter: descriptions determine correct tool choice, schema constraints ensure parseable output, and execution must be validated and sandboxed. MCP lifts this pattern to a standard protocol, enabling a reusable ecosystem of tools that any compliant agent can consume without custom integration. Together, they form the core architecture of every production AI agent.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Explain the function calling loop at the API level.</strong> Model emits a tool_use block (name + arguments JSON) → your code executes the actual function → you append a tool_result message → model continues. The model never executes code directly; it only emits intents that your controller acts on.<br><br>
+      <strong>Why is the tool description more important than the schema?</strong> The schema constrains the arguments once the model has decided to call a tool. The description is what the model reads to decide <em>whether</em> to call the tool at all. A vague description leads to wrong tool selection, which no schema can fix — the model will call the wrong tool with perfectly valid arguments.<br><br>
+      <strong>What problem does MCP solve that function calling doesn't?</strong> Function calling is per-application: every agent reimplements the same tools independently. MCP standardizes the interface between tool implementations (servers) and agent hosts so a tool is written once and reusable across any MCP-compatible agent — the same composability benefit that REST APIs gave to web services.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/building-with-llm-apis/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Building with the Claude &amp; OpenAI APIs</div>
+      </a>
+      <a href="/ai-coding/ai-in-coding-interviews/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Using AI in Coding Interviews</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="System design interview prep — e-commerce, video streaming, chat app, ride-share, URL shortener and more.">
-<title>System Design Interview Questions & Breakdowns — updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/">
+<meta name="description" content="AI coding deep dives — Copilot vs Cursor vs Claude Code, prompt engineering, AI agents, building with LLM APIs, tool use & MCP, and AI in interviews.">
+<title>AI Coding — Tools, Agents & LLM APIs for Engineers | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="updoggtech">
-<meta property="og:title" content="System Design Interview Questions & Breakdowns">
-<meta property="og:description" content="End-to-end system design breakdowns — e-commerce, video streaming, chat, ride-share, URL shortener, hotel booking.">
-<meta property="og:url" content="https://updoggtech.com/system-design/">
+<meta property="og:title" content="AI Coding — Tools, Agents & LLM APIs for Engineers">
+<meta property="og:description" content="AI coding deep dives — Copilot vs Cursor vs Claude Code, prompt engineering, AI agents, building with LLM APIs, tool use & MCP, and AI in interviews.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="System Design Interview Breakdowns">
-<meta name="twitter:description" content="End-to-end system design breakdowns for SDE interviews.">
+<meta name="twitter:title" content="AI Coding — Tools, Agents & LLM APIs">
+<meta name="twitter:description" content="Deep dives on AI coding tools, agents, LLM APIs, tool use/MCP, and AI in technical interviews.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"CollectionPage","name":"System Design","url":"https://updoggtech.com/system-design/","description":"End-to-end system design interview breakdowns for SDE interviews."}
+{"@context":"https://schema.org","@type":"CollectionPage","name":"AI Coding","url":"https://updoggtech.com/ai-coding/","description":"Deep dives on AI-assisted coding tools, agents, LLM APIs, and AI in technical interviews."}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -23,7 +23,7 @@
   :root {
     --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
     --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
-    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
     --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,7 +46,7 @@
   .nav-links { display: flex; gap: 4px; list-style: none; }
   .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; display: flex; align-items: center; gap: 6px; }
   .nav-links a:hover, .nav-links a.active { color: var(--text); background: var(--bg3); }
-  .nav-links a .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0; transition: opacity 0.2s; }
+  .nav-links a .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent4); opacity: 0; transition: opacity 0.2s; }
   .nav-links a:hover .dot, .nav-links a.active .dot { opacity: 1; }
   .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; transition: opacity 0.2s; }
   .nav-cta:hover { opacity: 0.88; }
@@ -54,14 +54,14 @@
   .page-header { padding: 64px 0 48px; }
   .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
   .breadcrumb a { color: var(--muted); text-decoration: none; }
-  .breadcrumb a:hover { color: var(--accent); }
-  .page-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .page-label { font-family: var(--mono); font-size: 11px; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 12px; }
   .page-title { font-size: clamp(32px, 5vw, 52px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 16px; }
-  .page-desc { font-family: var(--mono); font-size: 14px; color: var(--muted); max-width: 480px; line-height: 1.7; }
+  .page-desc { font-family: var(--mono); font-size: 14px; color: var(--muted); max-width: 520px; line-height: 1.7; }
 
   .filter-row { display: flex; gap: 8px; margin-bottom: 40px; flex-wrap: wrap; }
   .filter-btn { font-family: var(--mono); font-size: 12px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s; }
-  .filter-btn:hover, .filter-btn.active { background: var(--bg3); color: var(--text); border-color: var(--accent); }
+  .filter-btn:hover, .filter-btn.active { background: var(--bg3); color: var(--text); border-color: var(--accent4); }
 
   .posts-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 80px; }
 
@@ -72,23 +72,19 @@
     align-items: center; gap: 24px;
     transition: border-color 0.2s, background 0.2s, transform 0.15s;
   }
-  .post-row:hover { border-color: var(--accent); background: var(--bg3); transform: translateX(4px); }
+  .post-row:hover { border-color: var(--accent4); background: var(--bg3); transform: translateX(4px); }
 
   .post-row-left { display: flex; align-items: center; gap: 20px; }
   .post-num { font-family: var(--mono); font-size: 12px; color: #2a3347; min-width: 28px; }
   .post-info { display: flex; flex-direction: column; gap: 6px; }
-  .post-tag { font-family: var(--mono); font-size: 10px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 2px 8px; border-radius: 3px; display: inline-block; align-self: flex-start; }
+  .post-tag { font-family: var(--mono); font-size: 10px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 2px 8px; border-radius: 3px; display: inline-block; align-self: flex-start; }
   .post-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
   .post-excerpt { font-family: var(--mono); font-size: 12px; color: var(--muted); line-height: 1.5; }
 
   .post-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
   .post-date { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .post-arrow { color: var(--accent); font-size: 18px; transition: transform 0.2s; }
+  .post-arrow { color: var(--accent4); font-size: 18px; transition: transform 0.2s; }
   .post-row:hover .post-arrow { transform: translate(3px, -2px); }
-
-  .difficulty { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border-radius: 3px; }
-  .diff-medium { color: #fcd34d; background: rgba(252,211,77,0.08); border: 1px solid rgba(252,211,77,0.2); }
-  .diff-hard { color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); }
 
   footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
   .footer-inner { display: flex; align-items: center; justify-content: space-between; }
@@ -101,12 +97,13 @@
   @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
   .post-row { animation: fadeUp 0.4s ease backwards; }
   .post-row:nth-child(1) { animation-delay: 0.05s; }
-  .post-row:nth-child(2) { animation-delay: 0.1s; }
+  .post-row:nth-child(2) { animation-delay: 0.10s; }
   .post-row:nth-child(3) { animation-delay: 0.15s; }
-  .post-row:nth-child(4) { animation-delay: 0.2s; }
+  .post-row:nth-child(4) { animation-delay: 0.20s; }
   .post-row:nth-child(5) { animation-delay: 0.25s; }
-  .post-row:nth-child(6) { animation-delay: 0.3s; }
+  .post-row:nth-child(6) { animation-delay: 0.30s; }
   .post-row:nth-child(7) { animation-delay: 0.35s; }
+  .post-row:nth-child(8) { animation-delay: 0.40s; }
 
   @media (max-width: 768px) {
     .post-row { grid-template-columns: 1fr; }
@@ -122,9 +119,9 @@
     <div class="nav-inner">
       <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
       <ul class="nav-links">
-        <li><a href="/system-design/" class="active"><span class="dot"></span>System Design</a></li>
+        <li><a href="/system-design/"><span class="dot"></span>System Design</a></li>
         <li><a href="/tech-stacks/"><span class="dot"></span>Tech Stacks</a></li>
-        <li><a href="/ai-coding/"><span class="dot"></span>AI Coding</a></li>
+        <li><a href="/ai-coding/" class="active"><span class="dot"></span>AI Coding</a></li>
         <li><a href="/ddia/"><span class="dot"></span>DDIA</a></li>
       </ul>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -137,129 +134,137 @@
     <div class="breadcrumb">
       <a href="/">home</a>
       <span>/</span>
-      <span style="color:var(--text)">system-design</span>
+      <span style="color:var(--text)">ai-coding</span>
     </div>
-    <div class="page-label">// system design</div>
-    <h1 class="page-title">System Design<br>Interview Prep</h1>
-    <p class="page-desc">End-to-end breakdowns of real interview questions. From requirements to architecture to tradeoffs.</p>
+    <div class="page-label">// ai coding</div>
+    <h1 class="page-title">AI Coding</h1>
+    <p class="page-desc">How modern engineers actually use AI — coding tools, prompt craft, agents, building on LLM APIs, and what it means for interviews.</p>
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active">All (7)</button>
-    <button class="filter-btn">Distributed Systems</button>
-    <button class="filter-btn">Storage</button>
-    <button class="filter-btn">Real-time</button>
+    <button class="filter-btn active">All (8)</button>
+    <button class="filter-btn">Tools &amp; Practice</button>
+    <button class="filter-btn">Agents &amp; Building</button>
+    <button class="filter-btn">Interviews</button>
   </div>
 
   <div class="posts-list">
-    <a href="/system-design/ecommerce-platform/" class="post-row">
+    <a href="/ai-coding/copilot-vs-cursor-vs-claude-code/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design an E-commerce Platform</span>
-          <span class="post-excerpt">Product catalog, cart, inventory, payment processing, and order management at scale.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">Copilot vs Cursor vs Claude Code</span>
+          <span class="post-excerpt">The leading AI coding tools compared — strengths, workflows, and when to reach for each.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Mar 31, 2023</span>
+        <span class="post-date">May 10, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/map-webapp/" class="post-row">
+    <a href="/ai-coding/prompt-engineering-for-code/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Map Web App</span>
-          <span class="post-excerpt">Geo-indexing, tile rendering, routing algorithms, and location search at scale.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">Prompt Engineering for Code</span>
+          <span class="post-excerpt">How to prompt LLMs for better code — context, constraints, examples, and iteration loops.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 12, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/video-streaming/" class="post-row">
+    <a href="/ai-coding/ai-assisted-coding-best-practices/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Video Streaming Platform</span>
-          <span class="post-excerpt">CDN strategy, encoding pipeline, chunked delivery, and millions of concurrent viewers.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">AI-Assisted Coding: Best Practices &amp; Pitfalls</span>
+          <span class="post-excerpt">Getting real productivity from AI pair-programming — and the traps that quietly cost you.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 14, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/chat-app/" class="post-row">
+    <a href="/ai-coding/how-ai-coding-agents-work/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Chat App</span>
-          <span class="post-excerpt">WebSockets, message fan-out, presence indicators, and real-time delivery.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">How AI Coding Agents Work</span>
+          <span class="post-excerpt">Inside agentic coding — the plan / act / observe loop, tool use, and context management.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 16, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/ride-share/" class="post-row">
+    <a href="/ai-coding/building-with-llm-apis/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Ride-share App</span>
-          <span class="post-excerpt">Geo-indexing, driver matching, surge pricing, and trip state machine design.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">Building with the Claude &amp; OpenAI APIs</span>
+          <span class="post-excerpt">A practical guide — messages, streaming, system prompts, cost, and latency.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 18, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/url-shortener/" class="post-row">
+    <a href="/ai-coding/tool-use-function-calling-mcp/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a URL Shortener</span>
-          <span class="post-excerpt">Hash collision handling, redirect latency, analytics tracking, and custom slugs.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">Tool Use, Function Calling &amp; MCP</span>
+          <span class="post-excerpt">How LLMs call tools — function calling, structured output, and the Model Context Protocol.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 20, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/hotel-booking/" class="post-row">
+    <a href="/ai-coding/ai-in-coding-interviews/" class="post-row">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Hotel Booking App</span>
-          <span class="post-excerpt">Inventory locking, double-booking prevention, search ranking, and payment flows.</span>
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">Using AI in Coding Interviews</span>
+          <span class="post-excerpt">Where AI tools help, where they're banned, and how to talk about them with interviewers.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">May 22, 2026</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ai-coding/sde-interviews-in-the-ai-era/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">08</span>
+        <div class="post-info">
+          <span class="post-tag">AI Coding</span>
+          <span class="post-title">SDE Interviews in the AI Era</span>
+          <span class="post-excerpt">What to study when AI writes the boilerplate — the durable skills that still get you hired.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">May 24, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
@@ -272,7 +277,8 @@
       <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
       <ul class="footer-links">
         <li><a href="/system-design/">System Design</a></li>
-        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li>
+        <li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
         <li><a href="/contact/">Contact</a></li>
       </ul>

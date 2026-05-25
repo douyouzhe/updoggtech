@@ -29,4 +29,14 @@
   <url><loc>https://updoggtech.com/ddia/chapter-1/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
   <url><loc>https://updoggtech.com/ddia/chapter-2/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
   <url><loc>https://updoggtech.com/ddia/chapter-3/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+
+  <url><loc>https://updoggtech.com/ai-coding/</loc><priority>0.8</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/copilot-vs-cursor-vs-claude-code/</loc><lastmod>2026-05-10</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/prompt-engineering-for-code/</loc><lastmod>2026-05-12</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/</loc><lastmod>2026-05-14</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/how-ai-coding-agents-work/</loc><lastmod>2026-05-16</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/building-with-llm-apis/</loc><lastmod>2026-05-18</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/</loc><lastmod>2026-05-20</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/ai-in-coding-interviews/</loc><lastmod>2026-05-22</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ai-coding/sde-interviews-in-the-ai-era/</loc><lastmod>2026-05-24</lastmod><priority>0.7</priority></url>
 </urlset>

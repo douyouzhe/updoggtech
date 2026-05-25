@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.">
+<title>AI-Assisted Coding: Best Practices &amp; Pitfalls | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="AI-Assisted Coding: Best Practices &amp; Pitfalls">
+<meta property="og:description" content="How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.">
+<meta property="og:url" content="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="AI-Assisted Coding: Best Practices &amp; Pitfalls">
+<meta name="twitter:description" content="The real discipline of AI-assisted coding — what to do, what to avoid, and how to stay in control of your codebase.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"AI-Assisted Coding: Best Practices & Pitfalls","description":"How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.","datePublished":"2026-05-14","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">ai-assisted-coding-best-practices</span>
+    </div>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">AI-Assisted Coding: Best Practices &amp; Pitfalls</h1>
+    <div class="article-meta">
+      <span>May 14, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>AI coding tools are, at this point, table stakes. The question is no longer "should we use them" but "how do we use them without losing control of our codebase." That distinction matters because the failure modes of aggressive AI adoption are subtle: code that looks clean but is poorly understood, productivity gains that turn out to be velocity borrowed against future maintenance debt, security incidents caused by models that confidently do the wrong thing with credentials or user data.</p>
+    <p>This article is a practical guide for engineers who are past the novelty phase — you have seen what AI coding tools can do, you want to use them seriously, and you want to do it in a way that makes you and your team better rather than dependent. We cover the non-negotiable practices that professionals follow, the pitfalls that are most commonly underestimated, and how to build team-wide norms that capture the benefits without the hidden costs.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>You own every line you commit</strong> — reviewing every AI-generated diff is non-negotiable; the model does not sign the commit, you do.</li>
+        <li><strong>Understanding is not optional.</strong> If you cannot explain the code in a PR review or debugging session, you should not have merged it.</li>
+        <li><strong>Let AI write tests and self-verify.</strong> Having the model generate tests and run them closes the feedback loop before you ever read the output.</li>
+        <li><strong>Small, frequent iterations beat single large generations.</strong> Narrow diffs are easier to review, easier to revert, and produce better output.</li>
+        <li><strong>Secrets, PII, and compliance are your responsibility.</strong> The model will happily log a password or suggest storing a token in localStorage — you must catch it.</li>
+        <li><strong>Measure productivity honestly.</strong> Lines of code shipped per day is not a productivity metric; defect rate, review time, and time-to-incident are.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>AI coding tools give you a powerful but uncritical collaborator. Use them to go faster; use your judgment to stay correct. Review every diff, maintain your understanding, manage context deliberately, respect compliance boundaries, and measure real outcomes — not activity. The teams that get this right become genuinely faster; the ones that don't accumulate invisible debt that surfaces as incidents.</p>
+    </div>
+
+    <h2>Always Review Every Diff</h2>
+    <p>This is the foundational rule from which everything else follows. When you commit AI-generated code without reading it, you are not just gambling on that specific diff — you are eroding the mental model you need to debug the system when something goes wrong at 2 AM. You are also signalling to yourself and your team that authorship and understanding are separable, which they are not.</p>
+    <p>Reviewing AI-generated code is different from reviewing a colleague's PR. A human collaborator brings context, judgment, and an understanding of your codebase. A model brings none of those things; it brings pattern matching over its training data. That means the failure modes are different too:</p>
+    <ul>
+      <li><strong>Confident incorrectness</strong> — the model produces code that is syntactically correct, stylistically clean, and logically wrong. No compilation error will catch this.</li>
+      <li><strong>Constraint violation</strong> — you said "don't change the public interface" and the model changed it anyway, subtly, in a way that only breaks downstream callers you aren't running locally.</li>
+      <li><strong>Scope creep</strong> — the model "helpfully" refactored a function you didn't ask it to touch, and introduced a regression in the process.</li>
+      <li><strong>Hallucinated APIs</strong> — the model called a function that doesn't exist in your version of the library, or used a flag with inverted semantics.</li>
+    </ul>
+    <p>None of these failures are caught by "it looks plausible." They require reading the code with the question "is this actually correct?" not "does this roughly match what I asked for?"</p>
+    <h3>A practical review checklist for AI diffs</h3>
+    <ul>
+      <li>Does it do what I asked, and only what I asked? (Check for unrequested changes.)</li>
+      <li>Are there any APIs, functions, or library features I don't recognise? (Verify they exist and have the semantics assumed.)</li>
+      <li>Are there any error paths that silently swallow errors or return wrong status codes?</li>
+      <li>Does the code handle the edge cases I care about — empty input, zero values, concurrent access?</li>
+      <li>Is any sensitive data (credentials, PII, internal endpoints) exposed in logging or error messages?</li>
+      <li>Does the code match the team's conventions — naming, error wrapping, log format?</li>
+    </ul>
+
+    <h2>Maintain Your Understanding of the Code</h2>
+    <p>The productivity trap of AI coding is that it is easy to ship code you don't fully understand. The first time you merge a non-trivial function without understanding it, you've accepted a liability: when that function breaks — and it will — you'll spend debugging time building the understanding you should have had at merge time, but now under pressure, in production, with customers affected.</p>
+    <p>The "understand before merging" rule is not just about incident response. It is about maintainability over time. Code that no one on the team fully understands tends to be worked around rather than evolved — developers add hacks rather than modify code they can't reason about, and the architecture degrades faster than it otherwise would.</p>
+    <h3>Techniques for maintaining understanding</h3>
+    <ul>
+      <li><strong>Use the AI to explain its own output.</strong> After generating code, ask: "Explain how this works, including any non-obvious choices." If the explanation reveals something you didn't expect, investigate before merging.</li>
+      <li><strong>Write the commit message yourself, in detail.</strong> The discipline of writing "this changes X to Y because Z" forces you to articulate your understanding. If you can't write a precise commit message, you don't understand the change well enough.</li>
+      <li><strong>Pair the AI output with tests you wrote.</strong> Writing the tests yourself — even if the AI wrote the implementation — requires understanding what the correct behavior is.</li>
+      <li><strong>Can you defend this in a PR review?</strong> Imagine a skeptical senior engineer asking "why does this take a pointer instead of a value?" If you can't answer that for every non-trivial choice in the diff, find out before merging.</li>
+    </ul>
+    <p>There is an important calibration here: "understand" does not mean "could rewrite from scratch." It means "can explain what it does, why the major design choices were made, and what would need to change if the requirements changed." That bar is achievable for every function you merge.</p>
+
+    <h2>Use AI to Write Tests and Self-Verify</h2>
+    <p>One of the most powerful workflows in AI-assisted development is closing the loop automatically: generate code, generate tests, run tests, iterate. This is especially effective with agentic tools that can execute commands, because the model can catch its own mistakes without you doing anything.</p>
+    <h3>The self-verify workflow</h3>
+    <ol>
+      <li>Describe the function or feature you want, including the acceptance criteria as concrete testable behaviors.</li>
+      <li>Ask the model to write the tests first (or write them yourself if the spec is complex enough that you don't trust the model to derive them correctly).</li>
+      <li>Ask the model to implement the code until the tests pass, running <code>go test</code> / <code>pytest</code> / <code>jest</code> after each iteration.</li>
+      <li>Read the final implementation and tests together — the tests document the expected behavior and make the implementation easier to understand.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">self-verify prompt (agentic tool)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Prompt to an agentic tool (e.g. Claude Code)</span>
+Implement a sliding-window rate limiter in ratelimit/ratelimit.go.
+
+Spec:
+- func NewLimiter(limit int, window time.Duration) *Limiter
+- func (l *Limiter) Allow(key string) bool
+- Thread-safe; use sync.Mutex
+- Pure in-memory; no external dependencies
+
+First, write the table-driven tests in ratelimit/ratelimit_test.go
+covering: under limit, at limit, over limit, window reset, concurrent
+access (use t.Parallel + race detector).
+
+Then implement until `go test -race ./ratelimit/...` passes.
+Show me the test output before and after.</code></pre>
+    </div>
+
+    <p>A critical nuance: when you ask the model to write tests for code it also wrote, there is a risk the tests encode the model's assumptions rather than the correct specification. For anything where the spec is ambiguous or the stakes are high, write the tests yourself — or at minimum review them as carefully as the implementation. Tests are specifications; let the model write boilerplate but own the behavior assertions yourself.</p>
+
+    <h2>Keep Iterations Small</h2>
+    <p>The temptation with AI coding tools is to describe a large feature in one prompt and let it generate everything. This rarely works well: the output is harder to review, harder to understand, harder to revert, and often less correct than smaller focused generations. The model's attention degrades over long, complex tasks; constraint satisfaction gets worse as the number of constraints grows.</p>
+    <p>Small iterations also force a tighter feedback loop. If you generate one function, run the tests, and they fail, you know exactly which function to look at. If you generate a hundred lines across five files and the tests fail, you have a much harder debugging problem.</p>
+    <h3>What "small" means in practice</h3>
+    <ul>
+      <li><strong>One function or one file per generation</strong> for non-trivial logic.</li>
+      <li><strong>One conceptual change at a time</strong> — change the data model, then update the business logic, then update the API layer. Not all three at once.</li>
+      <li><strong>Commit after each verified step.</strong> Frequent commits mean short blast radii: if a later step goes wrong, you revert to a known-good state rather than losing everything.</li>
+      <li><strong>Test at each step.</strong> Don't accumulate un-run code. Run tests after every generation, even if the tests don't fully cover the new code yet.</li>
+    </ul>
+    <p>This discipline feels slower in the moment but is faster end-to-end. A ten-step iteration with five-minute steps and tests at each step is thirty minutes of time you feel confident about. A one-shot generation of the same scope that takes thirty minutes to review and an hour to debug when it goes wrong is slower, not faster.</p>
+
+    <h2>Deliberate Context Management</h2>
+    <p>Every AI coding session exists within a context window. What is in that window determines what the model knows about your codebase, your conventions, and your constraints. Leaving context management to chance — letting the tool auto-decide what to include, or never providing relevant files — is a major source of output quality variance.</p>
+    <h3>What to manage explicitly</h3>
+    <ul>
+      <li><strong>Relevant existing code</strong> — always include the function you're changing, its immediate callers and callees, and the data types it operates on.</li>
+      <li><strong>Conventions the model can't infer</strong> — if your team has non-standard error handling, logging format, or naming conventions, explicitly state them or paste an example. The model will default to the most common pattern in its training data, which may not be yours.</li>
+      <li><strong>Prior decisions in the session</strong> — in long agentic sessions, periodically summarise what has been decided and paste it back in. Models lose track of early decisions as the conversation grows.</li>
+      <li><strong>What has already been implemented</strong> — when implementing multi-step work, start each step by pasting the output of the previous step as context, not just the original spec.</li>
+    </ul>
+    <h3>Context hygiene for agentic tools</h3>
+    <p>For tools like Claude Code that maintain a long-running session, context compaction (summarising old turns) is automatic but lossy. Important constraints stated early in a long session may be forgotten or underweighted by the time the model is working on step 7. The defensive habit is to restate critical constraints at the beginning of each major step, not just once at the start of the session.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">context restatement for agentic steps</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Start of each major step — restate the invariants</span>
+Step 3 of 5: implement the payment reconciliation job.
+
+Invariants (apply to all code in this session):
+- Go 1.22, no new dependencies beyond what's in go.mod
+- All DB writes must be in explicit transactions; never autocommit
+- Log at key decision points with key=value format using slog.Default()
+- Do not touch files outside the /jobs/ directory
+
+Current state: Steps 1-2 are done. The job is registered in scheduler.go
+and the DB schema migration (jobs/migrations/20260512_reconcile.sql)
+is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></pre>
+    </div>
+
+    <h2>When Not to Use AI Coding Tools</h2>
+    <p>AI tools are powerful defaults but not always the right choice. Recognising when to put the tool down and think for yourself is a mark of engineering maturity.</p>
+    <h3>Security-critical code</h3>
+    <p>Cryptography implementations, authentication logic, and authorisation checks should be written with extreme caution. Not because models are especially bad at these — they often produce correct-looking code — but because the consequences of subtle errors are severe and the errors are subtle. A model might generate a timing-safe comparison for passwords but miss that you're also exposing a secondary oracle through a different code path. For security-critical code, prefer well-audited libraries, read the implementation source, and consider a dedicated security review regardless of how the code was written.</p>
+    <h3>Novel or poorly-documented domains</h3>
+    <p>Models are trained on existing code. If you're writing code for a new protocol, an internal proprietary system, or an API that changed significantly after the model's knowledge cutoff, the model will extrapolate from what it knows and may be confidently wrong about specifics. In these cases, always verify against the primary documentation, not just the model's output.</p>
+    <h3>Architecture decisions</h3>
+    <p>AI tools are good at implementing within an architecture, not at choosing the architecture. Asking a model "should we use a message queue or direct HTTP calls for this integration?" will get you a plausible answer, but that answer is based on generic patterns, not your specific constraints — team size, failure tolerance, operational budget, existing infrastructure. Use the model to explore tradeoffs if useful, but own the decision yourself.</p>
+    <h3>When you need to deeply understand something new</h3>
+    <p>If you're learning a new language, framework, or concept, letting AI write all the code for you is counterproductive. The struggle of writing code manually, making mistakes, and debugging them is how understanding forms. Using AI as a supplement (explaining concepts, checking your work) is valuable; using it as a replacement (generating all the code) leaves you with a working program and a shallow understanding.</p>
+
+    <h2>Secrets, Privacy, Licensing, and Compliance</h2>
+    <p>These are the areas where AI coding tools create real organizational risk, and where many teams are under-prepared.</p>
+    <h3>Secrets and credentials</h3>
+    <p>Never paste credentials, API keys, database passwords, or private keys into a prompt sent to any cloud-hosted model. This should be obvious but it is violated regularly in practice, often accidentally — a developer pastes a config file to ask about a setting and forgets it contains production credentials. Establish a habit: before pasting any file or code block into a prompt, scan it for anything that looks like a secret. Use environment variables in examples; sanitise real values to <code>YOUR_API_KEY_HERE</code> before pasting.</p>
+    <h3>PII and sensitive data</h3>
+    <p>Similarly, do not paste real user data — names, email addresses, payment info, health data — as examples or in error messages you're debugging. Use anonymised or synthetic data. For many organisations this is not just good practice; it is a legal requirement under GDPR, HIPAA, or similar frameworks. Check your organisation's AI tool policy for specific requirements about what data can be shared with which services.</p>
+    <h3>AI-generated code and security vulnerabilities</h3>
+    <p>Models can introduce security vulnerabilities that a human reviewer might not immediately recognise as such. The most common categories in AI-generated code:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Vulnerability class</th><th>How AI tools introduce it</th><th>Mitigation</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SQL injection</td>
+          <td>String interpolation in queries when the model uses older patterns</td>
+          <td>Always use parameterised queries; grep for string formatting in DB calls</td>
+        </tr>
+        <tr>
+          <td>Insecure defaults</td>
+          <td>Disabling TLS verification, permissive CORS, debug endpoints left open</td>
+          <td>Review config and middleware options explicitly</td>
+        </tr>
+        <tr>
+          <td>Sensitive data in logs</td>
+          <td>Models often log function arguments for debugging; these can include passwords or tokens</td>
+          <td>Audit log statements for sensitive field names</td>
+        </tr>
+        <tr>
+          <td>Dependency confusion</td>
+          <td>Hallucinated package names that happen to exist as malicious packages</td>
+          <td>Verify every new dependency against the official registry before installing</td>
+        </tr>
+        <tr>
+          <td>Path traversal</td>
+          <td>Naive file path handling without sanitisation</td>
+          <td>Use filepath.Clean / os.Open with careful validation; review any user-influenced paths</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Licensing and IP</h3>
+    <p>AI models are trained on vast amounts of open-source code. For most organisations and most output, this is not a practical concern — the model is generating boilerplate patterns, not reproducing specific copyrighted implementations. However, for production code in commercial contexts, it is worth knowing your organisation's policy. Some enterprises have approved only specific AI tools for specific use cases; others have blanket restrictions. Consult your legal or policy team if uncertain.</p>
+
+    <h2>AI-Introduced Technical Debt and the "Looks Right" Trap</h2>
+    <p>One of the most insidious failure modes of AI coding is technical debt that looks like clean code. Human-written technical debt is usually recognisable — a TODO comment, a naming inconsistency, an obvious hack. AI-generated technical debt is often stylistically clean, well-formatted, and structurally consistent with surrounding code. It just makes poor design choices that only become visible later.</p>
+    <h3>Common forms of AI technical debt</h3>
+    <ul>
+      <li><strong>Unnecessary abstraction.</strong> Models tend toward general solutions. Asked to add one endpoint, they may create an entire framework for "configurable endpoints." This abstractions-for-no-reason pattern adds indirection without benefits.</li>
+      <li><strong>Inconsistent error handling strategy.</strong> A model generates code with different error-handling conventions across different functions — some log-and-return, some panic, some return a wrapped error — because it is generating each function somewhat independently.</li>
+      <li><strong>Missing domain invariants.</strong> The model implements the happy path correctly but doesn't know your business rules. An invoice total that must always equal the sum of line items won't be enforced unless you specify it explicitly.</li>
+      <li><strong>Optimistic concurrency.</strong> Generated code often doesn't think about concurrent access unless you ask. Race conditions in AI-generated code are especially hard to spot in review because the code looks structurally sound.</li>
+      <li><strong>Bloated dependency footprint.</strong> A model asked to "parse a URL" might reach for a full URL parsing library when <code>url.Parse</code> from the standard library suffices. Review every new import.</li>
+    </ul>
+    <p>The "looks right" trap is compounded by the fact that these issues often pass code review. Reviewers are pattern-matching against "does this code look like it does what it's supposed to?" rather than "is this the right design?" Explicit design review — separate from correctness review — is valuable for any non-trivial AI-generated change.</p>
+
+    <h2>Team Collaboration and Norms</h2>
+    <p>AI coding is most valuable — and safest — when a team adopts consistent norms rather than leaving individual usage ad hoc. Teams without norms end up with a codebase where some code was carefully reviewed and some was merged on autopilot, with no way to tell the difference.</p>
+    <h3>Norms worth establishing</h3>
+    <ul>
+      <li><strong>Review standard.</strong> AI-generated code is held to the same review bar as human-written code, without exception. Reviewers are not more lenient because "the AI wrote it."</li>
+      <li><strong>Attribution.</strong> Some teams add a convention like a commit tag or comment noting that a section was AI-assisted, so reviewers can apply appropriate scrutiny. Others prefer not to distinguish at all. Either is fine; pick one consistently.</li>
+      <li><strong>Shared prompt library.</strong> For common tasks (writing migration scripts, scaffolding new service handlers, generating test fixtures), maintain a shared library of high-quality prompts. This raises the floor across the team and prevents everyone from independently learning the same lessons about which prompts work.</li>
+      <li><strong>Domain-specific guardrails.</strong> Identify the areas of the codebase where AI assistance requires extra review — security-critical code, payment logic, infrastructure config — and explicitly call this out in contribution guidelines or PR templates.</li>
+      <li><strong>CI enforcement.</strong> Run linters, static analysis, and security scanners in CI for all code regardless of origin. Tools like Semgrep, Snyk, or go vet catch categories of mistakes that human review can miss, and they are especially valuable as a backstop for AI output.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">example PR template addition</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## AI-assisted code checklist (if applicable)</span>
+- [ ] I have read and understood every line in this diff
+- [ ] No secrets or PII were included in prompts
+- [ ] All new dependencies verified against official registry
+- [ ] Error handling reviewed — no silently swallowed errors
+- [ ] Log statements reviewed — no sensitive data in output
+- [ ] Acceptance criteria tested, not just "it runs"</code></pre>
+    </div>
+
+    <h2>Measuring Productivity Honestly</h2>
+    <p>Organisations often measure AI coding productivity by lines of code shipped per day, or by how much faster developers complete tickets. Both metrics are easily gamed by AI tools in ways that do not represent real productivity gains.</p>
+    <p>An engineer who uses AI to write twice as many lines per day but reviews none of them carefully is not twice as productive — they are accumulating future debugging sessions, incidents, and refactors at double the rate. The real productivity question is not "how fast did we ship" but "how fast did we ship correct code that we can maintain."</p>
+    <h3>Better metrics</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Misleading metric</th><th>Why it misleads</th><th>Better alternative</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Lines of code per day</td>
+          <td>AI inflates this trivially; volume ≠ value</td>
+          <td>Features shipped that are still in production and unmolested after 30 days</td>
+        </tr>
+        <tr>
+          <td>Tickets closed per sprint</td>
+          <td>AI can close tickets faster while creating reopens and regressions</td>
+          <td>Defect escape rate (bugs reaching production per feature shipped)</td>
+        </tr>
+        <tr>
+          <td>Time to first commit</td>
+          <td>Initial code gen is fast; it's the review and iteration that takes time</td>
+          <td>Cycle time from start to PR merged (including review rounds)</td>
+        </tr>
+        <tr>
+          <td>AI acceptance rate</td>
+          <td>High acceptance of bad suggestions is worse than low acceptance</td>
+          <td>Post-merge defect rate correlated with AI usage</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>A realistic expectation for teams adopting AI coding tools with good discipline: a genuine 20–40% improvement in end-to-end cycle time on well-specified tasks, concentrated in boilerplate, test generation, and documentation. This is meaningful. The teams that claim 5x gains are generally either measuring the wrong thing or have not yet paid the technical debt bill.</p>
+    <h3>Developer satisfaction and skill growth</h3>
+    <p>One often-ignored dimension is developer experience over time. AI tools that are used well tend to increase satisfaction — tedious boilerplate disappears, developers spend more time on interesting problems. AI tools that are used poorly — where developers feel they're just reviewing code they don't understand — tend to increase anxiety and reduce engagement. Track this. Periodic team retrospectives on AI tool usage are valuable not just for process reasons but because they surface whether the tools are actually helping or just adding a layer of opacity.</p>
+
+    <h2>Building Long-Term Competence, Not Dependency</h2>
+    <p>The most important long-term concern about AI coding is the risk of skill atrophy. If you use AI for everything for two years, what happens to your ability to write code without it? What happens to your ability to debug complex systems where the AI's pattern matching fails and you need genuine understanding?</p>
+    <p>The answer is not to use AI tools less, but to use them deliberately. Some specific habits that preserve and develop skill:</p>
+    <ul>
+      <li><strong>Write the first draft yourself for at least some tasks each week.</strong> Use AI to review and improve what you wrote, rather than always generating first and editing. The direction matters for skill development.</li>
+      <li><strong>Debug manually before asking AI.</strong> When something breaks, spend at least 10–15 minutes with the debugger, log statements, and your own reasoning before handing off to the model. This is how debugging intuition builds.</li>
+      <li><strong>Read the generated code, always.</strong> Even if you don't change it, reading it carefully is how you learn from it. The model often uses library features or patterns you weren't aware of; those are worth knowing.</li>
+      <li><strong>Understand the tests.</strong> Tests are the most important documentation in a codebase. If AI generates them, read every assertion and understand what it is testing and why.</li>
+    </ul>
+    <p>The engineers who will be most valuable in a world with powerful AI coding tools are not those who can prompt most fluently — those skills will commoditise. They are the engineers who deeply understand the systems they're building, can debug anything that goes wrong, and can make sound architectural decisions. AI tools are a force multiplier for those engineers. They are a liability generator for engineers who have outsourced their understanding.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>AI-assisted coding is a discipline, not just a workflow. The tools are powerful enough to make you genuinely faster — and undisciplined enough to make you quietly worse. The engineers who get lasting value are those who review every diff, maintain their understanding, treat security and compliance seriously, and measure the outcomes that actually matter: not lines shipped, but correct, maintainable systems they can confidently own.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What is the biggest risk of aggressive AI coding adoption?</strong> Understanding atrophy and invisible technical debt — code that looks clean, passes review, and slowly accumulates design problems that only surface under operational pressure.<br>
+      <strong>How should teams measure AI coding productivity?</strong> Defect escape rate and cycle time to merged PR, not lines of code or tickets closed — the latter metrics are trivially gamed and don't reflect code quality.<br>
+      <strong>Why is "it looks right" an insufficient review standard for AI code?</strong> AI output is stylistically clean by default; the failure modes are logical errors, violated constraints, and subtle security issues that do not surface from a surface read but require understanding what the code actually does.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/prompt-engineering-for-code/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Prompt Engineering for Code</div>
+      </a>
+      <a href="/ai-coding/how-ai-coding-agents-work/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">How AI Coding Agents Work</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

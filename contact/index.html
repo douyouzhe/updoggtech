@@ -119,7 +119,7 @@
       <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
       <ul class="nav-links">
         <li><a href="/system-design/">System Design</a></li>
-        <li><a href="/tech-stacks/">Tech Stacks</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
       </ul>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -142,9 +142,11 @@
       <div class="form-title">Book a Session</div>
       <div class="form-subtitle">// fill out the form and I'll get back to you within 24h</div>
 
-      <!-- Netlify form — data-netlify="true" enables free form submissions -->
-      <form name="contact" method="POST" data-netlify="true">
-        <input type="hidden" name="form-name" value="contact">
+      <!-- FormSubmit — free form-to-email, no backend needed. First submission sends an activation email to confirm the address. -->
+      <form action="https://formsubmit.co/updoggtech@gmail.com" method="POST">
+        <input type="hidden" name="_subject" value="New booking — updoggtech mock interview">
+        <input type="hidden" name="_template" value="table">
+        <input type="hidden" name="_next" value="https://updoggtech.com/contact/">
 
         <div class="form-group">
           <label class="form-label" for="name">Your Name</label>
@@ -216,7 +218,7 @@
       <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
       <ul class="footer-links">
         <li><a href="/system-design/">System Design</a></li>
-        <li><a href="/tech-stacks/">Tech Stacks</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
         <li><a href="/contact/">Contact</a></li>
       </ul>
