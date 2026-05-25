@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:邻近/Yelp 服务——地理空间索引、为什么普通 B-tree 索引失败、Geohash 前缀、Quadtree 密度自适应、边界问题(8 个邻居)、数据模型、两步读路径、缓存与读扩展、按区域分片、排序、关键取舍。">
+<title>设计附近的人 / Yelp(邻近服务)— 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/nearby/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/nearby/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/nearby/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/nearby/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计附近的人 / Yelp(邻近服务)">
+<meta property="og:description" content="邻近服务系统设计:地理空间索引、Geohash、Quadtree、边界问题、缓存、区域分片。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/nearby/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计附近的人 / Yelp(邻近服务)">
+<meta name="twitter:description" content="设计附近/Yelp:地理空间索引、Geohash、Quadtree、8 邻居边界、缓存分片。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计附近的人 / Yelp(邻近服务)", "description": "系统设计:邻近/Yelp 服务——地理空间索引、为什么普通 B-tree 索引失败、Geohash 前缀、Quadtree 密度自适应、边界问题(8 个邻居)、数据模型、两步读路径、缓存与读扩展、按区域分片、排序、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/nearby/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/nearby/">EN</a>
+        <a href="/zh/system-design/nearby/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">nearby</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计附近的人 / Yelp(邻近服务)</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>邻近服务回答一个看似难的问题:"我附近有什么地方?"给定用户的纬度/经度和半径,返回附近商家、按距离和相关性排序——快、有规模、对数亿个兴趣点。这是 Yelp、Google Maps 的"附近",以及<a href="/system-design/ride-share/">打车</a>背后匹配层的核心。整个问题归结到一件普通数据库无法高效做的事:<strong>地理空间索引</strong>——把二维坐标变成你能按区域索引和查询的东西。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>普通 B-tree 索引无法高效做 2D 范围搜索</strong>——按 lat 和 lng 查"半径内"扫描太多。你需要一个空间索引。</li>
+        <li><strong>Geohash</strong> 把 lat/lng 位交错成一个短字符串,使附近点共享一个公共前缀——把邻近变成普通索引上的前缀查找。</li>
+        <li><strong>Quadtree</strong> 递归把空间分成 4 个格子直到每个持有 ≤ N 个点,使格子大小适应密度(市中心小格、乡间大格)。</li>
+        <li><strong>边界问题</strong>——刚好跨格子边界的地方"近"但在不同格子,所以你必须也查 8 个相邻格子。</li>
+        <li><strong>读多且几乎静态</strong>——商家很少移动,所以激进缓存;离线重建/预计算索引。</li>
+        <li><strong>两步查询</strong>——用索引取附近格子的候选地点,然后按精确距离过滤和排序。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>关键是地理空间索引。<strong>Geohash</strong> 把坐标编码为一个前缀可共享的字符串,使"附近"变成普通索引上的前缀查询;<strong>quadtree</strong> 按密度自适应细分空间。无论哪种,一次搜索从用户的格子加它的 8 个邻居取候选(处理边界问题),然后按精确距离过滤和排序。因为数据读多且几乎静态,狠狠缓存热门区域并从按区域分片的副本服务。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">geohash grid + 8 neighbors (boundary problem)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>  ┌──────┬──────┬──────┐   查用户的格子(★)和它的
+  │ 9q8yt│ 9q8yw│ 9q8yx│   8 个邻居,因为刚好跨边界的
+  ├──────┼──────┼──────┤   地方"近"但落在
+  │ 9q8ys│ 9q8y★│ 9q8yr│   不同格子里。
+  ├──────┼──────┼──────┤
+  │ 9q8ye│ 9q8yg│ 9q8yu│   附近点共享一个 geohash 前缀:
+  └──────┴──────┴──────┘   "9q8y…" → 便宜的前缀范围扫描</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>给定一个位置和半径(或带默认半径的"给我看附近的餐厅"),返回附近地点;支持添加/更新一个商家;可选按分类过滤。<strong>非功能:</strong>低延迟、极读多、高可用、扩展到 ~数亿地点和高搜索 QPS。一个关键简化观察:<strong>数据大体静态</strong>——商家不移动且很少添加/编辑——所以我们能预计算并激进缓存,且更新的最终一致没问题。(对比打车,那里"地点"是每几秒更新的移动司机——那需要一个实时内存索引。)</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>比如 200M 地点和 100M 每日搜索(~1–2K 搜索/秒平均,峰值高得多,如密集城市的午餐时间)。每条地点记录小(id、名、lat/lng、分类、评分)——几百字节——所以数据集是数十 GB,易缓存。负载压倒性是对很少变化数据的读,这把整个设计导向索引 + 缓存而非写吞吐。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>GET /search?lat=37.78&amp;lng=-122.41&amp;radius=2km&amp;category=cafe
+      → [{id, name, distance, rating}, ...]   <span class="cm"># 已排序</span>
+POST /places   {name, lat, lng, category, ...}   <span class="cm"># 添加/更新一个商家</span></code></pre>
+    </div>
+
+    <h2>第 4 步 — 为什么普通索引失败</h2>
+    <p>本能是存 <code>lat</code> 和 <code>lng</code> 列并查 <code>WHERE lat BETWEEN ... AND lng BETWEEN ...</code>。问题:B-tree 索引是一维的。<code>lat</code> 上的索引找到正确纬度带但包括整个星球那个纬度的每个地点;你随后在内存里按经度过滤(或反过来)。对一个全球数据集那是每查询的巨大扫描。我们需要一个保留 <strong>2D 局部性</strong>的索引——地图上接近的点在索引里也应接近。两种标准结构做这个。</p>
+
+    <h2>第 5 步 — Geohash</h2>
+    <p><strong>Geohash</strong> 递归把世界分成网格并交错纬度和经度的位,把结果编码为一个短 base-32 字符串。两个属性使它强大:<strong>更长的 geohash = 更小、更精确的格子</strong>(每个额外字符 ~细化方框),且<strong>附近位置共享一个公共前缀</strong>(如同一街区的两个咖啡馆可能都以 <code>9q8yyk</code> 开头)。所以你存一个 <code>geohash</code> 列、正常索引它,"找 X 附近地点"变成"找 geohash 以 X 前缀开头的地点"——普通索引上一个便宜的前缀/范围扫描。你选前缀长度匹配搜索半径(更紧半径用更长前缀)。</p>
+
+    <h2>第 6 步 — Quadtree</h2>
+    <p><strong>Quadtree</strong> 采取自适应方法:从整个地图作一个节点开始;若一个格子含超过阈值的点,把它分成四个相等象限;递归。结果是<strong>密集区(市中心)有许多小格子而稀疏区(乡村)有几个大的</strong>——格子粒度自动跟随数据密度,所以每个叶持有有界数量的点。一次搜索下降到含查询点的叶并收集附近的叶。Quadtree 通常保在内存并周期性重建;它给出无论密度如何都很均匀的结果集大小。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>Geohash</th><th>Quadtree</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>格子大小</td><td class="col-a">每精度级别固定网格</td><td class="col-b">适应点密度</td></tr>
+        <tr><td>存储</td><td class="col-a">一个字符串列——适配任何 DB 索引</td><td class="col-b">内存树结构</td></tr>
+        <tr><td>密集区</td><td class="col-a">格子能持有很多点</td><td class="col-b">自动细分 → 每格子有界</td></tr>
+        <tr><td>简单性</td><td class="col-a">很简单;前缀查询</td><td class="col-b">构建/维护更复杂</td></tr>
+        <tr><td>更新</td><td class="col-a">只重算一个字符串</td><td class="col-b">可能触发节点拆分/合并</td></tr>
+      </tbody>
+    </table>
+
+    <p>Geohash 是更简单、更常见的面试答案(它骑在任何现有数据库索引上);quadtree 在密度剧烈变化、你想要均匀结果大小时出彩。Redis 的地理空间命令和 PostGIS 底下用相关技术。</p>
+
+    <h2>第 7 步 — 数据模型与存储</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">schema (geohash approach)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>places (
+   place_id PK, name, category, rating,
+   lat, lng,
+   geohash        <span class="cm"># 已索引;如 "9q8yyk8ytpxr"</span>
+)
+INDEX on geohash   <span class="cm"># 前缀范围扫描 = 附近查找</span></code></pre>
+    </div>
+    <p>你能存几个 geohash 精度(或就用可变前缀长度查询)以匹配不同半径。places 表是真相来源;geohash 列是骑在标准 B-tree 上的空间索引。</p>
+
+    <h2>第 8 步 — 读路径与边界问题</h2>
+    <p>一次搜索分两阶段。<strong>阶段 1(索引):</strong>以匹配半径的精度计算查询点的 geohash,然后取 geohash 共享那个前缀的候选地点。<strong>阶段 2(精炼):</strong>计算查询到每个候选的精确大圆距离、丢掉半径外的、排序。陷阱是<strong>边界问题</strong>:50 米外的一个地点可能刚好坐在格子边界另一侧、因而有不同 geohash 前缀,会被漏掉。修法是也查查询格子周围的 <strong>8 个相邻格子</strong>、合并候选、然后精炼。(Quadtree 有类似问题,同样检查相邻叶。)</p>
+
+    <h2>第 9 步 — 缓存与读扩展</h2>
+    <p>因为数据几乎不变且读主导,缓存是主要扩展杠杆。给<strong>热门格子</strong>——密集、频繁搜索的区域如市中心——的结果(或候选集)在 Redis 缓存配宽松 TTL,因为一家新餐厅出现非时间关键。用副本罩住读流量,让大体静态的数据集大体住在内存。繁忙区域的大多数搜索应从缓存服务而不碰主存储。</p>
+
+    <h2>第 10 步 — 分片与扩展写</h2>
+    <p>读随副本和缓存扩展;为存储和写分布,<strong>按区域分片</strong>(如按 geohash 前缀,使一个分片拥有一个连续区域)。这让搜索的候选格子大多时候在一个分片上。警惕<strong>热点</strong>:覆盖曼哈顿的 geohash 前缀分片处理的地点和查询远多于覆盖公海的,所以按负载而非仅按面积平衡分片(密集处更细拆分)。写(新/编辑商家)罕见且能异步更新索引。</p>
+
+    <h2>第 11 步 — 排序</h2>
+    <p>"附近"不只关于距离。最终排序通常混合<strong>距离</strong>、<strong>评分/热度</strong>、分类相关性,有时还有赞助位。因为空间过滤后的候选集小(半径内的地点),这个排序每请求计算便宜,或部分预计算(如一个地点的基础热度分)并与实时距离结合。</p>
+
+    <h2>第 12 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>Geohash vs quadtree。</strong>Geohash 极简单且骑在任何 DB 索引上但有固定格子在密集区溢出;quadtree 适应密度并约束结果大小但是个内存结构、维护更费力。</li>
+      <li><strong>精度 vs 结果数。</strong>更长 geohash 前缀(更小格子)返回更少、更紧的候选但对给定半径可能需更多邻居格子;更短前缀返回更多候选去过滤。</li>
+      <li><strong>静态数据 → 狠狠缓存。</strong>读多、很少变化的性质使激进缓存和复制成为主导扩展策略,更新的最终一致可接受。</li>
+      <li><strong>静态地点 vs 移动对象。</strong>这个设计假设近静态点;跟踪移动对象(司机)需要一个频繁更新的内存索引——一个不同问题。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>邻近搜索从根本上是地理空间索引问题:把 2D 坐标映射到数据库能按区域索引的东西。Geohash(前缀可共享字符串)和 quadtree(密度自适应格子)是两个标准答案;两者都需检查相邻格子处理边界,然后按精确距离精炼。既然数据读多且几乎静态,其余是缓存和区域分片。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么不能就索引 lat 和 lng?</strong>B-tree 是 1D;一个 2D 范围查询退化为扫描整条纬度(或经度)带。你需要一个保留 2D 局部性的空间索引。<br>
+      <strong>geohash 怎么工作?</strong>它把 lat/lng 位交错成一个字符串,使附近点共享前缀、更长字符串意味更小格子——把邻近变成前缀范围扫描。<br>
+      <strong>Geohash vs quadtree?</strong>Geohash = 固定网格,平凡地存为索引字符串;quadtree = 保在内存的密度自适应格子,约束每格子点数。<br>
+      <strong>什么是边界问题?</strong>跨格子边界的附近地点有不同格子,所以你必须查 8 个相邻格子然后按精确距离过滤。<br>
+      <strong>为什么缓存在这这么有效?</strong>商家很少移动,所以数据几乎静态且读多——热门区域能以长 TTL 缓存。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/typeahead/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计搜索自动补全 (Typeahead)</div>
+      </a>
+      <a href="/system-design/leaderboard/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计排行榜</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
