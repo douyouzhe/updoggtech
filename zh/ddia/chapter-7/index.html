@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 7 章:事务——ACID 的真正含义、弱隔离级别(read committed、snapshot isolation/MVCC)、丢失更新/写偏斜/幻读等竞态,以及可串行化的三种实现(串行执行、两阶段锁 2PL、可串行化快照隔离 SSI)。">
+<title>DDIA 第7章 — 事务 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-7/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-7/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-7/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-7/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="事务 (Transactions)">
+<meta property="og:description" content="DDIA 第 7 章:ACID、隔离级别、丢失更新、写偏斜、可串行化(2PL/SSI)。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-7/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="事务 (Transactions)">
+<meta name="twitter:description" content="DDIA 第 7 章:事务、ACID、snapshot isolation、写偏斜、2PL vs SSI。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 7 章 — 事务", "description": "DDIA 第 7 章:事务——ACID 的真正含义、弱隔离级别(read committed、snapshot isolation/MVCC)、丢失更新/写偏斜/幻读等竞态,以及可串行化的三种实现(串行执行、两阶段锁 2PL、可串行化快照隔离 SSI)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-7/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-7/">EN</a>
+        <a href="/zh/ddia/chapter-7/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-7</span>
+    </div>
+    <span class="article-tag">DDIA · 第 7 章</span>
+    <h1 class="article-title">事务 (Transactions)</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 7 章讲数据库里最重要的抽象之一:<strong>事务(transaction)</strong>。事务把若干读写组成一个逻辑单元,要么整体成功(提交)要么整体失败(中止/回滚)。这让应用能假装并发问题和部分失败不存在——一个巨大的简化。但事务不是自然法则;它是一个取舍,许多分布式数据存储为性能削弱或丢弃了它们。本章考察事务实际提供什么保证、"隔离"能以什么意外方式泄露,以及真正完全<strong>可串行化(serializable)</strong>需要什么。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>ACID 既是营销也是定义</strong>——原子性(全有或全无)、一致性(一个应用关切,异类)、隔离性(并发事务不互相干扰)、持久性(已提交数据存活)。</li>
+        <li><strong>隔离级别是折中的层级</strong>——read committed → snapshot isolation → serializable,每个以更高成本防更多异常。</li>
+        <li><strong>Read committed</strong> 阻止脏读和脏写;<strong>snapshot isolation(MVCC)</strong>给每个事务一个一致的时间点视图,使读者和写者从不互相阻塞。</li>
+        <li><strong>丢失更新、写偏斜、幻读</strong>是经典竞态——且 snapshot isolation <em>不</em>防写偏斜。</li>
+        <li><strong>可串行化是唯一排除所有竞态的保证</strong>,三种方式实现:实际串行执行、两阶段锁(2PL)、可串行化快照隔离(SSI)。</li>
+        <li><strong>SSI 是现代胜利</strong>——乐观并发,让事务在快照上运行,只中止那些在提交时真正冲突的。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>事务使一组操作原子且隔离,这样应用无需推理部分失败或交错。"隔离"分级:较弱的(read committed、snapshot isolation)快但允许丢失更新、写偏斜等微妙异常;可串行化禁止它们全部。数据库通过字面串行执行、悲观锁(2PL)或乐观冲突检测(SSI)达到可串行化——最后一个是最佳通用方法。</p>
+    </div>
+
+    <h2>ACID 的含义</h2>
+    <p>事务的安全保证通常用缩写 <strong>ACID</strong> 概括——但 Kleppmann 强调这个词已被稀释成营销口号,每个数据库意思略不同。精确地说:</p>
+    <ul>
+      <li><strong>原子性(Atomicity)</strong>——事务的写全有或全无。若中途出错,整个被中止、已做的任何写被丢弃。更好的名字是<em>可中止性(abortability)</em>:关键特性是出错时能丢弃一切并安全重试。</li>
+      <li><strong>一致性(Consistency)</strong>——应用的不变量(如贷方等于借方)成立。这是异类:它是<em>应用</em>的属性,不是数据库的。数据库能强制一些约束,但定义和保持不变量最终是应用的活。(Joe Hellerstein 注意到 C 是被硬塞进来凑缩写的。)</li>
+      <li><strong>隔离性(Isolation)</strong>——并发执行的事务不互相踩;结果就像它们一次一个运行。这是丰富、微妙的部分,占本章大部分。</li>
+      <li><strong>持久性(Durability)</strong>——一旦事务提交,它的数据不会丢,即便崩溃。用预写日志和复制实现。(完美持久性不存在——每份副本都可能被毁——所以它关乎降低风险。)</li>
+    </ul>
+
+    <h3>单对象与多对象操作</h3>
+    <p>原子性和隔离性对单对象容易提供(大多数数据存储都做)。难的、有价值的情况是<strong>多对象</strong>事务,几行/文档必须一起改——如账户间转账,或保持一个反规范化计数器与它计数的行同步。许多分布式存储放弃了多对象事务,因为它们跨分区难实现;本章主张它们比 NoSQL 运动假设的更有价值。当一个操作确实失败并中止,重试是正确的恢复——但有注意事项(重试一个实际成功但确认丢失的事务能双重应用副作用)。</p>
+
+    <h2>弱隔离级别</h2>
+    <p>可串行化隔离有性能成本,所以数据库历史上提供<strong>较弱</strong>级别,防一些异常但不防其他。这些弱级别是无数微妙 bug 的来源,正因为它们在测试里看起来没问题、只在并发下破裂。</p>
+
+    <h3>Read Committed</h3>
+    <p>最基本级别。它做两个保证:<strong>无脏读</strong>(你只看到已提交的数据——绝不看到另一个事务未提交的写)和<strong>无脏写</strong>(你只覆写已提交的数据——防止两个事务的写糟糕地交错)。它通常通过每行持一个写锁实现,而读返回最后已提交的值(在写进行中时记住旧值),所以读从不阻塞。</p>
+
+    <h3>Snapshot Isolation 与 Repeatable Read</h3>
+    <p>Read committed 仍允许<strong>读偏斜(read skew,不可重复读)</strong>:若你在跨另一个事务提交的两个时刻读两行,你能看到不一致组合——像一个看似在转账中途丢了钱的银行余额。<strong>Snapshot isolation</strong> 修复这个:每个事务从它开始那一刻数据库的<em>一致快照</em>读,所以它看到每个其他事务的全有或全无。关键实现想法是<strong>多版本并发控制(MVCC)</strong>:数据库保留每个对象的几个已提交版本,每个事务看到它开始时已提交的版本。大回报:<strong>读者从不阻塞写者、写者从不阻塞读者</strong>。Snapshot isolation 对备份和分析这类长读非常宝贵。(令人困惑的是,许多数据库叫这个 "repeatable read"。)</p>
+
+    <h3>防止丢失更新</h3>
+    <p><strong>丢失更新(lost update)</strong>问题是一个 read-modify-write 竞态:两个事务读一个值,各修改它,一个写盖掉另一个。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">lost update — a read-modify-write race</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 两个客户端自增同一计数器(从 42 开始)</span>
+T1: <span class="fn">read</span>(counter) → 42
+T2: <span class="fn">read</span>(counter) → 42         <span class="cm"># 两者都看到 42</span>
+T1: <span class="fn">write</span>(counter = 43)
+T2: <span class="fn">write</span>(counter = 43)         <span class="cm"># 应该是 44!丢了一次自增</span></code></pre>
+    </div>
+
+    <p>解法,大致按偏好顺序:</p>
+    <ul>
+      <li><strong>原子写操作</strong>——让数据库做自增(<code>UPDATE ... SET n = n + 1</code>);适用时的最佳选项。</li>
+      <li><strong>显式锁</strong>——<code>SELECT ... FOR UPDATE</code> 锁住你即将修改的行。</li>
+      <li><strong>自动丢失更新检测</strong>——一些数据库(带 snapshot isolation)检测竞态并中止冒犯的事务。</li>
+      <li><strong>compare-and-set</strong>——只在值自你读后没变时才写。</li>
+      <li><strong>冲突解决</strong>——对复制数据,允许并发写并合并它们(避免 LWW,它只是丢掉一个)。</li>
+    </ul>
+
+    <h3>写偏斜与幻读</h3>
+    <p><strong>写偏斜(write skew)</strong>是丢失更新的泛化:两个事务读同一组对象,然后各基于读到的更新<em>不同</em>对象——它们合起来违反一个各自单独都会保持的不变量。经典例子:一家医院要求至少一名医生值班。两名当前都在值班的医生同时请求下班;每个事务检查"还有别人在值班吗?有"并继续——结果没人值班。这是一个<strong>幻读(phantom)</strong>:一个事务里的写改变另一个事务里搜索查询的结果。Snapshot isolation <em>不</em>防写偏斜,因为两个事务读和写了不同的行、从未直接冲突。防御包括对被查询行显式加锁,或通过引入要锁的行来<strong>物化冲突(materializing conflicts)</strong>。</p>
+
+    <div class="callout">
+      <div class="callout-label">面试级要点</div>
+      <p>最常见的陷阱是假设 snapshot isolation(即 "repeatable read")对一切都安全。它防脏读/不可重复读和读偏斜,但<strong>不防写偏斜或幻读</strong>。若你的正确性依赖于对一组行的 check-then-act("只在没人订过这个时段时"),弱隔离最终会咬你——你需要可串行化或显式锁。</p>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>异常</th><th>Read Committed</th><th>Snapshot Isolation</th><th>Serializable</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>脏读</td><td class="col-a">已防</td><td class="col-b">已防</td><td>已防</td></tr>
+        <tr><td>脏写</td><td class="col-a">已防</td><td class="col-b">已防</td><td>已防</td></tr>
+        <tr><td>读偏斜(不可重复读)</td><td class="col-a">可能</td><td class="col-b">已防</td><td>已防</td></tr>
+        <tr><td>丢失更新</td><td class="col-a">可能</td><td class="col-b">有时被检测</td><td>已防</td></tr>
+        <tr><td>写偏斜 / 幻读</td><td class="col-a">可能</td><td class="col-b">可能</td><td>已防</td></tr>
+      </tbody>
+    </table>
+
+    <h2>可串行化(Serializability)</h2>
+    <p>可串行化隔离是最强的:它保证即便事务可能并发运行,最终结果与它们以某种顺序<strong>一次一个、串行</strong>运行相同。它排除上面<em>所有</em>竞态。有三种方式实现它。</p>
+
+    <h3>实际串行执行</h3>
+    <p>最简单的想法:字面上一次执行一个事务,在单线程上。这数十年不切实际,但两个变化使它可行:RAM 变得便宜到能把许多数据集完全放内存,且 OLTP 事务通常短而少。VoltDB 和 Redis 这样做。要让它工作你必须避免交互式多语句事务(网络往返会拖住单线程),所以事务作为<strong>存储过程</strong>提交,运行到完成。吞吐受限于单个 CPU 核,所以要扩展你<strong>分区</strong>数据——但跨分区事务随后需要协调且慢得多。</p>
+
+    <h3>两阶段锁(2PL)</h3>
+    <p>约 30 年里可串行化的标准算法。规则:<strong>读者和写者互相阻塞</strong>。要读一个对象你取一个共享锁;要写它你取一个排他锁;一个写必须等所有读者的共享锁释放,反之亦然(这是与 snapshot isolation 的区别,那里读者和写者从不阻塞)。锁持到事务结束。为防幻读,2PL 用<strong>谓词锁(predicate lock)</strong>,或更实际地,覆盖一个可能匹配范围的<strong>索引范围锁(index-range lock)</strong>。2PL 正确但有真实缺点:大量锁开销、频繁<strong>死锁</strong>(事务互相等待,需检测和中止),以及高度可变、常很差的延迟。</p>
+
+    <h3>可串行化快照隔离(SSI)</h3>
+    <p>一个较新的算法(2008),以好得多的性能交付完整可串行化,被 PostgreSQL 的 serializable 级别和 FoundationDB 使用。它是<strong>乐观的</strong>:不在锁上阻塞,事务在一致快照上进行(像 snapshot isolation),数据库<em>跟踪</em>读和写。提交时它检查事务的读是否仍有效——即一个并发事务是否写了某物会改变这个事务的决定。若检测到一个危险的读-写依赖,数据库<strong>中止</strong>冒犯的事务并让它重试。SSI 在争用低时(少中止)表现好、避免 2PL 的锁争用,同时仍排除写偏斜和幻读。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>事务用一点吞吐换应用复杂度的巨大降低。实用智慧:别在应用代码里重新发明隔离,确切知道你数据库默认给你哪个隔离级别(常是 read committed 或 snapshot isolation,<em>不是</em> serializable),并在正确性依赖于对共享数据的并发决定时伸手去拿 serializable——理想是 SSI。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>ACID 里的 C 真正意味什么?</strong>应用级不变量——它是应用的责任,不真是数据库保证,不像 A、I、D。<br>
+      <strong>脏读 vs 不可重复读?</strong>脏读 = 看到未提交数据(read committed 阻止)。不可重复读/读偏斜 = 跨一个事务看到不一致值(snapshot isolation 阻止)。<br>
+      <strong>Snapshot isolation 防写偏斜吗?</strong>不。两个读同一组、写不同行的事务能违反不变量;你需要可串行化或显式锁。<br>
+      <strong>2PL vs SSI?</strong>2PL 是悲观的(读/写阻塞、死锁、慢);SSI 是乐观的(在快照上运行、提交时检测冲突、中止失败者),低争用下通常更快。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-6/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">分区</div>
+      </a>
+      <a href="/ddia/chapter-8/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">分布式系统的麻烦</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
