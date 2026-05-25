@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:酒店预订(Booking.com/Expedia)——全程 SQL + ACID、DB 级 CHECK 约束防超卖、乐观锁并发控制、Redis TTL 结账持有、Kafka→Elasticsearch 搜索、预订状态机、支付授权/捕获与幂等、取消退款、可用性日历、分析、扩展容错、为什么不用 Cassandra、关键取舍。">
+<title>设计酒店预订应用 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/hotel-booking/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/hotel-booking/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/hotel-booking/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/hotel-booking/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计酒店预订应用">
+<meta property="og:description" content="酒店预订系统设计:SQL+ACID、CHECK 约束防超卖、乐观锁、Redis 持有、状态机、支付幂等。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/hotel-booking/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计酒店预订应用">
+<meta name="twitter:description" content="设计酒店预订:SQL+ACID、防超卖约束、乐观锁、Redis TTL 持有、状态机、对账。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计酒店预订应用", "description": "系统设计:酒店预订(Booking.com/Expedia)——全程 SQL + ACID、DB 级 CHECK 约束防超卖、乐观锁并发控制、Redis TTL 结账持有、Kafka→Elasticsearch 搜索、预订状态机、支付授权/捕获与幂等、取消退款、可用性日历、分析、扩展容错、为什么不用 Cassandra、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/hotel-booking/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/hotel-booking/">EN</a>
+        <a href="/zh/system-design/hotel-booking/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">hotel-booking</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计酒店预订应用</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>酒店预订平台是一个在关键路径上有严格正确性要求的双边市场:双重预订一个房间是严重的用户体验失败,而错误地阻塞可用库存损失收入。核心设计挑战是在全球用户群跨多个日历天的住宿下、在必须挺过网络故障、支付超时和用户放弃的结账流程中,维护准确的房间可用性——全都绝不把同一晚卖给两个不同客人。除了那个正确性挑战,平台还必须跨数十万家酒店服务快速、过滤、地理感知的搜索结果,管理每酒店复杂的取消和退款政策,并近实时给酒店运营者提供业务分析。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>全程 SQL</strong>——酒店/房间目录有界且结构化;预订需要 ACID;量不足以证明 NoSQL 复杂度合理。</li>
+        <li><strong>DB 级约束防超卖</strong>——room_availability 表上的 <code>CHECK (available_count &gt;= 0)</code>;并发递减到 -1 在数据库失败,而非应用层。</li>
+        <li><strong>低争抢用乐观锁</strong>——用一个 <code>version</code> 列;冲突时重试;用户搜索和预订确认之间不持行级锁。</li>
+        <li><strong>Redis TTL 持有(~10 分钟)</strong>——结账期间软预留房间;若用户放弃未完成支付,TTL 过期自动释放。</li>
+        <li><strong>Kafka → Elasticsearch</strong>——酒店/房间创建或更新事件异步喂搜索索引;售罄房间自动从结果移除。</li>
+        <li><strong>幂等预订 API</strong>——客户端提供的幂等键防止重试请求(双击、网络重试)的重复预订。</li>
+        <li><strong>S3 + CDN 做媒体</strong>——酒店图片住在对象存储;CDN 边缘节点以低延迟全球服务它们。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>全程用 SQL 以求 ACID 正确性——酒店和房间数据大小有界,且预订需要事务完整性。<code>available_count</code> 上的行级约束在数据库级别防超卖。带 ~10 分钟 TTL 的 Redis 持有桥接结账间隙而不永久阻塞库存。Kafka 把列表变更喂进 Elasticsearch 做搜索。CDN 全球分发酒店媒体。取消和退款是它们自己的幂等状态机路径。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-1.jpg" alt="酒店预订应用高层架构" loading="lazy">
+      <figcaption>酒店预订应用高层架构</figcaption>
+    </figure>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>画框前界定系统。酒店预订覆盖很广——把它收窄到一个可辩护、连贯的子集。</p>
+
+    <h3>功能需求(酒店管理)</h3>
+    <ul>
+      <li>酒店和房间的 CRUD 操作(名、描述、设施、位置、图片)。</li>
+      <li>设房间定价——基础费率、季节费率、最少住宿、折扣规则。</li>
+      <li>管理可用性日历——封锁特定日期、设每晚房间数。</li>
+      <li>查看和管理预订:确认、取消、修改、处理 no-show。</li>
+      <li>访问业务洞察:入住率、收入、预订提前期、取消率。</li>
+    </ul>
+
+    <h3>功能需求(用户)</h3>
+    <ul>
+      <li>按城市/位置、入住和退房日期、客人数、过滤器(评分、设施、价格区间)搜索酒店。</li>
+      <li>查看酒店详情:照片、房型、设施、可用性日历、评论。</li>
+      <li>预订房间:选日期、客人数、附加项;用支付确认。</li>
+      <li>查看和管理自己的预订:看确认、改日期、取消。</li>
+      <li>在预订确认、提醒和取消时收 email/push 通知。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>高一致性</strong>——无双重预订;可用性计数必须始终正确。</li>
+      <li><strong>低延迟</strong>——搜索和酒店详情页 200 ms p99 内;结账须感觉即时。</li>
+      <li><strong>高可用</strong>——预订服务宕意味损失收入;目标 99.99%。</li>
+      <li><strong>可扩展</strong>——处理全球用户负载和季节性高峰(夏季、假日、大型活动)。</li>
+      <li><strong>持久性</strong>——一个已确认预订绝不丢失。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>显式划出范围:忠诚度计划、第三方 OTA(在线旅行社)集成、动态房间升级逻辑、欺诈检测。这些是真实产品功能,但 45 分钟吃完整范围会让难的部分——并发控制和预订状态机——没时间。</p>
+    </div>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>酒店预订是读多、写谨慎的系统。假设一个大 OTA(Booking.com / Expedia 规模):<strong>全球 50 万家酒店、每天 1M 预订</strong>。</p>
+
+    <h3>流量</h3>
+    <ul>
+      <li>搜索请求:假设 50M DAU × 5 搜索/天 = 250M 搜索/天 ≈ <strong>~2,900 搜索/秒</strong>平均;峰值(周五下午、假日季)5× → <strong>~14,500 搜索/秒</strong>。</li>
+      <li>预订写:1M 预订/天 ÷ 86,400 ≈ <strong>~12 预订/秒</strong>平均;闪促期间峰值可能 10× → <strong>~120 预订/秒</strong>。带恰当索引的 SQL 可管理。</li>
+      <li>读写比 ≈ <strong>250:1</strong>——搜索的重缓存必不可少;预订写相对罕见但必须完美正确。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>酒店:全球 ~50 万家 × 每条 ~5 KB(元数据、坐标、设施标志)≈ <strong>~2.5 GB</strong>——很小,轻易装进 SQL 还有余。</li>
+      <li>房间:~3M 房型 × ~2 KB ≈ <strong>~6 GB</strong>。</li>
+      <li>可用性表:3M 房型 × 365 天 × 每行 ~20 字节 ≈ <strong>~22 GB/年</strong>——仍 SQL 可管理;按日期分区使查询快。</li>
+      <li>预订:1M/天 × ~500 字节 × 365 天 ≈ <strong>~180 GB/年</strong>预订记录——单个 SQL 实例舒适;需要时分片。</li>
+      <li>媒体:酒店照片/视频在 S3——为 PB 级规划;不在 DB。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">注解</div>
+      <p>数据量确认 SQL 是正确的主存储——没有规模理由用 NoSQL 复杂度。难问题不是存储而是可用性表上的并发写正确性。</p>
+    </div>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>跨酒店管理和面向用户服务的干净 REST 面:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">REST API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 酒店管理 — 列表管理</span>
+<span class="kw">POST</span>   <span class="str">/hotels</span>              <span class="cm">-- 创建酒店</span>
+<span class="kw">PUT</span>    <span class="str">/hotels/{id}</span>         <span class="cm">-- 更新酒店</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}</span>         <span class="cm">-- 获取酒店详情</span>
+<span class="kw">PUT</span>    <span class="str">/hotels/{id}/rooms/{room_id}</span>   <span class="cm">-- 更新房间</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}/rooms</span>             <span class="cm">-- 列出酒店房间</span>
+<span class="kw">PUT</span>    <span class="str">/rooms/{room_id}/availability</span>  <span class="cm">-- 按日期范围设 available_count</span>
+
+<span class="cm"># 用户 — 搜索与发现</span>
+<span class="kw">GET</span>    <span class="str">/hotels/search?city=Paris&amp;checkin=2025-07-01&amp;checkout=2025-07-05&amp;guests=2&amp;max_price=200</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}/availability?checkin=...&amp;checkout=...</span>
+
+<span class="cm"># 用户 — 预订(经 Idempotency-Key 头幂等)</span>
+<span class="kw">POST</span>   <span class="str">/bookings</span>
+       Idempotency-Key: <span class="str">"client-uuid-123"</span>
+       { hotel_id, room_id, checkin, checkout, guests, payment_method_id }
+       → <span class="num">201</span> { booking_id, status: <span class="str">"RESERVED"</span>, hold_expires_at }
+
+<span class="kw">GET</span>    <span class="str">/bookings/{id}</span>       <span class="cm">-- 预订状态和详情</span>
+<span class="kw">DELETE</span> <span class="str">/bookings/{id}</span>       <span class="cm">-- 取消预订(触发退款)</span>
+<span class="kw">PUT</span>    <span class="str">/bookings/{id}/modify</span> <span class="cm">-- 改日期(若酒店政策允许)</span></code></pre>
+    </div>
+
+    <p><code>POST /bookings</code> 端点携带一个 <strong>Idempotency-Key</strong> 头。用同键重试的请求(双击、网络超时)返回已存在的预订而非创建第二个。这必不可少,因为预订流程涉及一次支付扣款——没有幂等,客户端和服务器间的网络故障能导致给客人卡上扣两次。</p>
+
+    <h2>第 4 步 — 酒店和房间列表服务</h2>
+    <p>酒店和房间目录存在一个 <strong>SQL 数据库</strong>。理由刻意简单:世界上酒店数量有限且可预测地增长。关系数据库是正确契合——数据结构化、增长可预见、查询模式(按 ID 查酒店、按酒店列房间)很适合 SQL 索引。</p>
+
+    <p>酒店图片和视频存在 <strong>AWS S3</strong>(或等价对象存储)。SQL 数据库持有这些媒体资产的引用(URL)。一个 <strong>CDN</strong> 坐在 S3 前以低延迟服务全球用户群——从地理上邻近的 CDN 边缘节点取酒店图片比命中 us-east-1 的源桶快数个数量级。</p>
+
+    <p>酒店或房间被创建或更新时,变更作为事件发布到 <strong>Kafka</strong>。一个消费者读这些事件并异步更新 <strong>Elasticsearch 搜索索引</strong>,使搜索结果与真相来源最终一致。售罄房间随 <code>available_count</code> 降到零从结果移除——这个移除流经同一 CDC 管道,而非预订路径上的直接 Elasticsearch 写。</p>
+
+    <h2>第 5 步 — 数据模型</h2>
+    <p>核心表跨酒店目录和预订系统。全住在 SQL 以求 ACID 正确性:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> hotels (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  name          <span class="ty">VARCHAR</span>(<span class="num">255</span>) <span class="kw">NOT NULL</span>,
+  city          <span class="ty">VARCHAR</span>(<span class="num">100</span>),
+  country       <span class="ty">VARCHAR</span>(<span class="num">2</span>),     <span class="cm">-- ISO 3166-1 alpha-2</span>
+  lat           <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  lng           <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  star_rating   <span class="ty">SMALLINT</span>,
+  description   <span class="ty">TEXT</span>,
+  amenities     <span class="ty">JSONB</span>,            <span class="cm">-- 泳池、wifi、停车、宠物友好...</span>
+  created_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="kw">CREATE TABLE</span> rooms (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  hotel_id      <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> hotels(id),
+  room_type     <span class="ty">VARCHAR</span>(<span class="num">64</span>),    <span class="cm">-- STANDARD|DELUXE|SUITE</span>
+  max_guests    <span class="ty">SMALLINT</span>,
+  base_rate_cents <span class="ty">INT</span>,
+  description   <span class="ty">TEXT</span>
+);
+
+<span class="kw">CREATE TABLE</span> room_availability (
+  room_id         <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> rooms(id),
+  date            <span class="ty">DATE</span>,
+  available_count <span class="ty">INT</span> <span class="kw">NOT NULL</span> <span class="kw">CHECK</span> (available_count >= <span class="num">0</span>),
+  price_cents     <span class="ty">INT</span> <span class="kw">NOT NULL</span>, <span class="cm">-- 这个特定日期的每晚费率</span>
+  version         <span class="ty">INT</span> <span class="kw">NOT NULL</span> <span class="kw">DEFAULT</span> <span class="num">0</span>, <span class="cm">-- 乐观锁</span>
+  <span class="kw">PRIMARY KEY</span> (room_id, date)
+);
+
+<span class="kw">CREATE TABLE</span> bookings (
+  id              <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  user_id         <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  room_id         <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  checkin_date    <span class="ty">DATE</span>   <span class="kw">NOT NULL</span>,
+  checkout_date   <span class="ty">DATE</span>   <span class="kw">NOT NULL</span>,
+  guest_count     <span class="ty">SMALLINT</span>,
+  total_cents     <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  status          <span class="ty">VARCHAR</span>(<span class="num">32</span>),  <span class="cm">-- RESERVED|BOOKED|CANCELLED|COMPLETED</span>
+  idempotency_key <span class="ty">VARCHAR</span>(<span class="num">64</span>) <span class="kw">UNIQUE</span>,
+  payment_intent_id <span class="ty">VARCHAR</span>(<span class="num">128</span>),
+  hold_expires_at <span class="ty">TIMESTAMP</span>,   <span class="cm">-- Redis TTL 镜像到这做恢复</span>
+  created_at      <span class="ty">TIMESTAMP</span>,
+  updated_at      <span class="ty">TIMESTAMP</span>
+);</code></pre>
+    </div>
+
+    <p>关键 schema 决策:<code>CHECK (available_count &gt;= 0)</code> 约束是防超卖的数据库级守卫。<code>version</code> 列支持乐观并发控制。<code>idempotency_key UNIQUE</code> 约束在 DB 级别防止重复预订。<code>room_availability</code> 上的 <code>price_cents</code> 列捕获预订时的每晚费率——价格在预订后能变,但客人确认的费率锁在预订记录的 <code>total_cents</code> 里。</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-2.jpg" alt="酒店和房间数据库 schema" loading="lazy">
+      <figcaption>酒店和房间数据库 schema</figcaption>
+    </figure>
+
+    <h2>第 6 步 — 搜索服务</h2>
+    <p>搜索由一个 <strong>Elasticsearch</strong> 集群驱动(Solr 是可比替代——两者都建在 Apache Lucene 上)。对列表持续更新(价格变化、可用性、新酒店)的酒店平台,Elasticsearch 因其实时索引和内建地理距离查询是更好契合。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>特性</th><th>Elasticsearch</th><th>Solr</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>最适合</td><td class="col-a">时序数据、实时索引、地理查询</td><td class="col-b">带重缓存的静态数据集</td></tr>
+        <tr><td>模糊搜索</td><td class="col-a">优秀(Levenshtein 自动机)</td><td class="col-b">良好</td></tr>
+        <tr><td>地理距离过滤</td><td class="col-a">原生 geo_point 类型 + 距离过滤</td><td class="col-b">经空间模块支持</td></tr>
+        <tr><td>Type-ahead</td><td class="col-a">内建 completion suggester</td><td class="col-b">经 edge n-gram 支持</td></tr>
+      </tbody>
+    </table>
+
+    <h3>搜索查询流程</h3>
+    <p>一个典型搜索——"巴黎的酒店,2 个成人,7 月 1–5,最高 €200/晚"——执行如下:</p>
+    <ol>
+      <li><strong>Elasticsearch 查询</strong>——按 city = "Paris"(或从"Paris"中心点 geo_distance)、最低星级、设施过滤。返回按相关性分(混合文本匹配、热度、转化率)排序的酒店 ID。</li>
+      <li><strong>可用性过滤</strong>——对每个返回的酒店,查 <code>room_availability</code> SQL 表以验证至少一个房型对请求范围内每晚有 <code>available_count &gt; 0</code> 且 <code>price_cents &lt;= 200 × 100</code>。过滤掉无合格房间的酒店。</li>
+      <li><strong>价格计算</strong>——对合格酒店,跨住宿日期求和每晚 <code>price_cents</code>,应用促销和忠诚折扣,算出显示总价。</li>
+      <li><strong>返回结果</strong>——带缩略图、每晚费率、住宿总价、可用性徽章的分页酒店列表。</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">搜索缓存</div>
+      <p>热门城市+日期组合(如"巴黎 7 月 4 日周末")的搜索结果能在 Redis 缓存配短 TTL(60–120 s)。可用性变化使受影响酒店 ID 的缓存失效。这显著减少高流量搜索查询的 Elasticsearch 和 SQL 负载,而不长时间服务陈旧可用性数据。</p>
+    </div>
+
+    <h2>第 7 步 — 预订服务与并发控制</h2>
+    <p>预订服务用 <strong>SQL 数据库</strong>求其 ACID 保证——双重预订不可接受,而 ACID 事务是防止它的干净方式。核心挑战是多晚可用性:5 晚住宿需要 <code>room_availability</code> 里五个独立行 <code>available_count &gt; 0</code>,且所有五个递减必须原子地全成或全败——没有有效的部分预订。</p>
+
+    <h3>悲观锁</h3>
+    <p>一种方法是用 <code>SELECT ... FOR UPDATE</code> 提前锁住住宿的所有行,然后递减并提交。这安全但在事务期间持锁——包括事务边界内发生的任何外部调用(如支付处理)。等 Stripe API 响应(能花 2–5 秒)时持 DB 锁是负载下连接池耗尽的配方。</p>
+
+    <h3>乐观锁(首选)</h3>
+    <p>首选方法用 <code>room_availability</code> 上的 <code>version</code> 列做乐观并发控制。用户搜索和预订确认之间不持锁——事务只在实际写的那一刻打开:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 第 1 步:读当前状态(无锁)</span>
+<span class="kw">SELECT</span> date, available_count, version
+<span class="kw">FROM</span> room_availability
+<span class="kw">WHERE</span> room_id = <span class="num">42</span>
+  <span class="kw">AND</span> date <span class="kw">BETWEEN</span> <span class="str">'2025-07-01'</span> <span class="kw">AND</span> <span class="str">'2025-07-04'</span>;
+<span class="cm">-- → 返回 4 行,version=7,8,7,9,available_count=3,3,2,3</span>
+
+<span class="cm">-- 第 2 步:开事务;对每个日期尝试条件递减</span>
+<span class="kw">BEGIN</span>;
+<span class="kw">UPDATE</span> room_availability
+  <span class="kw">SET</span> available_count = available_count - <span class="num">1</span>,
+      version = version + <span class="num">1</span>
+  <span class="kw">WHERE</span> room_id = <span class="num">42</span>
+    <span class="kw">AND</span> date = <span class="str">'2025-07-01'</span>
+    <span class="kw">AND</span> version = <span class="num">7</span>        <span class="cm">-- 乐观锁:若行被修改则失败</span>
+    <span class="kw">AND</span> available_count > <span class="num">0</span>; <span class="cm">-- 防止变负</span>
+<span class="cm">-- 对住宿所有日期重复</span>
+<span class="cm">-- 若任何 UPDATE 返回 0 行 → ROLLBACK(有人抢先)</span>
+<span class="cm">-- 若全成功 → INSERT 预订记录 → COMMIT</span></code></pre>
+    </div>
+
+    <p>若 version 检查失败(另一个并发预订修改了其中一行),事务立即回滚,服务用新数据重试。低争抢下(大多数晚),首次尝试成功。高争抢下(热门酒店在高峰周末),服务可能重试 1–3 次再成功或返回"房间不再可用"错误。<code>CHECK (available_count &gt;= 0)</code> 约束是数据库级别的第二道防线——即便应用逻辑有 bug,DB 也拒绝任何低于零的递减。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么不跨服务 2PC?</div>
+      <p>跨预订和支付服务的两阶段提交会给原子结账——要么都成要么都不成。但 2PC 在整个事务期间跨服务持锁,造成协调者瓶颈并在负载下使可用性暴跌。选的方法(Redis 持有 + 预订上的乐观锁 + 异步支付确认)用严格原子性换高可用,对失败情况带显式补偿动作。</p>
+    </div>
+
+    <h2>第 8 步 — 结账期间防超卖</h2>
+    <p>用户选房间和完成支付之间,其他用户可能预订同一房间。解法镜像电商购物车模式:一个<strong>带 ~10 分钟 TTL 的 Redis 持有</strong>在结账期间软预留房间。这创造一个两阶段预订流程:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 阶段 1:预留(立即)</span>
+用户选房间 + 日期
+  → 预订服务: BEGIN TX
+      对每个住宿日期递减 available_count(乐观锁)
+      插入 status=RESERVED、hold_expires_at=NOW()+10min 的预订
+    COMMIT
+  → Redis: SET hold:{booking_id} 1 EX 600(镜像 DB 过期)
+  → 返回 booking_id + 结账 URL 给用户
+
+<span class="cm">-- 阶段 2:确认(10 分钟内)</span>
+用户输入支付细节 + 提交
+  → 支付服务: 扣卡(Stripe PaymentIntent)
+      → webhook: payment.succeeded
+  → 预订服务: UPDATE booking SET status=BOOKED
+  → 通知: 发确认邮件 + 日历邀请
+
+<span class="cm">-- 超时路径(用户放弃)</span>
+Redis TTL 过期(10 分钟)
+  → 过期监听器 / 后台作业检测 hold:* key 被删
+  → 预订服务: UPDATE booking SET status=CANCELLED
+      为每个住宿日期重新递增 available_count
+  → 通知: "你的持有已过期"</code></pre>
+    </div>
+
+    <p>Redis 持有 TTL 过期路径需要一个可靠机制在用户放弃结账时恢复可用性计数。两种方法:</p>
+    <ul>
+      <li><strong>Redis 键空间通知</strong>——订阅 <code>__keyevent@0__:expired</code> 事件;触发一个后台作业在 SQL 里释放持有。这是事件驱动的但要求通知订阅者高可用。</li>
+      <li><strong>定时清扫作业</strong>——每分钟跑,查 <code>SELECT id FROM bookings WHERE status='RESERVED' AND hold_expires_at &lt; NOW()</code>,并释放每个过期持有。更简单更可靠;清理略延迟(最多 1 分钟)。</li>
+    </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-3.jpg" alt="预订 schema 和状态生命周期" loading="lazy">
+      <figcaption>预订 schema 和状态生命周期</figcaption>
+    </figure>
+
+    <h2>第 9 步 — 预订状态机</h2>
+    <p>一个显式状态机防止非法转换并使预订生命周期可审计。每个状态转换由业务事件驱动且幂等——在同一状态收到同一事件两次是 no-op:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">states</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>RESERVED         ← 房间持有,结账进行中(Redis TTL 活跃)
+  │ payment.succeeded webhook
+  ▼
+BOOKED           ← 已确认;房间为客人日期锁定
+  │ 客人退房 / 住宿日期过去
+  ▼
+COMPLETED        ← 住宿已发生(终态)
+
+  从 RESERVED:
+  → HOLD_EXPIRED     (TTL 过期无支付;房间释放)
+  → PAYMENT_DECLINED (支付失败;房间释放)
+  → CANCELLED_BY_USER (用户在支付完成前取消)
+
+  从 BOOKED:
+  → CANCELLED_BY_USER   (取消政策窗口内取消)
+  → CANCELLED_BY_HOTEL  (酒店因超订/运营问题取消)
+  → NO_SHOW             (客人未到;收 no-show 费)
+
+所有 CANCELLED_* 状态触发:
+  → 为每个住宿日期重新递增 available_count
+  → 发起退款(如适用,按酒店政策)
+  → 通知客人和酒店管理</code></pre>
+    </div>
+
+    <p>状态机作为 <code>bookings</code> 表的 <code>status</code> 列持久在 SQL 里,由应用级转换检查守卫。每个转换也发出一个 Kafka 事件,允许下游服务(通知、分析、收入报告)反应而不直接耦合到预订服务。</p>
+
+    <h2>第 10 步 — 支付处理与幂等</h2>
+    <p>酒店预订的支付处理遵循与电商相同的原则,但有一个关键时间差异:酒店支付常<strong>在预订时授权但在入住时捕获</strong>(或后付酒店在退房时)。这种授权-捕获分离给酒店资金保证、给客人灵活性——但给支付状态机加复杂度。</p>
+
+    <h3>支付流程</h3>
+    <ol>
+      <li>结账期间,为整个住宿金额向支付处理器(Stripe)创建一个 <strong>PaymentIntent</strong>。这授权卡而不扣它——持有出现在客人卡账单上但无钱移动。</li>
+      <li>入住时(或预付酒店立即),<strong>捕获</strong>授权的 PaymentIntent。若卡授权已过期(通常 7 天),请求新授权。</li>
+      <li>取消时,按酒店取消政策(入住前 X 天免费取消;部分退款;不退款)<strong>释放授权</strong>或在已捕获时发退款。</li>
+    </ol>
+
+    <h3>每步幂等</h3>
+    <ul>
+      <li><code>POST /bookings</code> 调用携带一个客户端生成的<strong>幂等键</strong>,存在 <code>bookings.idempotency_key UNIQUE</code> 列。用同键重试的请求返回已存在的预订。</li>
+      <li>Stripe PaymentIntent ID 存在 <code>bookings.payment_intent_id</code>——若捕获调用在超时后重试,捕获同一 PaymentIntent,绝不双重扣款。</li>
+      <li>来自 Stripe 的 webhook 事件(<code>payment_intent.succeeded</code>、<code>payment_intent.payment_failed</code>)驱动预订状态转换。每个 webhook 在处理前按其 <code>event_id</code> 去重——Stripe 至少一次投递 webhook。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">边界情况</div>
+      <p>若捕获在支付处理器成功但确认成功的 webhook 丢失会怎样?预订卡在 RESERVED 状态而客人的钱实际被捕获。一个每晚对账作业把 RESERVED 状态的预订记录与处理器的已结算交易比较——若一个 PaymentIntent 在 Stripe 被捕获但预订在我们 DB 是 RESERVED,把预订提升到 BOOKED。这个模式(乐观本地状态 + 对账)对任何支付相关系统必不可少。</p>
+    </div>
+
+    <h2>第 11 步 — 取消与退款</h2>
+    <p>取消是预订生命周期内它自己的状态机。酒店取消政策差异很大——从"随时免费取消"到"入住前 48 小时内不退款"——预订服务必须在取消时强制这些规则,而非仅在预订时。</p>
+
+    <h3>取消政策强制</h3>
+    <ul>
+      <li>每个房型有一个 <code>cancellation_policy</code> 属性:<code>FREE_CANCEL_UNTIL_DAYS</code>(如入住前 3 天)、<code>PARTIAL_REFUND_PERCENT</code>(如 50%)、<code>NO_REFUND_WINDOW_HOURS</code>(如 24 h 内不退款)。</li>
+      <li>取消请求(<code>DELETE /bookings/{id}</code>)时,预订服务读酒店政策并基于距入住天数计算退款金额。</li>
+      <li>退款金额传给支付服务,它对原始 PaymentIntent 发一笔该金额的 Stripe 退款。</li>
+    </ul>
+
+    <h3>取消时恢复可用性</h3>
+    <p>预订取消时,必须为被取消住宿的每晚恢复可用性计数。这是预订 Saga 里的<strong>补偿动作</strong>:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 补偿动作:取消时恢复可用性</span>
+<span class="kw">BEGIN</span>;
+<span class="kw">UPDATE</span> bookings
+  <span class="kw">SET</span> status = <span class="str">'CANCELLED_BY_USER'</span>, updated_at = <span class="fn">NOW</span>()
+  <span class="kw">WHERE</span> id = :booking_id
+    <span class="kw">AND</span> status <span class="kw">IN</span> (<span class="str">'RESERVED'</span>, <span class="str">'BOOKED'</span>);  <span class="cm">-- 幂等:已取消则 no-op</span>
+
+<span class="kw">UPDATE</span> room_availability
+  <span class="kw">SET</span> available_count = available_count + <span class="num">1</span>
+  <span class="kw">WHERE</span> room_id = :room_id
+    <span class="kw">AND</span> date <span class="kw">BETWEEN</span> :checkin <span class="kw">AND</span> :checkout - <span class="kw">INTERVAL</span> <span class="str">'1 day'</span>;
+<span class="kw">COMMIT</span>;
+<span class="cm">-- 然后:经支付服务发退款(异步)</span>
+<span class="cm">-- 然后:发布 BookingCancelled 事件到 Kafka</span></code></pre>
+    </div>
+
+    <h2>第 12 步 — 可用性日历</h2>
+    <p>可用性日历是驱动搜索过滤和房间详情视图("给我看这个房型哪些日期可用")的数据结构。带 <code>(room_id, date)</code> 主键的 <code>room_availability</code> 表是权威来源。对面向用户的日历 UI,一个预计算缓存必不可少:</p>
+    <ul>
+      <li>把每房间未来 90 天的可用性作有序集合或紧凑位集(每天一位,90 天 = ~12 字节)缓存在 Redis。查找 O(1)。</li>
+      <li>每当一个房间的可用性变化(预订、取消、酒店管理更新)使其缓存条目失效。</li>
+      <li>酒店详情页取缓存日历——对热门酒店通常是完整缓存命中,因为可用性变化比浏览少。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">多晚可用性检查</div>
+      <p>"巴黎,7 月 1–5"的搜索必须验证至少一个房型在所有四晚(7 月 1、2、3、4)有可用性。一个带 GROUP BY 和 HAVING count = 4 的 <code>room_availability</code> SQL 查询正确工作。为规模化的搜索时性能,预计算每房间的"从日期 X 到日期 Y 可用"范围并用日期范围字段在 Elasticsearch 索引它们。这允许 Elasticsearch 做过滤而无需每个搜索命中都打 SQL DB。</p>
+    </div>
+
+    <h2>第 13 步 — 分析与报告</h2>
+    <p>分析服务从 Kafka 消费两个事件流:搜索动作(用户搜索什么、点击哪些结果)和预订交易(预订、取消、收入)。这些馈送驱动酒店管理仪表盘和平台级报告:</p>
+    <ul>
+      <li><strong>入住率</strong>——每房型每周期 已预订晚 ÷ 总可用晚。</li>
+      <li><strong>收入趋势</strong>——每酒店每日/周/月收入,按房型细分。</li>
+      <li><strong>预订提前期</strong>——(入住日期 − 预订日期)的分布;告诉酒店主客人提前多久预订并指导定价策略。</li>
+      <li><strong>取消率</strong>——按取消政策类型分段;识别哪些政策驱动收入留存。</li>
+      <li><strong>搜索到预订漏斗</strong>——多少搜索导致酒店详情视图 → 持有 → 确认预订;识别流失点。</li>
+    </ul>
+    <p>分析事件从 Kafka 流入一个数据仓库(ClickHouse 或 Redshift),SQL 聚合在那运行而不碰运营 DB。酒店管理仪表盘查仓库;运营预订服务从不用于分析查询。</p>
+
+    <h2>第 14 步 — 扩展与容错</h2>
+    <p>酒店预订读主导(搜索远超预订)但写关键(预订写必须正确)。各自的扩展策略不同:</p>
+
+    <h3>搜索扩展</h3>
+    <ul>
+      <li>Elasticsearch 横向可扩展——加 shard 给更大索引、加副本给更高读吞吐。</li>
+      <li>在 Redis 缓存热门搜索查询(城市 + 日期范围)配 60–120 s TTL。大多数搜索流量高度重复(同样热门城市、同样热门日期)。</li>
+      <li>可用性过滤(Elasticsearch 后的 SQL 查找)是重搜索负载下的瓶颈。用读副本和 Redis 里预计算的可用性缓存缓解。</li>
+    </ul>
+
+    <h3>预订写扩展</h3>
+    <ul>
+      <li>~12 预订/秒平均(120 峰值),单个 SQL 主库舒适处理负载。乐观锁让事务短——无长持行锁。</li>
+      <li>若写规模成关切:按 <code>hotel_id</code> 哈希分片 <code>room_availability</code> 表。一个酒店的所有可用性写去一个分片;预订无需跨分片 join(一个客人一次预订一个酒店)。</li>
+      <li><code>bookings</code> 表能按 <code>user_id</code> 分片,使"我的预订"查询单分片。跨分片只为酒店管理视图(我酒店的所有预订)需要——把那些路由到分析副本。</li>
+    </ul>
+
+    <h3>容错</h3>
+    <ul>
+      <li><strong>Redis 故障</strong>——若 Redis 宕,预订服务回退到仅 DB 流程:跳过 Redis 持有,用 DB 级约束 + 乐观锁作唯一守卫。DB 负载略高但功能正确。</li>
+      <li><strong>支付处理器超时</strong>——若 Stripe API 在捕获时超时,带指数退避重试(PaymentIntent ID 确保幂等)。把预订对用户呈现为 PENDING 直到确认;每晚对账作业抓住任何缺口。</li>
+      <li><strong>Kafka 故障</strong>——预订继续;Elasticsearch 略落后(搜索可能显示售罄房间直到 Kafka 恢复、索引追上)。DB 始终是真相来源——Elasticsearch 是下游投影。</li>
+      <li><strong>DB 主库故障</strong>——自动故障转移到备用副本(如带 Patroni 的 PostgreSQL 或 Amazon RDS Multi-AZ)。故障转移期间短暂只读窗口;新预订排队并在新主库选出时重试。</li>
+    </ul>
+
+    <h2>第 15 步 — 为什么不用 Cassandra 做预订?</h2>
+    <p>不像电商订单历史(高量、追加重、适合 Cassandra 归档),酒店预订量低到一个 SQL 主库能保留完整预订历史而无需专用归档服务。在此数据量,ACID 事务的正确性好处胜过 NoSQL 的可扩展好处。具体地:</p>
+    <ul>
+      <li>1M 预订/天 × 365 天 × 500 字节 ≈ 180 GB/年——很好地在 SQL 的甜点内。</li>
+      <li>ACID 多行更新(跨多个日期递减可用性 + 在一个事务里插入预订记录)不被 Cassandra 的轻量事务原生支持(LWT 是每分区且受限)。</li>
+      <li>Cassandra 的最终一致模型会需要复杂的应用级冲突解决来防止双重预订——正是 SQL 行级约束平凡解决的问题。</li>
+    </ul>
+
+    <h2>第 16 步 — 关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>主存储</td><td class="col-a">全程 SQL</td><td>比 NoSQL 更低横向写规模;由自然低的预订写率缓解</td></tr>
+        <tr><td>并发控制</td><td class="col-a">乐观锁</td><td>冲突时需重试;热门房间高争抢下重试率飙升——加指数退避</td></tr>
+        <tr><td>搜索索引</td><td class="col-b">Elasticsearch(最终)</td><td>新预订房间在搜索里可能显示可用数秒直到 Kafka 传播;用短 TTL 可用性缓存补偿</td></tr>
+        <tr><td>结账持有</td><td class="col-a">Redis TTL(~10 分钟)</td><td>即便用户放弃房间也被阻塞 10 分钟;用更短 TTL(5 分钟)和清晰 UI 警告缓解</td></tr>
+        <tr><td>支付时机</td><td class="col-a">现在授权,入住时捕获</td><td>远期预订的授权能过期(7 天);需要时必须重新授权</td></tr>
+        <tr><td>分析</td><td class="col-b">Kafka → 数据仓库</td><td>分析最终一致(分钟到小时滞后);对报告用例可接受</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>酒店预订设计全关于一致性:SQL + 行级约束在数据库级别防双重预订;Redis TTL 持有解决结账间隙而不永久阻塞库存;乐观锁让事务短且高并发;Kafka 异步喂 Elasticsearch 使搜索准确。"为什么不 NoSQL"的答案简单——预订量不足以证明牺牲 ACID 合理,且酒店数有界。预订 API 上的幂等键是正确系统和在网络重试时给客人双重扣款的系统之间的区别。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>并发请求下怎么防止双重预订?</strong>room_availability 表上的 <code>CHECK (available_count &gt;= 0)</code> 约束使任何会递减到零以下的事务在 DB 级别失败。带 <code>version</code> 列的乐观锁确保同一房间+日期的两个并发预订不能都成功——一个会用新数据重试。<br>
+      <strong>为什么不像电商用 Cassandra 做订单历史那样做预订?</strong>酒店预订量低到 SQL 能保留完整历史;ACID 事务干净防双重预订;Cassandra 的最终一致模型会需要复杂的应用级冲突解决。<br>
+      <strong>用户选房间后放弃结账会怎样?</strong>Redis TTL(~10 分钟)自动过期,触发一个后台作业(或键空间通知处理器)为每个住宿日期重新递增 available_count——无需手动清理或 cron 作业。<br>
+      <strong>怎么让预订 API 幂等?</strong>要求一个客户端生成的 Idempotency-Key 头;把它存在 bookings 表作 UNIQUE 列。用同键重试的请求返回已存在的预订而非创建重复——防止网络重试时双重扣款。<br>
+      <strong>怎么处理预订确认时支付处理器超时?</strong>在捕获调用前把 PaymentIntent ID 存进预订记录。用同一 PaymentIntent ID 带指数退避重试捕获(Stripe 去重)。一个每晚对账作业抓住任何 PaymentIntent 已捕获但预订还在 RESERVED 状态的预订——把它们提升到 BOOKED。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/url-shortener/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计 URL 短链</div>
+      </a>
+      <a href="/system-design/google-drive/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计 Google Drive / Dropbox</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
