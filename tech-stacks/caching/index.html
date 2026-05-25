@@ -96,6 +96,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -137,6 +140,11 @@
       <div class="callout-label">tldr</div>
       <p>Cache frequently-read, rarely-changing data close to the consumer. Choose a write strategy (cache-aside, write-through, write-behind) based on your consistency needs. Use TTL and an eviction policy (LRU is the safe default) to bound memory. Design for cache misses — a cold start or stampede should degrade gracefully, not cascade into a database meltdown.</p>
     </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/caching-1.jpg" alt="Caching layers in a distributed system stack" loading="lazy">
+        <figcaption>Caching layers in a distributed system stack</figcaption>
+      </figure>
 
     <h2>Where to Cache</h2>
     <p>Caches can live at multiple layers of the stack, each with different tradeoffs:</p>

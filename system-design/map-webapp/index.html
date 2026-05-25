@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -160,6 +163,11 @@
       <p>Pre-compute routes between sectional nodes and store them in a geohash-indexed key-value store (BigTable/DynamoDB/Cassandra). Use WebSockets for real-time navigation. Feed user location pings (every 5s, at-most-once) into a message queue. Let CDC-driven Kafka keep the Elasticsearch search index current with map changes. Push ML-powered ETA refinement and hotspot prediction offline.</p>
     </div>
 
+    <figure class="article-figure">
+      <img src="/assets/img/map-webapp-1.jpg" alt="High-level map web app architecture" loading="lazy">
+      <figcaption>High-level map web app architecture</figcaption>
+    </figure>
+
     <h2>Requirements</h2>
 
     <h3>Functional</h3>
@@ -187,6 +195,11 @@
       <li><strong>Geohash</strong> — encodes 2D geographic coordinates into a 1D sortable string, enabling efficient range queries on a standard key-value store</li>
     </ul>
     <p>The primary database of choice is Google's in-house single-keyed <strong>BigTable</strong>; at similar scale, AWS DynamoDB or Cassandra are viable alternatives for their massive data volume handling.</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/map-webapp-2.jpg" alt="Quadtree spatial indexing structure" loading="lazy">
+      <figcaption>Quadtree spatial indexing structure</figcaption>
+    </figure>
 
     <h2>Routing Algorithm</h2>
     <p>Standard graph traversal (BFS) does not work for routing because road segments have variable weights (distance, speed limit, traffic). The correct algorithms are <strong>Dijkstra</strong> or <strong>Floyd-Warshall</strong>, which handle weighted edges. However, running Dijkstra across the full global road graph in real time has time complexity of O((V+E)logV) — far too expensive for 3 billion concurrent users.</p>

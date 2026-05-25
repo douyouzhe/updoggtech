@@ -96,6 +96,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -138,6 +141,11 @@
       <p>OAuth 2.0 is authorization (what you can do), not authentication (who you are). It introduces an authorization layer: instead of sharing credentials, the resource owner grants a client a scoped, expiring access token issued by the authorization server. Authorization Code flow is the secure default for server-side apps; Client Credentials is used for machine-to-machine.</p>
     </div>
 
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-1.png" alt="Third-party login with OAuth 2.0 example" loading="lazy">
+        <figcaption>Third-party login with OAuth 2.0 example</figcaption>
+      </figure>
+
     <h2>Key Roles</h2>
     <table class="compare-table">
       <thead>
@@ -154,6 +162,11 @@
 
     <h2>OAuth 2.0 vs. Authentication</h2>
     <p>A common interview mistake: confusing OAuth with authentication. <strong>OAuth 2.0 is purely about authorization</strong> — granting a client permission to perform actions on behalf of a user. It does not tell you <em>who</em> the user is. <strong>OpenID Connect (OIDC)</strong> is the authentication layer built on top of OAuth 2.0 — it adds an ID token (a JWT) that carries identity claims like name and email. When you click "Login with Google," you are using OIDC (identity) over OAuth (authorization).</p>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 authorization flow overview" loading="lazy">
+        <figcaption>OAuth 2.0 authorization flow overview</figcaption>
+      </figure>
 
     <h2>Authorization Grant Types</h2>
 
@@ -195,14 +208,34 @@ grant_type=<span class="str">authorization_code</span>
 &client_secret=<span class="str">my-secret</span></code></pre>
     </div>
 
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 Authorization Code grant flow diagram" loading="lazy">
+        <figcaption>OAuth 2.0 Authorization Code grant flow diagram</figcaption>
+      </figure>
+
     <h3>Client Credentials (Machine-to-Machine)</h3>
     <p>Used when there is no human user involved — a backend service authenticating directly as itself. The client sends its <code>client_id</code> and <code>client_secret</code> to the token endpoint and receives an access token. Common for microservice-to-microservice calls, cron jobs, and CI pipelines accessing APIs.</p>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 Client Credentials grant flow diagram" loading="lazy">
+        <figcaption>OAuth 2.0 Client Credentials grant flow diagram</figcaption>
+      </figure>
 
     <h3>Implicit (Deprecated)</h3>
     <p>Designed for single-page apps before PKCE existed: the token is returned directly in the URL fragment, skipping the code exchange step. This exposes the token to browser history, referrer headers, and any JavaScript running on the page. <strong>Do not use for new applications</strong>. Replace with Authorization Code + PKCE.</p>
 
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 Implicit grant flow diagram" loading="lazy">
+        <figcaption>OAuth 2.0 Implicit grant flow diagram (deprecated)</figcaption>
+      </figure>
+
     <h3>Resource Owner Password Credentials (Avoid)</h3>
     <p>The client collects the user's username and password directly and sends them to the authorization server. Defeats the purpose of OAuth — the user has to trust the client with credentials. Only appropriate for highly trusted first-party clients during a legacy migration.</p>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 Resource Owner Password Credentials flow diagram" loading="lazy">
+        <figcaption>OAuth 2.0 Resource Owner Password Credentials flow (avoid for new systems)</figcaption>
+      </figure>
 
     <h3>Refresh Token</h3>
     <p>Access tokens are short-lived (typically minutes to an hour) to limit the damage of token theft. A <strong>refresh token</strong> is a long-lived credential that the client can use to obtain a new access token without prompting the user again. Refresh tokens must be stored securely (server-side, never in localStorage) and should be rotated on each use.</p>

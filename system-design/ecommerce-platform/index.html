@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -159,6 +162,11 @@
       <div class="callout-label">tldr</div>
       <p>Use microservices behind an API gateway: SQL for orders and users (ACID), NoSQL for product catalogs (schema flexibility), Cassandra for historical order archival, Redis with TTL for cart holds, and Kafka to decouple the checkout pipeline from downstream processing. Elasticsearch powers search via CDC-fed indexing.</p>
     </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/ecommerce-platform-1.jpg" alt="High-level e-commerce platform architecture" loading="lazy">
+      <figcaption>High-level e-commerce platform architecture</figcaption>
+    </figure>
 
     <h2>Requirements</h2>
 
@@ -247,6 +255,11 @@
       <li><strong>SMEs (push model)</strong> — events are immediately distributed upon product or order changes</li>
     </ul>
     <p>The async Kafka pipeline also serves as a natural buffer during these surges, preventing the order processing back-end from being overwhelmed by sudden checkout bursts.</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/ecommerce-platform-2.jpg" alt="Store and product class diagram" loading="lazy">
+      <figcaption>Store and product class diagram</figcaption>
+    </figure>
 
     <h2>ML and Recommendations</h2>
     <p>User behavior signals — search queries, cart additions, wishlist saves, and purchase completions — are captured via Kafka and fed into Spark Streaming for real-time analysis. The Recommendation Service uses these signals for:</p>

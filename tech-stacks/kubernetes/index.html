@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -159,6 +162,11 @@
       <div class="callout-label">tldr</div>
       <p>Kubernetes organizes containers into Pods, assigns them stable network identities via Services, and coordinates everything through a master node running the API Server, Scheduler, Controller Manager, and etcd. Worker nodes run Kubelet and Kube Proxy to host the actual workloads.</p>
     </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes cluster architecture overview" loading="lazy">
+        <figcaption>Kubernetes cluster architecture overview</figcaption>
+      </figure>
 
     <h2>Core Primitives</h2>
 

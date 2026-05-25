@@ -96,6 +96,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -137,6 +140,11 @@
       <div class="callout-label">tldr</div>
       <p>Message queues decouple producers from consumers in time and speed. They absorb traffic bursts, enable async work, and improve system resilience. Choose between at-least-once and exactly-once delivery based on whether your consumers are idempotent. Use dead-letter queues to handle poison messages without blocking the main queue.</p>
     </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/message-queue-1.jpg" alt="Message queue decoupling producers from consumers" loading="lazy">
+        <figcaption>Message queue decoupling producers from consumers</figcaption>
+      </figure>
 
     <h2>Core Problems Message Queues Solve</h2>
     <ul>

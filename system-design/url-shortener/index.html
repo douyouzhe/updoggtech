@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -160,6 +163,11 @@
       <p>6-character base-62 slugs give sufficient namespace for a year's worth of URLs. Use ID generation (Snowflake or range assignment) over hashing to avoid collisions. Add a Redis Bloom filter to check for existing slugs before writing. Cache hot redirects in Redis. Purge expired URLs via TTL, scheduled scans, or lazy evaluation. Rate-limit write endpoints to prevent DDoS.</p>
     </div>
 
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-1.jpg" alt="High-level URL shortener architecture" loading="lazy">
+      <figcaption>High-level URL shortener architecture</figcaption>
+    </figure>
+
     <h2>Requirements</h2>
 
     <h3>Functional</h3>
@@ -182,6 +190,11 @@
       <li>Storage: less than 1 TB for a 1-year TTL (at ~100 bytes per entry)</li>
       <li>Short URL length: <strong>6 characters</strong> from a base-62 character set <code>[0-9, a-z, A-Z]</code> yields 62⁶ &gt; 56 billion unique slugs — more than enough for annual URL volume</li>
     </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-2.png" alt="URL shortener system flow diagram" loading="lazy">
+      <figcaption>URL shortener system flow diagram</figcaption>
+    </figure>
 
     <h2>Short ID Generation: Hashing vs. ID Generation</h2>
     <p>The core question is how to generate the 6-character slug:</p>
@@ -231,6 +244,11 @@ GET /{slug}
   → On miss: DB lookup → cache → redirect
   → Log click event for analytics</code></pre>
     </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/url-shortener-3.jpg" alt="Read and write path flow for URL redirect" loading="lazy">
+      <figcaption>Read and write path flow for URL redirect</figcaption>
+    </figure>
 
     <h2>Redirect: 301 vs. 302</h2>
     <p>The HTTP redirect response code matters for caching behavior:</p>

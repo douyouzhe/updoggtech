@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -159,6 +162,11 @@
       <div class="callout-label">tldr</div>
       <p>Use SQL throughout for ACID correctness — hotel and room data is bounded in size, and bookings demand transaction integrity. A row-level constraint on <code>available_count</code> prevents overselling at the database level. A Redis hold with ~10-minute TTL bridges the checkout gap. Kafka feeds listing changes into Elasticsearch for search. CDN distributes hotel media globally.</p>
     </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-1.jpg" alt="High-level hotel booking app architecture" loading="lazy">
+      <figcaption>High-level hotel booking app architecture</figcaption>
+    </figure>
 
     <h2>Requirements</h2>
 
@@ -225,6 +233,11 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
 
     <p>For a hotel platform where listings update continuously (price changes, availability, new properties), Elasticsearch is the better fit. The search index is updated via Kafka events whenever listings change, removing fully-booked rooms from search results automatically.</p>
 
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-2.jpg" alt="Hotel and room database schema" loading="lazy">
+      <figcaption>Hotel and room database schema</figcaption>
+    </figure>
+
     <h2>Booking Service and Availability Tracking</h2>
     <p>The booking service uses a <strong>SQL database</strong> for its ACID guarantees — a double-booking is unacceptable, and ACID transactions are the clean way to prevent it. Room availability is tracked in a dedicated table:</p>
 
@@ -268,6 +281,11 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
       <li><strong>User Cancelled</strong> — user cancelled confirmed booking</li>
       <li><strong>Completed</strong> — stay has occurred</li>
     </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-3.jpg" alt="Booking schema and status lifecycle" loading="lazy">
+      <figcaption>Booking schema and status lifecycle</figcaption>
+    </figure>
 
     <h2>Analytics and Reporting</h2>
     <p>The Analytics Service consumes two event streams from Kafka: search actions (what users search for, which results they click) and order transactions (bookings, cancellations, revenue). These feeds power:</p>

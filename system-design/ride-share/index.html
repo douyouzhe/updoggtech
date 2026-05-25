@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -160,6 +163,11 @@
       <p>GPS packets flow every ~5s into a message queue (at-most-once delivery). An in-memory spatial index with Cassandra backing stores driver locations partitioned by city and product type. Matching uses batched bipartite graph optimization — not greedy nearest-driver — to minimize global average pickup time. Payment is handled asynchronously via a third-party payment processor.</p>
     </div>
 
+    <figure class="article-figure">
+      <img src="/assets/img/ride-share-1.jpg" alt="High-level ride-share app architecture" loading="lazy">
+      <figcaption>High-level ride-share app architecture</figcaption>
+    </figure>
+
     <h2>Requirements</h2>
 
     <h3>Functional</h3>
@@ -201,6 +209,11 @@
       </tbody>
     </table>
 
+    <figure class="article-figure">
+      <img src="/assets/img/ride-share-2.jpg" alt="Pickup time optimization and driver matching" loading="lazy">
+      <figcaption>Pickup time optimization and driver matching</figcaption>
+    </figure>
+
     <h2>The Matching Algorithm</h2>
     <p>The intuitive approach — assign each incoming rider request to the nearest available driver — is <strong>greedy and globally suboptimal</strong>. If two riders are close to the same driver, the greedy approach gives the driver to the first requester, potentially leaving the second rider stranded with a much farther driver.</p>
     <p>The correct framing is a <strong>bipartite graph matching</strong> problem: riders on one side, available drivers on the other, with edge weights representing pickup time. The system batches incoming requests within a short window and solves for the assignment that minimizes <strong>global average pickup time</strong> across all riders in the batch — not just the first rider in queue.</p>
@@ -225,6 +238,11 @@ rider_A → driver D2          (4 min)
 rider_B → driver D1          (4 min)
 avg pickup = 4 min</code></pre>
     </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/ride-share-3.jpg" alt="Time-series GPS data storage schema" loading="lazy">
+      <figcaption>Time-series GPS data storage schema</figcaption>
+    </figure>
 
     <h2>Map Services</h2>
     <p>Rather than building a proprietary mapping stack, ride-share platforms partner with external map providers (Google Maps, MapBox, OpenStreetMap) for road graph data, routing, and ETA calculation. A critical challenge is that <strong>GPS coordinates have no concept of roads</strong> — raw latitude/longitude must be snapped to the nearest road segment via map-matching before displaying a vehicle icon on-screen.</p>

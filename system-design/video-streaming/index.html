@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -160,6 +163,11 @@
       <p>Video uploads flow through a Kafka-backed pipeline of content filtering, classification, and multi-resolution transcoding before landing in blob storage and Cassandra metadata. Playback is served from geographically distributed CDNs. Recommendations are computed offline and stored in key-value NoSQL. TCP is chosen over UDP for reliability — no packet loss means no buffering artifacts.</p>
     </div>
 
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-1.jpg" alt="High-level video streaming platform architecture" loading="lazy">
+      <figcaption>High-level video streaming platform architecture</figcaption>
+    </figure>
+
     <h2>Requirements</h2>
 
     <h3>Functional</h3>
@@ -186,6 +194,11 @@
 
     <h2>Protocol: TCP vs. UDP</h2>
     <p>YouTube and Netflix adopted <strong>TCP</strong> as the transport protocol primarily to guarantee video quality — TCP's retransmission ensures zero packet loss, eliminating the pixelation or blocking artifacts that dropped UDP packets cause. Security is a secondary benefit. The tradeoff is slightly higher latency compared to UDP, which is acceptable for on-demand streaming. UDP remains dominant in live streaming where low latency matters more than perfect quality. Google's <strong>QUIC</strong> protocol is an emerging alternative that achieves TCP-like reliability over UDP.</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-2.jpg" alt="Video upload pipeline flow" loading="lazy">
+      <figcaption>Video upload pipeline flow</figcaption>
+    </figure>
 
     <h2>Upload Pipeline</h2>
     <p>The upload path is the most complex flow in the system. A raw video file goes through multiple transformations before it is ready for viewers:</p>
@@ -228,6 +241,11 @@
         <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text and fuzzy search with type-ahead</td></tr>
       </tbody>
     </table>
+
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-3.jpg" alt="Transcoding pipeline and multi-resolution output" loading="lazy">
+      <figcaption>Transcoding pipeline and multi-resolution output</figcaption>
+    </figure>
 
     <h2>User Authentication</h2>
     <p>The authentication flow uses a standard RESTful API service backed by a SQL database for ACID guarantees. A <strong>Redis cache with Cache-Aside (lazy loading)</strong> pattern sits in front of the SQL database: data is loaded into cache on first miss and served from cache on subsequent reads. Lazy loading is preferred over write-through here because it avoids caching data that is never actually requested.</p>

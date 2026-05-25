@@ -118,6 +118,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -160,6 +163,11 @@
       <p>Use WebSockets for full-duplex, persistent client-server connections. Route messages through a WebSocket Manager (key-value store) that maps user IDs to servers. Generate message IDs with Snowflake (time-ordered, distributed, 64-bit). Queue messages as "pending" for offline users and deliver via push notification. Cap group size to bound fan-out cost.</p>
     </div>
 
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-1.jpg" alt="High-level chat app architecture" loading="lazy">
+      <figcaption>High-level chat app architecture</figcaption>
+    </figure>
+
     <h2>Requirements</h2>
 
     <h3>Functional</h3>
@@ -178,6 +186,11 @@
       <li><strong>High availability</strong> — dropped connections or missed messages destroy trust</li>
       <li><strong>Massive scale</strong> — 4 billion users, 100 billion messages daily</li>
     </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket connection management and message routing" loading="lazy">
+      <figcaption>WebSocket connection management and message routing</figcaption>
+    </figure>
 
     <h2>Protocol Selection: Why WebSockets</h2>
     <p>The central challenge of chat is server-to-client message push. Three approaches exist:</p>
@@ -203,6 +216,11 @@
       <li><strong>WebSocket Manager</strong> — maintains a key-value mapping of <code>[user_id → websocket_server:port]</code>; backed by Redis for fast in-memory lookup across 65,000+ available ports per server</li>
       <li><strong>Last Seen Service</strong> — samples user activity at ~1-minute intervals; records a timestamp when the app is open</li>
     </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-3.jpg" alt="Message object schema" loading="lazy">
+      <figcaption>Message object schema</figcaption>
+    </figure>
 
     <h2>Message Schema and ID Generation</h2>
 

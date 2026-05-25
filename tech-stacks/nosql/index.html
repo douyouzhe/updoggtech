@@ -96,6 +96,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -137,6 +140,11 @@
       <div class="callout-label">tldr</div>
       <p>NoSQL databases trade relational features (joins, strict ACID) for schema flexibility and horizontal scale. Pick the right type for your data model: document for nested objects, key-value for high-throughput lookups, column-family for time-series and analytics, graph for relationship traversal. The CAP theorem dictates that you must choose between consistency and availability during a network partition.</p>
     </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/nosql-1.jpg" alt="NoSQL database categories and data models" loading="lazy">
+        <figcaption>NoSQL database categories and data models</figcaption>
+      </figure>
 
     <h2>The Four NoSQL Categories</h2>
 

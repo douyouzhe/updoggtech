@@ -96,6 +96,9 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -137,6 +140,11 @@
       <div class="callout-label">tldr</div>
       <p>Sharding splits data across multiple database nodes by a shard key. Hash-based sharding gives even distribution; range-based sharding enables efficient range scans. Consistent hashing minimizes data movement when resharding. The cost is complexity: cross-shard queries, joins, and transactions require significant engineering effort.</p>
     </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/sharding-1.jpg" alt="Horizontal database sharding across multiple nodes" loading="lazy">
+        <figcaption>Horizontal database sharding across multiple nodes</figcaption>
+      </figure>
 
     <h2>Vertical vs. Horizontal Partitioning</h2>
     <table class="compare-table">

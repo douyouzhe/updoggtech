@@ -118,6 +118,10 @@
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
   }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 </style>
 </head>
 <body>
@@ -159,6 +163,13 @@
       <div class="callout-label">tldr</div>
       <p>LSM-trees (log-structured) favor writes; B-trees favor reads. Both use indexes to make queries fast, with different tradeoffs. OLTP databases optimize for random-access point queries; OLAP warehouses optimize for sequential full-column scans. Column-oriented storage is the key insight that makes analytical queries fast.</p>
     </div>
+
+    <h2>Original Notes</h2>
+    <p>The handwritten study notes this chapter summary is based on:</p>
+    <figure class="article-figure">
+      <img src="/assets/img/chapter-3-1.jpg" alt="DDIA Chapter 3 handwritten notes" loading="lazy">
+      <figcaption>Original handwritten notes — DDIA Chapter 3</figcaption>
+    </figure>
 
     <h2>Log-Structured Storage Engines</h2>
     <p>The simplest database is an append-only log: write goes to the end of a file, read scans from the beginning. Appends are extremely fast (sequential I/O), but reads are O(n). Indexes solve the read problem at the cost of write overhead.</p>
