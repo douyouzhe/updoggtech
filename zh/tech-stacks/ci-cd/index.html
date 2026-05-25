@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 CI/CD——持续集成 vs 持续交付 vs 持续部署、流水线各阶段、一次构建的不可变制品、部署策略(滚动、蓝绿、金丝雀)、回滚与质量门禁。">
+<title>CI/CD — 持续集成与交付 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/ci-cd/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="CI/CD — 持续集成与交付">
+<meta property="og:description" content="CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/ci-cd/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CI/CD — 持续集成与交付">
+<meta name="twitter:description" content="CI/CD 怎么工作:流水线阶段、不可变制品与部署策略。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"CI/CD — 持续集成与交付","description":"CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。","datePublished":"2023-09-24","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/ci-cd/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/ci-cd/">EN</a>
+        <a href="/zh/tech-stacks/ci-cd/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">ci-cd</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">CI/CD</h1>
+    <div class="article-meta">
+      <span>2023年9月24日</span>
+      <span class="separator">·</span>
+      <span>22 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>CI/CD 是让团队能一天发布很多次、而且安全的那套自动化。它用一条会在每次变更上构建、测试、发布的流水线,取代了手动构建和手工部署服务器这种易错的仪式。回报不只是快:更小、更频繁的发布<em>更</em>安全,因为每次携带的改动更少、更容易回退。它与 <a href="/tech-stacks/docker/">容器</a>(制品)和 <a href="/tech-stacks/kubernetes/">Kubernetes</a>(部署目标)天然搭配。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>CI = 持续集成</strong>——频繁合并到主干,并在每次提交上跑自动构建 + 测试,立刻发现破坏。</li>
+        <li><strong>CD = 持续交付</strong>(始终可部署、按按钮发布)<strong>或持续部署</strong>(每个通过的构建自动上线)。</li>
+        <li><strong>一次构建,推同一个制品</strong>——一个不可变镜像不变地穿过 dev → staging → prod,所以你测的就是你发的。</li>
+        <li><strong>流水线分阶段、带门禁</strong>——源码 → 构建 → 测试 → 安全扫描 → 部署,每个都是必须通过的门。</li>
+        <li><strong>部署策略限制爆炸半径</strong>——滚动、蓝绿、金丝雀,在速度/成本与安全间取舍。</li>
+        <li><strong>快速回滚是安全网</strong>——不可变制品让回滚变成切标签,而非重新构建。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>持续集成在每次提交上跑自动构建和测试套件,让问题尽早暴露。持续交付让每个通过的构建都可部署;持续部署则自动上线。流水线一次构建出不可变制品,并让<em>同一个</em>制品在门禁后穿过各环境。用滚动/蓝绿/金丝雀策略安全发布,把回滚保持为一步快操作。更小、更频繁的发布比一次性大发布更安全。</p>
+    </div>
+
+    <h2>为什么用 CI/CD</h2>
+    <p>手动发布因为可预见的原因失败:分支分叉数周后集成很痛,机器之间构建不一致,半夜跑部署步骤的人会出错。把从提交到生产的路径自动化,让发布<strong>可复现、快、可逆</strong>。更深的洞见反直觉但已被充分验证:<em>更</em>频繁地部署反而降低风险,因为每次部署只含一个小而可理解的改动,出问题易于追踪和撤销——与含成千上万改动的季度发布正相反。</p>
+
+    <h2>持续集成</h2>
+    <p><strong>CI</strong> 是把每个人的工作频繁(理想是一天多次)集成进一条共享主干的实践,并在<em>每次</em>推送上跑自动构建和测试套件。要点是在引发问题的那次提交后几分钟内、趁作者记忆犹新时,就抓住集成问题和回归,而不是几周后大合并时才发现一团乱麻。CI 依赖一套扎实、快速、可靠的测试;没有它,"绿色"流水线毫无意义。</p>
+
+    <h2>流水线各阶段</h2>
+    <p>CI/CD 流水线是一串阶段,每个都是必须通过才能进入下一个的<strong>门(gate)</strong>:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">典型流水线</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>提交 ─▶ [ 源码 ] ─▶ [ 构建 ] ─▶ [ 测试 ] ─▶ [ 扫描 ] ─▶ [ 部署 ]
+                      │            │           │            │
+                   编译 +       单测 +      安全/        滚动 /
+                   构建镜像      集成测试     lint/SAST    金丝雀
+                      │            │           │            │
+                      └── 任一阶段失败 → 停止、通知 ───────┘
+
+  只构建一次 → 产出制品(如 image:sha)→ 把它往后推</code></pre>
+    </div>
+
+    <p>GitHub Actions、GitLab CI、Jenkins、CircleCI 等工具用声明式(通常是仓库里的一个 YAML 文件)定义这些阶段。流水线在触发时自动运行——push、pull request、合并到主干,或打 tag。</p>
+
+    <h2>持续交付 vs 持续部署</h2>
+    <p>"CD" 是两个相关但不同的概念,这个区别是经典面试点:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>持续交付(Continuous Delivery)</th><th>持续部署(Continuous Deployment)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>最终状态</td><td class="col-a">每个构建都<em>可部署</em></td><td class="col-b">每个通过的构建<em>已被部署</em></td></tr>
+        <tr><td>到生产</td><td class="col-a">人工审批(按一下按钮)</td><td class="col-b">全自动,无人介入</td></tr>
+        <tr><td>何时用</td><td class="col-a">你想要一个人/业务的门</td><td class="col-b">你完全信任你的测试</td></tr>
+      </tbody>
+    </table>
+
+    <p>两者都需要同样有纪律的流水线;唯一区别是是否由人按下"发布"。持续部署是更进阶的终态,要求对自动化测试有非常高的信心。</p>
+
+    <h2>一次构建,推同一个制品</h2>
+    <p>一条基础原则:<strong>只构建一次制品</strong>,并让<em>同一个</em>制品穿过每个环境。如果你为 staging 重新构建、再为 prod 重新构建,你发布的就是从没测过的东西。用容器这很自然——流水线构建出 <code>myapp:&lt;git-sha&gt;</code>,对它跑测试,到生产的就是这同一个不可变镜像。制品带版本且不可变,这也正是回滚轻而易举的原因。</p>
+
+    <h2>部署策略</h2>
+    <p>你如何替换运行中的版本,决定了一次坏部署的爆炸半径:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">滚动 vs 蓝绿 vs 金丝雀</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>滚动     : 一次替换几个实例   v1 v1 v1 → v2 v1 v1 → v2 v2 v2
+蓝绿     : 起一整套 v2("绿"),切流量,留着 v1("蓝")以便回退
+金丝雀   : 把 1% → 5% → 50% → 100% 流量导向 v2,边导边看指标</code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>做法</th><th>取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">滚动</td><td>逐步替换实例</td><td>不需额外容量;短暂版本混跑;回滚较慢</td></tr>
+        <tr><td class="col-b">蓝绿</td><td>整套并行环境,切流量</td><td>瞬时切换 & 回滚;部署期间双倍基础设施</td></tr>
+        <tr><td class="col-a">金丝雀</td><td>先放一小部分,边看边放</td><td>爆炸半径最小;需要好的指标 + 自动化</td></tr>
+      </tbody>
+    </table>
+
+    <p>金丝雀对高风险服务最安全,因为一次坏发布在自动监控抓到并停止前只命中一小撮用户——这也是它和 <a href="/tech-stacks/observability/">可观测性</a> 紧密搭配的原因。</p>
+
+    <h2>回滚</h2>
+    <p>最重要的安全属性是能<strong>快速回到一个已知良好状态</strong>。因为制品不可变且带版本,回滚通常就是"重新部署上一个镜像标签"——几秒,而非重新构建。蓝绿让它变成切流量;金丝雀让它变成"停止放量"。推论:一个你没法快速回滚的部署,就是一个你不该做的部署。(数据库迁移是需要小心的例外——让 schema 变更向后兼容,使新旧代码能在过渡期共存;见 <a href="/ddia/chapter-4/">编码与演化</a>。)</p>
+
+    <h2>质量门禁与实践</h2>
+    <ul>
+      <li><strong>自动化测试</strong>——单测、集成、端到端——是骨干;流水线只和它们一样可信。</li>
+      <li><strong>静态分析 & 安全扫描</strong>——lint、SAST、依赖/CVE 与镜像扫描,有问题就让构建失败。</li>
+      <li><strong>审批</strong>——交付模式下(或敏感改动)在 prod 前设一道人工门。</li>
+      <li><strong>主干开发(trunk-based)</strong>——短生命周期分支频繁合并,让集成成本低。</li>
+      <li><strong>特性开关(feature flags)</strong>——把<em>部署</em>和<em>发布</em>解耦:先把代码暗着发上去,再打开(或关掉)而无需重新部署。</li>
+    </ul>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>不稳定的测试(flaky)</strong>——非确定性失败侵蚀信任,直到大家无视红色构建;隔离并修掉它们。</li>
+      <li><strong>流水线慢</strong>——CI 跑一小时,大家就攒着改动、不再频繁集成;并行化并加缓存。</li>
+      <li><strong>雪花环境</strong>——和 prod 不一样的 staging 会藏 bug;用同样的镜像和基础设施即代码。</li>
+      <li><strong>没有回滚预案</strong>——尤其围绕不可逆的迁移;永远准备一条经过验证的退路。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>CI/CD 把发布变成一条可复现、自动化、可逆的流水线:每次提交都集成并测试,一次构建出不可变制品并往后推,用一种限制爆炸半径的策略(滚动/蓝绿/金丝雀)发布——以快速回滚作为安全网。文化上的回报是:小而频繁的部署比稀有的大发布更安全。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>CI 对比 CD?</strong>CI = 每次提交自动构建+测试以尽早发现破坏;CD = 持续交付(始终可部署、人工发布)或持续部署(每个绿色构建自动上线)。<br>
+      <strong>为什么只构建一次制品?</strong>把同一个不可变制品推过各环境,意味着你发的正是你测的;按环境重新构建有漂移风险。<br>
+      <strong>滚动 vs 蓝绿 vs 金丝雀?</strong>滚动逐步替换(无额外容量);蓝绿在两套完整环境间切换(瞬时回滚、双倍基础设施);金丝雀先放一小部分并看指标(爆炸半径最小)。<br>
+      <strong>怎么快速回滚?</strong>重新部署上一个不可变制品/标签(或切流量)。让数据库迁移向后兼容,使各版本代码能共存。<br>
+      <strong>部署 vs 发布?</strong>特性开关把两者解耦——把代码暗着部署,再打开特性,无需再次部署。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/docker/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Docker 与容器</div>
+      </a>
+      <a href="/tech-stacks/observability/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">可观测性</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

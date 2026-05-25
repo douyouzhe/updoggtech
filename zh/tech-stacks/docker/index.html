@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 Docker 与容器——它们解决的依赖问题、namespaces 与 cgroups 如何隔离进程、容器对比虚拟机、镜像分层、Dockerfile、registry,以及容器为什么胜出。">
+<title>Docker 与容器 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/docker/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/docker/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/docker/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/docker/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Docker 与容器">
+<meta property="og:description" content="容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/docker/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Docker 与容器">
+<meta name="twitter:description" content="容器怎么工作:namespaces、cgroups、镜像分层、Dockerfile,以及为何胜过 VM。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Docker 与容器","description":"容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。","datePublished":"2023-09-22","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/docker/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/docker/">EN</a>
+        <a href="/zh/tech-stacks/docker/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">docker</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">Docker 与容器</h1>
+    <div class="article-meta">
+      <span>2023年9月22日</span>
+      <span class="separator">·</span>
+      <span>22 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>容器是现代基础设施的构建单元——它是 <a href="/tech-stacks/kubernetes/">Kubernetes</a> 编排的对象、CI 流水线构建的产物、微服务发布的方式。Docker 把"把应用连同它运行所需的一切打包"变成一条命令的工作流,从而让容器普及。最关键要理解的是:容器<em>不是</em>一台轻量虚拟机——它是共享内核上的一个隔离进程,这个区别解释了它的速度,也解释了它的局限。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>容器把应用 + 它所有依赖</strong>打包成一个可移植镜像,在任何主机上运行结果一致——终结"在我机器上是好的"。</li>
+        <li><strong>它是隔离进程,不是 VM</strong>——Linux <strong>namespaces</strong> 给它自己的系统视图;<strong>cgroups</strong> 限制它的 CPU/内存。它共享主机内核。</li>
+        <li><strong>对比 VM:</strong>没有客机操作系统,所以容器是 MB 级而非 GB 级、毫秒级启动、可高密度部署——代价是隔离更弱。</li>
+        <li><strong>镜像是分层且只读的</strong>——每条 Dockerfile 指令是一个可缓存的层;层在镜像间共享以省空间和构建时间。</li>
+        <li><strong>Dockerfile</strong> 是可复现的构建配方;<strong>registry</strong>(Docker Hub、ECR)存储并分发镜像。</li>
+        <li><strong>容器是临时且不可变的</strong>——状态放在 volume/外部存储里;你替换而非修补一个运行中的容器。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>容器把应用和它的依赖打包成一个不可变镜像,到处运行结果都一样。底层它只是一个被 Linux namespaces(自己的文件系统、网络、PID 空间)隔离、被 cgroups(CPU/内存上限)约束的主机进程,共享主机内核——这就是它远比 VM 轻的原因。镜像由 Dockerfile 构建成可缓存、可共享的层,经 registry 分发。让容器保持无状态且不可变,你就得到可移植、可回滚、能被 Kubernetes 管理的部署。</p>
+    </div>
+
+    <h2>问题:"在我机器上是好的"</h2>
+    <p>有容器之前,部署软件意味着在每台机器上复现它的<em>环境</em>——对的语言运行时、库版本、系统包、配置。开发者笔记本、CI、生产之间的细微差异造成了那句臭名昭著的"可在我机器上是好的"。容器解决这个,靠把应用<strong>连同</strong>它整个用户态环境打包成一个产物,所以你测的东西和你在生产跑的东西逐字节相同。</p>
+
+    <h2>容器到底是什么</h2>
+    <p>容器是一个普通的 Linux 进程,只是被赋予了对系统的隔离<em>视图</em>,用到两个内核特性:</p>
+    <ul>
+      <li><strong>namespaces</strong> 提供隔离——容器拿到自己的文件系统挂载、网络栈、进程 ID(PID namespace,所以它的"PID 1"是它的主进程)、主机名和用户。它看不到主机的其他进程或文件。</li>
+      <li><strong>cgroups(控制组)</strong> 提供资源限制——限定容器能用多少 CPU、内存、I/O,这样一个容器不能饿死其他容器。</li>
+    </ul>
+    <p>关键是,主机上所有容器<strong>共享那台主机的内核</strong>。容器里没有客机操作系统——只有你的应用和它的用户态文件,作为隔离、受限的主机进程运行。这一个事实是容器对比 VM 一切取舍的根源。</p>
+
+    <h2>容器对比虚拟机</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>容器</th><th>虚拟机</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>隔离单元</td><td class="col-a">进程(namespaces + cgroups)</td><td class="col-b">hypervisor 上的完整客机 OS</td></tr>
+        <tr><td>内核</td><td class="col-a">共享主机内核</td><td class="col-b">每个 VM 有自己的内核</td></tr>
+        <tr><td>体积</td><td class="col-a">MB 级</td><td class="col-b">GB 级</td></tr>
+        <tr><td>启动</td><td class="col-a">毫秒级</td><td class="col-b">数秒到数分钟</td></tr>
+        <tr><td>密度</td><td class="col-a">每主机数百个</td><td class="col-b">每主机几个</td></tr>
+        <tr><td>隔离强度</td><td class="col-a">较弱(共享内核)</td><td class="col-b">较强(硬件级)</td></tr>
+      </tbody>
+    </table>
+    <p>结论:容器在轻量、速度、密度上胜出(很适合大量小服务),而 VM 在隔离上胜出(更强的安全边界)。实践中两者常分层——云上容器常跑在 VM <em>里</em>,以兼得两者。</p>
+
+    <h2>镜像与分层</h2>
+    <p>容器<strong>镜像(image)</strong>是实例运行所基于的、不可变、打包好的文件系统 + 元数据。它的定义性特征是分<strong>层(layer)</strong>构建:每层是一个只读的文件系统差异,通过联合文件系统(union filesystem)叠成最终的根文件系统。层是<strong>内容寻址且共享的</strong>——如果十个镜像基于同一个基础层,该层只存一份、被复用。容器运行时,顶上加一个薄的可写层(写时复制),所以底下的镜像保持不可变。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">分层镜像 + 可写容器层</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>┌─────────────────────────────┐  ← 可写层(每容器一个,临时)
+├─────────────────────────────┤
+│ COPY app/        (层 4)     │  ┐
+│ RUN npm install  (层 3)     │  │ 只读镜像层,
+│ COPY package.json(层 2)     │  │ 可缓存 + 跨镜像共享
+│ FROM node:20     (层 1)     │  ┘
+└─────────────────────────────┘
+
+  改应用代码 → 只重建层 4;层 1–3 从缓存复用</code></pre>
+    </div>
+
+    <p>这种分层是构建快(未变的层走缓存)的原因,也是为什么 Dockerfile 指令顺序重要——把不常变的步骤(装依赖)放在常变的步骤(拷源码)<em>之前</em>,让缓存能扛住大多数改动。</p>
+
+    <h2>Dockerfile</h2>
+    <p>镜像由 <strong>Dockerfile</strong> 构建——一份声明式配方,每条指令产生一个层:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">Dockerfile</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">FROM</span> node:20-alpine          <span class="cm"># 小的基础镜像</span>
+<span class="kw">WORKDIR</span> /app
+<span class="kw">COPY</span> package*.json ./        <span class="cm"># 先拷依赖 → 对缓存友好</span>
+<span class="kw">RUN</span> npm ci --omit=dev
+<span class="kw">COPY</span> . .                      <span class="cm"># 再拷源码(常变)</span>
+<span class="kw">EXPOSE</span> 3000
+<span class="kw">CMD</span> [<span class="str">"node"</span>, <span class="str">"server.js"</span>]    <span class="cm"># 容器运行的进程</span></code></pre>
+    </div>
+
+    <p><strong>多阶段构建(multi-stage build)</strong>(一个编译的构建阶段,再一个只拷产物的瘦运行阶段)把构建工具留在身后,从而让最终镜像很小——是做精简、安全镜像的关键实践。</p>
+
+    <h2>Registry</h2>
+    <p>镜像通过 <strong>registry</strong> 分发——你把构建好的镜像 <code>push</code> 上去、再 <code>pull</code> 下来(Docker Hub、AWS ECR、GitHub Container Registry 等)。镜像打标签(如 <code>myapp:1.4.2</code>),而因为层是内容寻址的,一次 pull 只下载主机还没有的层。registry 是你的 <a href="/tech-stacks/ci-cd/">CI/CD 流水线</a>(构建并推送)与编排器(拉取并运行)之间的交接点。</p>
+
+    <h2>状态、网络与运行时</h2>
+    <p>两个运维事实很重要。第一,容器的可写层是<strong>临时的</strong>——容器被删时它就没了,所以持久数据放在 <strong>volume</strong>(挂载到主机或网络存储)或外部服务(数据库、<a href="/tech-stacks/object-storage/">对象存储</a>)里,绝不放在容器内。第二,每个容器有自己的网络 namespace;Docker 用虚拟网络把它们连起来、把端口映射到主机。Docker 引擎(或 containerd 等其他运行时)负责把镜像变成一个运行中的隔离进程。</p>
+
+    <h2>容器为什么胜出</h2>
+    <ul>
+      <li><strong>可移植</strong>——同一个镜像在笔记本、CI、生产上运行,结果一致。</li>
+      <li><strong>密度与速度</strong>——毫秒级启动、每主机数百个,很适合微服务和自动扩缩。</li>
+      <li><strong>不可变部署</strong>——你发布一个带版本的镜像,靠切标签回滚,而不是去改服务器。</li>
+      <li><strong>编排的基础</strong>——统一、自包含的单元正是 <a href="/tech-stacks/kubernetes/">Kubernetes</a> 用来调度、扩缩、自愈所需要的。</li>
+    </ul>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>镜像臃肿</strong>——肥基础镜像和遗留的构建工具让镜像巨大、拉取慢;用精简基础镜像和多阶段构建。</li>
+      <li><strong>把容器当 VM 用</strong>——别 SSH 进去改它、别跑一个带很多进程的 init;理想是每容器一个主进程。</li>
+      <li><strong>状态放在容器里</strong>——任何写到容器文件系统的东西重启即丢;用 volume。</li>
+      <li><strong>安全</strong>——共享内核意味着隔离更弱;别用 root 跑、扫描镜像 CVE、别把 secret 烤进层里(它们会留在镜像里)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>容器是一个共享主机内核、被隔离且资源受限的进程——不是 VM——这就是它小、快、密的原因。镜像是不可变、分层、可共享的,由 Dockerfile 可复现地构建、经 registry 分发。让它们无状态且不可变,你就得到可移植、可回滚的部署,能被 Kubernetes 这样的编排器大规模管理。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>容器对比 VM?</strong>容器是共享主机内核的隔离进程(namespaces + cgroups);VM 在 hypervisor 上跑完整客机 OS。容器 MB 级、毫秒启动;VM GB 级、隔离更强。<br>
+      <strong>到底是什么在隔离容器?</strong>Linux namespaces(文件系统、网络、PID 视图)加 cgroups(CPU/内存上限)——没有客机内核。<br>
+      <strong>镜像分层有什么用?</strong>每条 Dockerfile 步骤是一个可缓存、内容寻址、跨镜像共享的层——构建快、存储小;把最不常变的步骤放前面。<br>
+      <strong>容器状态放哪?</strong>不放在临时的可写层里——放 volume 或外部存储,因为容器不可变、可替换。<br>
+      <strong>容器为何在微服务上胜出?</strong>可移植、毫秒启动、高密度、不可变带版本部署,还是编排的完美单元。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/cdn/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">CDN</div>
+      </a>
+      <a href="/tech-stacks/ci-cd/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">CI/CD</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解数据库索引——为什么需要索引、B-Tree 与 LSM-Tree 两种结构、聚簇索引与二级索引、复合索引与覆盖索引、最左前缀规则,以及什么时候不该建索引。">
+<title>数据库索引 — B-Tree 对比 LSM-Tree | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/database-indexing/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="数据库索引 — B-Tree 对比 LSM-Tree">
+<meta property="og:description" content="为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/database-indexing/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="数据库索引 — B-Tree 对比 LSM-Tree">
+<meta name="twitter:description" content="数据库索引怎么工作:B-Tree 对比 LSM-Tree、聚簇与二级、复合与覆盖索引。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"数据库索引 — B-Tree 对比 LSM-Tree","description":"为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。","datePublished":"2023-09-16","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/database-indexing/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/database-indexing/">EN</a>
+        <a href="/zh/tech-stacks/database-indexing/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">database-indexing</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">数据库索引</h1>
+    <div class="article-meta">
+      <span>2023年9月16日</span>
+      <span class="separator">·</span>
+      <span>24 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>索引是对数据库性能影响最大的那一个杠杆,"这条查询为什么慢?"几乎总能归到索引上。思路很简单——维护一个辅助结构,让你不用扫全表就能找到行——但工程上很有深度:两种主流结构(<strong>B-Tree</strong> 和 <strong>LSM-Tree</strong>)在读写速度上做出相反的取舍;而你如何组织索引(聚簇、二级、复合、覆盖)决定了一条查询是飞起来还是爬。这是我们 <a href="/ddia/chapter-3/">DDIA 存储与检索笔记</a> 的实战配套篇。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>索引用写速度和空间换读速度</strong>——它把 O(n) 的全表扫描变成 O(log n) 的查找,但每次写都得同时更新索引。</li>
+        <li><strong>B-Tree</strong> 读优化、有序、平衡、原地更新——关系型数据库的默认(PostgreSQL、MySQL/InnoDB)。</li>
+        <li><strong>LSM-Tree</strong> 写优化——写先缓冲在内存,刷成不可变的有序文件,后台做 compaction(Cassandra、RocksDB)。</li>
+        <li><strong>聚簇索引 vs 二级索引</strong>——聚簇索引<em>就是</em>按主键排序的表本身;二级索引是另一个指回行的结构。</li>
+        <li><strong>复合索引遵循最左前缀规则</strong>——(a, b, c) 上的索引能帮到查 a、a+b、a+b+c——但帮不到只查 b。</li>
+        <li><strong>覆盖索引</strong>能只靠索引就回答查询,完全跳过回表。</li>
+        <li><strong>别建过多索引</strong>——每个索引都拖慢写、占空间;没用的索引是纯开销。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>索引靠避免全表扫描让读变快,代价是写更慢、占更多存储。B-Tree(有序、原地、读优化)支撑大多数关系型数据库;LSM-Tree(内存缓冲 + 不可变 SSTable + compaction,写优化)支撑很多 NoSQL 存储。除了结构,设计也很关键:聚簇 vs 二级、复合索引(最左前缀规则)、覆盖索引(只靠索引回答)。索引那些你查询会过滤/排序的列——别多建。</p>
+    </div>
+
+    <h2>为什么要建索引</h2>
+    <p>没有索引时,找匹配 <code>WHERE email = 'x'</code> 的行意味着<strong>全表扫描</strong>——读每一行,O(n)。一千行没事;一亿行就是灾难。索引是一个有序(或以其他方式组织)的辅助结构,让数据库能在 <strong>O(log n)</strong> 内跳到匹配的行。代价是实打实的,要说清楚:索引消耗存储,而且每次 <code>INSERT</code>/<code>UPDATE</code>/<code>DELETE</code> 都必须更新表上的<em>每一个</em>索引。所以建索引是一个有意的取舍——用更慢的写和更多空间,换更快的读。</p>
+
+    <h2>B-Tree 索引</h2>
+    <p><strong>B-Tree</strong>(具体是 B+tree)是关系型数据库的主力。它是一棵由定长<strong>页(page)</strong>(通常 4–16 KB)组成的平衡树,键有序存放;内部页把你路由到持有实际键/指针的叶子页。因为平衡,查找、插入、范围扫描都是 <strong>O(log n)</strong>,而有序的叶子让范围查询和有序读取很高效。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">B+tree:平衡、有序、范围友好</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                 [ 30 | 70 ]            ◀ 根(路由键)
+                /     |      \
+        [10|20]   [40|50|60]   [80|90]   ◀ 内部
+        /  |  \    ...           ...
+   叶子:有序的键 → 行指针,串成链表支持范围扫描
+
+  查 50:根(→中) → 内部(→50) → 叶子   = O(log n),只读几页</code></pre>
+    </div>
+
+    <p>B-Tree <strong>原地更新</strong>:改一个值会重写持有它的那一页。这让读快且可预测,但写会带来随机 I/O(找到并修改正确的页),并需要预写日志(WAL)保证崩溃安全。B-Tree 是 PostgreSQL、MySQL/InnoDB、SQL Server、Oracle 的默认。</p>
+
+    <h2>LSM-Tree 索引</h2>
+    <p><strong>Log-Structured Merge-tree</strong> 为<em>写</em>优化。它不原地改页,而是把写缓冲在一个内存有序结构(<strong>memtable</strong>)里;memtable 满了就刷到磁盘成为一个不可变的有序文件(<strong>SSTable</strong>)。因此写是快速的顺序追加——没有随机 I/O。久而久之 SSTable 越积越多,所以后台进程做 <strong>compaction</strong>——合并有序文件并丢弃被覆盖/删除的键。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">LSM-Tree:缓冲 → 刷盘 → compaction</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>写 → memtable(内存,有序)
+            │ 满? 刷盘(顺序写)
+            ▼
+       SSTable_1  SSTable_2  SSTable_3 ...   (不可变,有序)
+            └──────── compaction ────────┘ → 合并后的 SSTable
+                                            (丢弃被覆盖/删除的键)
+
+  读:先查 memtable,再从最新到最旧查 SSTable
+      (Bloom filter 跳过不可能含该键的 SSTable)</code></pre>
+    </div>
+
+    <p>缺点:一次读可能要查 memtable 和好几个 SSTable,所以 LSM 的读可能更慢(用 <strong>Bloom filter</strong> 快速排除不含某键的 SSTable 来缓解——和我们 <a href="/system-design/url-shortener/">短链</a> 里用的是同一招)。LSM-Tree 支撑 Cassandra、RocksDB、LevelDB,以及很多 NoSQL 系统背后的存储引擎。</p>
+
+    <h2>B-Tree 对比 LSM-Tree</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>B-Tree</th><th>LSM-Tree</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>优化方向</td><td class="col-a">读</td><td class="col-b">写</td></tr>
+        <tr><td>写</td><td class="col-a">原地(随机 I/O)</td><td class="col-b">追加 + 刷盘(顺序)</td></tr>
+        <tr><td>读</td><td class="col-a">快、可预测</td><td class="col-b">可能要查多个 SSTable</td></tr>
+        <tr><td>放大</td><td class="col-a">写放大(重写页)</td><td class="col-b">读放大 & compaction 放大</td></tr>
+        <tr><td>用于</td><td class="col-a">PostgreSQL、MySQL、Oracle</td><td class="col-b">Cassandra、RocksDB、LevelDB</td></tr>
+      </tbody>
+    </table>
+
+    <h2>聚簇索引 vs 二级索引</h2>
+    <p><strong>聚簇索引(clustered index)</strong>决定表中行在磁盘上的物理顺序——表<em>就是</em>那个索引,按聚簇键(通常是主键)排序。每表只有一个,按该键查找会立刻返回整行。<strong>二级(非聚簇)索引</strong>是一个独立结构,其叶子指回行(按主键或行位置);用它需要再跳一次去取整行。含义:按聚簇键查找是最便宜的读,而二级索引查找要多一步。</p>
+
+    <h2>复合索引与最左前缀规则</h2>
+    <p>索引可以跨多列——一个在 <code>(country, city, name)</code> 上的<strong>复合索引</strong>。关键在于它是按这些列<em>依次</em>排序的,所以它只帮得到用了这些列<strong>最左前缀</strong>的查询:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">最左前缀规则 — 索引 (country, city, name)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>WHERE country=?                         ✓ 用上索引
+WHERE country=? AND city=?              ✓ 用上索引
+WHERE country=? AND city=? AND name=?   ✓ 完整用上索引
+WHERE city=?                            ✗ 跳过了最左列 → 用不上
+WHERE name=?                            ✗ 用不上
+
+  列的顺序很重要:把最常过滤/最有区分度的列放前面,
+  并与你的查询模式对齐。</code></pre>
+    </div>
+
+    <p>这是现实中最常见的索引错误之一:复合索引列序搞反,或查询过滤的是非前导列,于是悄悄退化成扫描。</p>
+
+    <h2>覆盖索引</h2>
+    <p>如果一个索引包含了查询所需的<em>所有</em>列(过滤列和被选列都在内),数据库就能只靠索引回答查询——不用回表。这就是<strong>覆盖索引(covering index)</strong>,对热点查询是大赢:<code>SELECT name WHERE country=?</code> 由 <code>(country, name)</code> 上的索引服务,根本不碰表行。代价是索引更宽(更多存储、更慢的写),所以把覆盖索引留给你流量最高的查询。</p>
+
+    <h2>什么时候不该建索引</h2>
+    <p>索引不是免费的,过度建索引是真实的反模式:</p>
+    <ul>
+      <li><strong>写密集的表</strong>——每个索引都让写成本翻倍;一个有十个索引的日志表会爬。</li>
+      <li><strong>低基数列</strong>——给布尔值或只有三种取值的状态建索引很少有用;数据库可能照样扫。</li>
+      <li><strong>小表</strong>——扫几百行比走索引开销还快。</li>
+      <li><strong>没用到的索引</strong>——纯成本(空间 + 拖慢写)而无收益;审计并删掉。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">看执行计划</div>
+      <p>判断索引是否被用上,靠查询计划器:跑 <code>EXPLAIN</code>(或 <code>EXPLAIN ANALYZE</code>),看是 <em>index scan</em> 还是 <em>顺序/全表扫描</em>。大表上意外的全表扫描就是"缺索引或索引用不上"的经典信号——常因复合索引非最左列、在列上套了函数,或类型不匹配导致索引失效。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>索引是一笔取舍:读拿到 O(log n),代价是写速度和空间。了解你的存储引擎(B-Tree = 读优化、原地;LSM = 写优化、追加+compaction),并围绕你真实的查询模式设计索引——聚簇键给最便宜的读、复合索引守最左前缀规则、覆盖索引给热点路径——同时克制住"什么都建索引"的冲动。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>索引的代价是什么?</strong>存储加写变慢——每次写都更新每个索引。它换来 O(log n) 读而非 O(n) 扫描。<br>
+      <strong>B-Tree 对比 LSM-Tree?</strong>B-Tree = 有序、原地、读优化(关系库);LSM = memtable + 不可变 SSTable + compaction,写优化(Cassandra、RocksDB)。<br>
+      <strong>聚簇 vs 二级索引?</strong>聚簇定义表的物理顺序(表即索引);二级是独立结构、指回行(多一跳)。<br>
+      <strong>最左前缀规则?</strong>(a,b,c) 上的复合索引服务查 a、a+b、a+b+c——不服务单查 b 或 c。列序必须匹配查询模式。<br>
+      <strong>覆盖索引是什么?</strong>包含查询所需全部列的索引,只靠索引就能回答、不用读表。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/elasticsearch/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Elasticsearch</div>
+      </a>
+      <a href="/tech-stacks/vector-databases/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">向量数据库</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

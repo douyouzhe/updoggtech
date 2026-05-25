@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 CDN——为什么边缘缓存能降低延迟、卸载源站,PoP 与 anycast 路由怎么工作,Cache-Control 与 TTL,推与拉,失效策略,以及动态加速。">
+<title>CDN — 内容分发网络 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/cdn/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/cdn/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/cdn/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/cdn/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="CDN — 内容分发网络">
+<meta property="og:description" content="边缘缓存、PoP 与 anycast、Cache-Control 与 TTL、推与拉、失效与动态加速。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/cdn/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="CDN — 内容分发网络">
+<meta name="twitter:description" content="CDN 怎么工作:边缘 PoP、anycast、Cache-Control、推与拉、失效。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"CDN — 内容分发网络","description":"边缘缓存、PoP 与 anycast、Cache-Control 与 TTL、推与拉、失效与动态加速。","datePublished":"2023-09-20","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/cdn/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/cdn/">EN</a>
+        <a href="/zh/tech-stacks/cdn/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">cdn</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">CDN</h1>
+    <div class="article-meta">
+      <span>2023年9月20日</span>
+      <span class="separator">·</span>
+      <span>22 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>内容分发网络(CDN)是一个网站无论你从东京还是多伦多打开都觉得很快的原因。它是一大批分布在全球的缓存服务器,把你的内容存在物理上离用户很近的地方,这样请求由附近的<strong>边缘(edge)</strong>返回,而不必跨越大洋去你的源站。CDN 几乎出现在本站每一篇系统设计里——<a href="/system-design/google-drive/">Drive</a>、<a href="/system-design/video-streaming/">视频流</a>、<a href="/system-design/pastebin/">Pastebin</a>——作为吸收读流量的那一层。下面讲它到底怎么工作。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>两大收益:延迟和卸载</strong>——内容由附近边缘返回更快(距离更短),而且大多数请求根本到不了源站(负载更小)。</li>
+        <li><strong>边缘 PoP + anycast/GeoDNS</strong> 自动把每个用户路由到最近的接入点。</li>
+        <li><strong>缓存行为由 HTTP 控制</strong>——<code>Cache-Control</code>/TTL 决定什么可缓存、缓存多久;缓存键决定什么算"同一个对象"。</li>
+        <li><strong>命中 vs 未命中</strong>——命中由边缘返回;未命中从源站拉取、缓存后再返回。</li>
+        <li><strong>拉(惰性)vs 推</strong>——拉式 CDN 在首次请求时拉取;推式 CDN 预先上传内容。</li>
+        <li><strong>失效是最难的部分</strong>——用 TTL、显式清除(purge),或带版本/指纹的 URL(cache busting)。</li>
+        <li><strong>附带:安全</strong>——CDN 吸收 DDoS、在边缘终结 TLS、托管 WAF。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>CDN 把你的内容缓存在全球边缘服务器上,并把每个用户路由到最近的那个(anycast/GeoDNS),从而降低延迟、为源站挡流量。HTTP 的 <code>Cache-Control</code> 头和缓存键管理缓存行为;缓存命中由边缘返回,未命中从源站拉取并缓存。难题是失效——用 TTL、purge,或带指纹的 URL 解决。静态资源极易缓存;动态内容靠边缘计算和路由优化。</p>
+    </div>
+
+    <h2>为什么用 CDN:延迟与卸载</h2>
+    <p>两条物理与经济事实驱动整个设计。第一,<strong>距离即延迟</strong>:数据以有限速度传播,所以从悉尼到弗吉尼亚某服务器的往返本质就慢,无论那台服务器多快。把一份副本放在离用户 20 公里而非 16000 公里处,能大幅砍掉往返时间。第二,<strong>卸载</strong>:如果边缘从缓存返回大多数请求,你的源站只看到一小部分流量——一个爆火的页面或热门视频几乎全由边缘服务,源站不会被打垮。给用户降延迟,给源站保命——这就是卖点。</p>
+
+    <h2>怎么工作:边缘 PoP 与路由</h2>
+    <p>CDN 在全球各数据中心运营<strong>接入点(PoP,points of presence)</strong>——一簇簇缓存服务器。诀窍是自动把每个用户带到<em>最近</em>的 PoP,主要靠两种方式:<strong>anycast</strong>(很多 PoP 宣告<em>同一个</em> IP 地址,互联网路由自然把用户送到拓扑上最近的那个)和 <strong>GeoDNS</strong>(DNS 根据解析方的位置把 CDN 主机名解析到不同的边缘 IP——见我们的 <a href="/tech-stacks/dns/">DNS</a> 文章)。无论哪种,用户都在不知不觉中连到了一个近的边缘。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">边缘缓存命中 vs 未命中</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>用户 → 最近的边缘 PoP
+         ├─ 命中  → 从边缘缓存返回         (快,不碰源站)
+         └─ 未命中 → 从源站拉取 → 缓存 → 返回
+                    (该地区后续请求就都是命中了)
+
+  目标:最大化命中率 → 大多数流量在边缘返回</code></pre>
+    </div>
+
+    <h2>缓存行为:控制、TTL 与键</h2>
+    <p>边缘缓存什么、缓存多久,由源站发出的 HTTP 头控制。<code>Cache-Control: max-age=3600</code> 表示"可缓存一小时";<code>no-store</code> 表示"绝不缓存";<code>stale-while-revalidate</code> 让边缘在后台刷新时先返回稍旧的副本——很适合保持响应快速。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">cache-control 头</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>Cache-Control: public, max-age=31536000, immutable   <span class="cm"># 带指纹的资源,缓存 1 年</span>
+Cache-Control: public, max-age=60, stale-while-revalidate=300
+Cache-Control: no-store                              <span class="cm"># 绝不缓存(用户专属)</span></code></pre>
+    </div>
+
+    <p>同样重要的是<strong>缓存键(cache key)</strong>——CDN 用它判断两个请求是不是"同一个对象"。默认是 URL,但可以包含查询串、头或 cookie。搞错了,要么缓存太粗(返回错的变体),要么太细(每个请求都是唯一键 → 命中率趋近于零)。缓存键基数过高是经典的 CDN 自坑。</p>
+
+    <h2>推式 vs 拉式 CDN</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>拉式 CDN</th><th>推式 CDN</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>内容如何到达</td><td class="col-a">惰性,首次请求时(未命中→源站)</td><td class="col-b">你上传/预加载到 CDN</td></tr>
+        <tr><td>首次请求</td><td class="col-a">较慢(缓存未命中)</td><td class="col-b">快(已在边缘)</td></tr>
+        <tr><td>最适合</td><td class="col-a">大型、常变的目录</td><td class="col-b">大文件、可预测的热门内容</td></tr>
+        <tr><td>工作量</td><td class="col-a">低——把 DNS 指向 CDN 即可</td><td class="col-b">较高——管理上传/过期</td></tr>
+      </tbody>
+    </table>
+    <p>拉式是常见默认(配好就不用管);推式适合你确定会火、又不想首次未命中变慢的大媒体。</p>
+
+    <h2>失效:最难的部分</h2>
+    <p>"计算机科学只有两件难事:缓存失效和命名。"内容一旦缓存在几百个边缘,更新它就真的很棘手。三种策略,精确度递增:</p>
+    <ul>
+      <li><strong>TTL 过期</strong>——等 <code>max-age</code> 到期。简单,但你要容忍最长一个 TTL 的陈旧。</li>
+      <li><strong>显式清除(purge)</strong>——让 CDN 立刻驱逐某个 URL(或标签/前缀)。精确,但在所有边缘的传播不是瞬时的。</li>
+      <li><strong>带版本/指纹的 URL(cache busting)</strong>——静态资源的最佳模式:把内容哈希放进文件名(<code>app.3f9a1c.js</code>),永久缓存它;一改动就产生<em>新</em> URL,根本没有要失效的东西。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">最优模式</div>
+      <p>对静态资源,组合用<strong>immutable + 指纹 URL</strong>:把 <code>app.&lt;hash&gt;.js</code> 缓存一年,从一个短 TTL 的 HTML 页面引用新的哈希。你拿到了最大化缓存且零失效——发布只是指向新文件名。这正是构建工具给资源名加哈希的原因。</p>
+    </div>
+
+    <h2>静态 vs 动态内容</h2>
+    <p>静态内容——图片、CSS/JS、视频分片、下载——是 CDN 的看家本领:它对所有人都一样、可长时间缓存。<strong>动态</strong>内容(个性化页面、API 响应)更难,因为因人而异,但 CDN 仍能帮忙,靠<strong>动态加速</strong>:保持从边缘到源站的预热、优化过的连接(TLS 已协商、走 CDN 骨干的更优路由),以及越来越多的<strong>边缘计算</strong>——在 PoP 上跑代码来个性化、拼装或缓存片段,离用户更近。"CDN" 和"边缘平台"的界限正因此变得模糊。</p>
+
+    <h2>安全附带收益</h2>
+    <p>因为 CDN 挡在你源站前面、吸收所有入站流量,它天然是一道安全层:它用庞大容量在攻击到达你之前<strong>吸收 DDoS</strong>、在边缘<strong>终结 TLS</strong>(离用户更近、握手更快),还常托管 <strong>WAF</strong>(Web 应用防火墙)和机器人缓解。对很多站点,光是 DDoS 防护就足以证明上 CDN 的价值。</p>
+
+    <h2>用途与常见坑</h2>
+    <ul>
+      <li><strong>静态资源与媒体分发</strong>——经典款;源站搭 <a href="/tech-stacks/object-storage/">对象存储</a>。</li>
+      <li><strong>视频流</strong>——把分片缓存在边缘以扩展(见<a href="/system-design/video-streaming/">视频流设计</a>)。</li>
+      <li><strong>坑——缓存击穿(cache stampede)</strong>:一个热门对象过期时很多边缘同时未命中、一起打源站;用错峰 TTL、<code>stale-while-revalidate</code> 或源站请求合并缓解。</li>
+      <li><strong>坑——缓存了不该缓存的</strong>:缓存个性化或带鉴权的响应会在用户间泄露数据;标 <code>private</code>/<code>no-store</code> 并谨慎设键。</li>
+      <li><strong>坑——命中率低</strong>:缓存键基数过高(键里含了不必要的查询串/cookie)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>CDN 用一点复杂度(缓存头、失效)换两个大收益:更低延迟(内容离用户近)和源站卸载(大多数请求到不了你)。用 anycast/GeoDNS 把用户路由到最近边缘,用 <code>Cache-Control</code> 和好的缓存键控制缓存,用指纹 immutable URL 绕开失效,顺便也把安全交给边缘。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>CDN 给你什么?</strong>更低延迟(从附近边缘返回)和源站卸载(大多数读由缓存服务,源站扛得住峰值)。<br>
+      <strong>用户怎么被路由到最近边缘?</strong>anycast(很多 PoP 共享一个 IP,路由选最近的)或 GeoDNS(DNS 返回区域专属的边缘 IP)。<br>
+      <strong>推式 vs 拉式 CDN?</strong>拉式首次请求时惰性缓存(简单、首次未命中慢);推式预加载内容(首次即命中、管理更多)。<br>
+      <strong>怎么让缓存内容失效?</strong>TTL 过期、显式 purge,或——静态最佳——指纹 immutable URL,改动即新 URL、无需失效。<br>
+      <strong>什么是缓存击穿?</strong>热门对象过期时很多边缘同时未命中压垮源站;用 stale-while-revalidate、抖动 TTL 或请求合并修复。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/vector-databases/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">向量数据库</div>
+      </a>
+      <a href="/tech-stacks/docker/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">Docker 与容器</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

@@ -142,6 +142,18 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -154,7 +166,8 @@
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
-    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
 
@@ -769,5 +782,6 @@ kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</spa
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>
 </footer>
+<script src="/assets/search.js" defer></script>
 </body>
 </html>
