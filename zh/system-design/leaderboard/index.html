@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:实时排行榜——为什么 SQL ORDER BY+COUNT 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANGE/ZREVRANK 操作、持久化与真相来源、top-k/排名/邻居、分片(按分数范围/按用户)、精确 vs 近似全局排名(分桶)、基于时间的榜、关键取舍。">
+<title>设计实时排行榜 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/leaderboard/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/leaderboard/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/leaderboard/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/leaderboard/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计实时排行榜">
+<meta property="og:description" content="排行榜系统设计:Redis 有序集合、O(log n) 排名、持久化、分片、近似百分位、时间榜。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/leaderboard/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计实时排行榜">
+<meta name="twitter:description" content="设计排行榜:Redis 有序集合、ZREVRANK、分片、分桶近似排名、每日/每周榜。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计实时排行榜", "description": "系统设计:实时排行榜——为什么 SQL ORDER BY+COUNT 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANGE/ZREVRANK 操作、持久化与真相来源、top-k/排名/邻居、分片(按分数范围/按用户)、精确 vs 近似全局排名(分桶)、基于时间的榜、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/leaderboard/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/leaderboard/">EN</a>
+        <a href="/zh/system-design/leaderboard/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">leaderboard</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计实时排行榜</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>排行榜实时按分数给玩家排名:显示全球前 10、告诉我我的排名、显示我上下方的玩家——全都随分数变化即时更新,对数百万玩家。它看起来像一行 SQL 查询(<code>ORDER BY score</code>),而那正是陷阱。有趣的部分是:在规模上、在持续更新下高效计算<strong>排名</strong>,是朴素数据库做得极差的事——而单个专门数据结构(有序集合)做得漂亮。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>SQL ORDER BY + COUNT 不扩展</strong>——计算一个玩家的排名意味数清他上方所有人,每查询 O(n) 扫描,重读下绝望。</li>
+        <li><strong>Redis 有序集合是答案</strong>——跳表 + 哈希给出开箱即用的 O(log n) 分数更新、top-k 和排名查询。</li>
+        <li><strong>核心操作 1:1 映射</strong>——<code>ZADD</code>/<code>ZINCRBY</code> 更新、<code>ZREVRANGE</code> 取 top-k、<code>ZREVRANK</code> 取玩家排名、<code>ZRANGE</code> 取邻居。</li>
+        <li><strong>Redis 是热存储;DB 是真相来源</strong>——持久存分数,重启时重建有序集合。</li>
+        <li><strong>分片打破精确全局排名</strong>——一旦集合跨节点,你无法便宜地得到精确跨分片排名;用近似。</li>
+        <li><strong>基于时间的榜</strong>(每日/每周)只是带重置/过期的独立有序集合。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>别用 SQL 算排名——数清一个玩家上方所有人是 O(n)。用 <strong>Redis 有序集合</strong>,它在跳表里按分数保持成员有序并支持 O(log n) 更新、top-k 和排名查询。用一个持久数据库作记录系统支撑它。单个有序集合处理数千万条目;超过这个你必须分片,这牺牲精确全局排名——所以切到分桶/近似排名。周期性榜只是额外的有序集合。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">a sorted set, ordered by score</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>rank  member     score
+  0    alice      9820      ◀ ZREVRANGE 0 2  → top 3
+  1    bob        9650
+  2    carol      9510
+  ...
+ 41    you        7300      ◀ ZREVRANK "you" → 41
+ 42    dave       7295      ◀ ZREVRANGE 40 44 → 你周围的玩家
+  ...
+       跳表保持顺序;所有操作 O(log n)</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>更新一个玩家的分数(设置或自增);取全球 top-k;取特定玩家的排名;取一个玩家紧邻的玩家("你是 #42,这是 #40–44")。<strong>非功能:</strong>更新和读应反映近实时排名、低延迟、高可用,并扩展到数百万玩家和高写量(每个游戏动作都能改分)。澄清分数是只增(更简单)还是能升降,以及排名是全局、按区域还是时间窗口——这些改变设计。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>比如 50M 玩家、10M 日活。若每个活跃玩家触发 ~10 分数更新/天,那是 ~100M 写/天(~1–2K 写/秒平均,峰值事件高得多)加重读(每个人刷榜)。一个有序集合条目小(成员 id + 分数),所以 50M 条目约几 GB——舒适地在单个大 Redis 节点的内存里,这是个重要的定容洞见:你常常根本不需要分片。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /scores            {user_id, delta}     <span class="cm"># 加分</span>
+GET  /leaderboard/top?limit=10                <span class="cm"># top-k</span>
+GET  /rank/{user_id}                          <span class="cm"># 这个玩家的排名 + 分数</span>
+GET  /leaderboard/around/{user_id}?range=5    <span class="cm"># 邻居</span></code></pre>
+    </div>
+
+    <h2>第 4 步 — 为什么朴素数据库方法失败</h2>
+    <p>在 SQL 存 <code>(user_id, score)</code> 并用 <code>SELECT ... ORDER BY score DESC LIMIT 10</code> 服务 top-k。有 <code>score</code> 上的索引,top-k 其实没问题。杀手是<strong>排名</strong>:"玩家 X 的位置是什么?"需要 <code>SELECT COUNT(*) WHERE score &gt; X.score</code>——数清他们前面的每个玩家。那是每查询 O(n) 操作,随分数变化不断重算,在数百万玩家和频繁"给我看我的排名"请求下崩溃。排名是需要更好结构的操作。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>操作</th><th>SQL(索引 score)</th><th>Redis 有序集合</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>更新分数</td><td class="col-a">O(log n) 索引更新</td><td class="col-b">O(log n) — ZADD/ZINCRBY</td></tr>
+        <tr><td>Top-k</td><td class="col-a">带索引 O(k)</td><td class="col-b">O(log n + k) — ZREVRANGE</td></tr>
+        <tr><td>玩家排名</td><td class="col-a">O(n) COUNT 扫描 ✗</td><td class="col-b">O(log n) — ZREVRANK ✓</td></tr>
+        <tr><td>邻居</td><td class="col-a">难(需先有排名)</td><td class="col-b">O(log n + range) — ZRANGE</td></tr>
+      </tbody>
+    </table>
+
+    <h2>第 5 步 — Redis 有序集合</h2>
+    <p>Redis <strong>有序集合(ZSET)</strong>存各带一个分数的成员,由<strong>跳表(skip list)</strong>(加一个成员到分数的哈希 map)保持有序。这恰好给出排行榜需要的操作,全在 O(log n):</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">Redis operations</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>ZINCRBY  board  50  "user42"     <span class="cm"># 加 50 分(或 ZADD 设置)</span>
+ZREVRANGE board  0  9  WITHSCORES <span class="cm"># top 10(最高优先)</span>
+ZREVRANK board  "user42"          <span class="cm"># 玩家的 0 起始排名</span>
+ZREVRANGE board  40 44            <span class="cm"># 排名 40..44 的玩家(邻居)</span>
+ZSCORE   board  "user42"          <span class="cm"># 一个玩家的当前分数</span></code></pre>
+    </div>
+    <p>每个排行榜查询直接映射到一个命令,跳表随分数变化保持一切有序——无扫描、无重算。</p>
+
+    <h2>第 6 步 — 持久化与真相来源</h2>
+    <p>Redis 是快、内存的<strong>服务</strong>层,但你不该把它当作数据的唯一副本。保留一个持久数据库(SQL 或 KV 存储)作分数的<strong>记录系统</strong>。每次更新,写到数据库并更新有序集合(write-through),或流式分数事件并应用到两者。若 Redis 重启或一个节点丢失,从数据库重建它的有序集合。Redis 持久化(RDB 快照 / AOF)帮助恢复速度,但持久 DB 是权威备份。</p>
+
+    <h2>第 7 步 — Top-k、排名与邻居</h2>
+    <p>有了有序集合,三个核心读平凡:<strong>top-k</strong> 是 <code>ZREVRANGE 0 k-1</code>;一个玩家的<strong>排名</strong>是 <code>ZREVRANK</code>(O(log n)——结构跟踪子树大小,所以它数前驱而不扫描);<strong>邻居</strong>是一个 <code>ZREVRANK</code> 找位置后跟一个对周围窗口的 <code>ZREVRANGE</code>。top-k 列表也极可缓存——相对它被查看的频率它变化慢,所以以短 TTL 缓存它,在大事件期间屏蔽 Redis 免受读尖峰。</p>
+
+    <h2>第 8 步 — 扩展:一个节点不够时</h2>
+    <p>单个 Redis 节点在几 GB 里持有数千万条目,所以对许多排行榜你从不分片。当你必须(内存或写吞吐限制)时,你<strong>分片有序集合</strong>跨节点——而这就是难的地方,因为排名本质是全局属性:</p>
+    <ul>
+      <li><strong>按分数范围分片</strong>(如节点 A:0–1000、节点 B:1001–5000…)。Top-k 和排名变成"问最高分片并加总计数",但分数范围倾斜且跨边界的玩家必须移动分片。</li>
+      <li><strong>按用户(哈希)分片</strong>均匀分散写,但现在<em>每个</em>排名/top-k 查询都必须扇出到所有分片并合并——昂贵。</li>
+    </ul>
+
+    <h2>第 9 步 — 精确 vs 近似全局排名</h2>
+    <p>跨分片,为任意玩家计算<em>精确</em>全局排名昂贵(你得问每个分片"你的有多少打败这个分数?")。在很大规模,标准动作是<strong>近似</strong>:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">bucketed approximate rank</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>维护每分数桶的玩家计数:
+   [9000-9999] → 1,203
+   [8000-8999] → 4,560
+   [7000-7999] → 12,800   ← 你的桶
+   ...
+approx_rank(you) = sum(更高桶的计数)
+                 + 你在你桶内的位置
+→ "前 ~3%" 而非 "排名 41,233"(便宜、足够好)</code></pre>
+    </div>
+    <p>大多数产品只需 top-k 的精确排名(一个单一、便宜、不分片的"领先者排行榜")和给其他所有人的近似百分位("你在前 5%"),分桶便宜地交付这个。</p>
+
+    <h2>第 10 步 — 基于时间和分段的排行榜</h2>
+    <p>每日、每周或赛季榜就是按周期为键的<strong>独立有序集合</strong>(如 <code>board:2023-W15</code>),各带一个 TTL,使它在周期结束时自动过期;更新写到当前周期的集合(可能还有一个全时段集合)。同一模式给出按区域或按好友组的榜——只是更多有序集合,或对一组好友 ID 用 <code>ZINTERSTORE</code> 做"仅好友"视图。</p>
+
+    <h2>第 11 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>有序集合 vs 数据库。</strong>有序集合让排名 O(log n) 而非 O(n);代价是在你 DB 旁运行并持久化一个内存存储。</li>
+      <li><strong>单节点 vs 分片。</strong>一个节点让精确全局排名平凡;分片扩展更远但迫使扇出查询或近似。</li>
+      <li><strong>精确 vs 近似排名。</strong>不分片时精确排名可行;在海量规模,分桶百分位便宜得多且在 top-k 外通常足够。</li>
+      <li><strong>新鲜度 vs 缓存。</strong>缓存 top-k 在尖峰期间屏蔽 Redis,代价是几秒陈旧——几乎总可接受。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>排行榜是个单数据结构问题:一个 Redis 有序集合把昂贵部分(持续更新下的排名、邻居、top-k)变成朴素 SQL 方法无法匹敌的 O(log n) 操作。持久到一个持久存储作真相来源、缓存 top-k,并只在单个节点真的装不下集合时才动用分片——以及它强制的近似排名。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么不就 SQL ORDER BY?</strong>Top-k 没问题,但一个玩家的排名需要 COUNT 他们上方所有人——每查询 O(n),在规模上崩溃。<br>
+      <strong>为什么 Redis 有序集合?</strong>它的跳表给 O(log n) 分数更新、top-k(ZREVRANGE)和排名(ZREVRANK)——恰好是排行榜操作。<br>
+      <strong>Redis 是真相来源吗?</strong>不——它是热服务层;一个持久 DB 持有权威分数,使你能在重启后重建集合。<br>
+      <strong>分片时什么坏了?</strong>精确全局排名——它跨所有分片。用分数桶计数便宜地算近似排名/百分位。<br>
+      <strong>每日/每周榜怎么工作?</strong>按周期为键、带 TTL 的独立有序集合;写到当前周期(可选还有一个全时段集合)。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/nearby/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计附近的人 / Yelp(邻近)</div>
+      </a>
+      <a href="/system-design/payment-system/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计支付系统</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
