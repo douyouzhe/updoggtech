@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 OAuth 2.0 授权框架:关键角色、OAuth vs 认证(OIDC)的区别、四种授权类型(授权码/客户端凭证/设备授权/已弃用的隐式与密码)、刷新令牌、PKCE、JWT 访问令牌结构与校验、scope、state 与 CSRF 防护、常见安全坑与令牌防盗,以及真实用例。">
+<title>OAuth 2.0 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/oauth/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/oauth/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/oauth/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/oauth/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="OAuth 2.0">
+<meta property="og:description" content="OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/oauth/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="OAuth 2.0">
+<meta name="twitter:description" content="OAuth 2.0 怎么工作:授权码+PKCE、客户端凭证、刷新令牌、JWT 校验、安全坑。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0","description":"OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/oauth/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/oauth/">EN</a>
+        <a href="/zh/tech-stacks/oauth/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">oauth</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">OAuth 2.0</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>OAuth 2.0 是一个<strong>授权框架</strong>,允许第三方应用获得对某 web 服务上用户资源的有限访问,而无需知道用户的登录凭证。在 OAuth 之前,给第三方应用访问你数据的唯一方式是交出你的用户名和密码——一个严重的安全风险。OAuth 通过引入一个围绕带 scope、会过期的令牌构建的委托访问模型解决这个。它 2012 年作为 RFC 6749 发布,此后成为整个 web 事实上的授权标准,支撑"用 Google 登录"、API 授权、微服务间认证,以及电视和 IoT 设备的设备授权流程。理解完整协议——四种授权类型、PKCE、令牌生命周期、scope,以及与 OpenID Connect 的边界——对任何构建或保护现代 API 的工程师都至关重要。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>OAuth 2.0 是授权,不是认证</strong>——它说你能做什么,而非你是谁。在其上加 OpenID Connect(OIDC)做身份(ID token)。</li>
+        <li><strong>授权码 + PKCE</strong> 是所有面向用户流程(web 和移动)的安全默认;授权码在服务端交换,把令牌挡在浏览器之外。</li>
+        <li><strong>客户端凭证(Client Credentials)</strong>用于机器对机器——无用户参与;服务用 client_id + client_secret 以自身身份认证。</li>
+        <li><strong>隐式授权已弃用</strong>——它在 URL 片段返回令牌,把它们暴露给浏览器历史和 JavaScript。改用授权码 + PKCE。</li>
+        <li><strong>访问令牌应短命</strong>(几分钟到一小时);刷新令牌必须服务端存储并在每次使用时轮换。</li>
+        <li><strong>授权码流程里务必校验 state 参数</strong>以防 CSRF 攻击。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>OAuth 2.0 是授权(你能做什么),不是认证(你是谁)。它引入一个授权层:不共享凭证,而由资源所有者授予客户端一个由授权服务器签发的、带 scope、会过期的访问令牌。授权码流程是服务端应用的安全默认;客户端凭证用于机器对机器。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-1.png" alt="OAuth 2.0 第三方登录示例" loading="lazy">
+        <figcaption>OAuth 2.0 第三方登录示例</figcaption>
+      </figure>
+
+    <h2>关键角色</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>角色</th><th>职责</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>资源所有者(Resource Owner)</strong></td><td>拥有受保护资源的终端用户,授予客户端代表自己访问它的权限。</td></tr>
+        <tr><td><strong>客户端(Client)</strong></td><td>请求访问的应用(web 应用、移动应用、CLI 工具、后端服务)。可以是"机密的"(能保守 secret)或"公开的"(不能,如 SPA/移动)。</td></tr>
+        <tr><td><strong>授权服务器(Authorization Server)</strong></td><td>认证资源所有者、获取同意、签发访问令牌和刷新令牌。常与资源服务器分离(如 Google 的认证服务器 vs Calendar API)。</td></tr>
+        <tr><td><strong>资源服务器(Resource Server)</strong></td><td>承载受保护资源(如一个 REST API)。在服务数据前对每个请求校验访问令牌——通过内省它们或验证其 JWT 签名。</td></tr>
+        <tr><td><strong>访问令牌(Access Token)</strong></td><td>代表所授权限的短命凭证。含 scope 和过期。可以是不透明字符串(需内省)或自包含 JWT(本地验证)。</td></tr>
+        <tr><td><strong>刷新令牌(Refresh Token)</strong></td><td>用于无需用户重新认证就获取新访问令牌的长命凭证。必须服务端安全存储并在每次使用时轮换。</td></tr>
+      </tbody>
+    </table>
+
+    <h2>OAuth 2.0 vs. 认证——关键区别</h2>
+    <p>一个常见的面试错误:把 OAuth 与认证混淆。<strong>OAuth 2.0 纯粹关于授权</strong>——授予客户端代表用户执行动作的权限。它不告诉你用户<em>是谁</em>。一个访问令牌说的是"这个客户端被允许读你的日历",而非"这是 Alice"。<strong>OpenID Connect(OIDC)</strong>是建在 OAuth 2.0 之上的认证层——它加一个 ID token(一个 JWT),携带 <code>sub</code>(主体标识符)、<code>name</code>、<code>email</code>、<code>email_verified</code> 等身份声明。当你点"用 Google 登录"时,你在用 OIDC(身份)叠在 OAuth(授权)之上。Google API 服务器既是 OAuth 授权服务器,也是 OIDC 身份提供者。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>问题</th><th class="col-a">OAuth 2.0</th><th class="col-b">OpenID Connect</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>解决什么问题?</td><td class="col-a">授权——这个应用能访问你的数据吗?</td><td class="col-b">认证——这个用户是谁?</td></tr>
+        <tr><td>签发什么?</td><td class="col-a">访问令牌(+ 可选刷新令牌)</td><td class="col-b">ID token(带身份声明的 JWT)+ 访问令牌</td></tr>
+        <tr><td>用什么 scope?</td><td class="col-a">资源级 scope(read:calendar、write:orders)</td><td class="col-b">需要 <code>openid</code> scope;<code>profile</code>、<code>email</code> 可选</td></tr>
+        <tr><td>令牌验证什么?</td><td class="col-a">客户端被允许做什么</td><td class="col-b">用户是谁(sub、name、email 等)</td></tr>
+        <tr><td>规范</td><td class="col-a">RFC 6749</td><td class="col-b">OIDC Core 1.0(建于 OAuth 2.0)</td></tr>
+      </tbody>
+    </table>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 授权流程概览" loading="lazy">
+        <figcaption>OAuth 2.0 授权流程概览</figcaption>
+      </figure>
+
+    <h2>授权类型——四种深入</h2>
+    <p>"授权(grant)"是客户端获取授权的方法。OAuth 2.0 为不同客户端类型和用例定义了四种 grant。选错的不只是设计气味,而是安全漏洞。</p>
+
+    <h3>1. 授权码(Authorization Code)——面向用户流程的安全默认</h3>
+    <p>对任何涉及人类用户的客户端最安全的流程。关键洞见:一个短命、一次性的授权<em>码(code)</em>经浏览器重定向返回,然后立即在服务器对服务器之间换取真正的令牌。令牌从不碰浏览器地址栏、浏览器历史或 JavaScript 环境。客户端后端用它的 secret 做码交换——码本身对截获重定向的攻击者无用。</p>
+    <ol>
+      <li>用户点"用 X 登录"——客户端把用户重定向到授权服务器,带 <code>response_type=code</code>、<code>scope</code>、<code>redirect_uri</code> 和一个 <code>state</code> 参数(CSRF 防护——一个随机 nonce)。</li>
+      <li>用户在授权服务器的 UI 上认证并同意——用户从不在客户端站点输入凭证。</li>
+      <li>授权服务器带一个短命 <code>code</code> 和原始 <code>state</code> 值重定向回客户端的 <code>redirect_uri</code>。</li>
+      <li>客户端校验 <code>state</code> 与它发出的匹配(CSRF 检查),然后客户端<strong>后端</strong>通过 POST 到 token 端点用 <code>client_secret</code> 把码换成令牌。</li>
+      <li>授权服务器返回 <code>access_token</code>、过期时间,以及可选的 <code>refresh_token</code>。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 步骤 1 — 把用户重定向到授权服务器</span>
+GET https://auth.example.com/authorize
+  ?response_type=<span class="str">code</span>
+  &client_id=<span class="str">my-app</span>
+  &redirect_uri=<span class="str">https://myapp.com/callback</span>
+  &scope=<span class="str">read:profile email</span>
+  &state=<span class="str">xK9mN2pQ</span>              <span class="cm"># 随机 nonce,存进 session</span>
+
+<span class="cm"># 步骤 3 — 授权服务器带 code 重定向回来</span>
+GET https://myapp.com/callback?code=<span class="str">SplxlOBeZQQYbYS6WxSbIA</span>&state=<span class="str">xK9mN2pQ</span>
+
+<span class="cm"># 步骤 4 — 服务器用 code 换令牌(从不在浏览器)</span>
+POST https://auth.example.com/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=<span class="str">authorization_code</span>
+&code=<span class="str">SplxlOBeZQQYbYS6WxSbIA</span>
+&redirect_uri=<span class="str">https://myapp.com/callback</span>
+&client_id=<span class="str">my-app</span>
+&client_secret=<span class="str">my-secret</span>
+
+<span class="cm"># 响应</span>
+{
+  <span class="str">"access_token"</span>:  <span class="str">"eyJhbGci..."</span>,
+  <span class="str">"token_type"</span>:    <span class="str">"Bearer"</span>,
+  <span class="str">"expires_in"</span>:    <span class="num">3600</span>,
+  <span class="str">"refresh_token"</span>: <span class="str">"def50200..."</span>,
+  <span class="str">"scope"</span>:         <span class="str">"read:profile email"</span>
+}</code></pre>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 授权码授权流程图" loading="lazy">
+        <figcaption>OAuth 2.0 授权码授权流程图</figcaption>
+      </figure>
+
+    <h3>2. 客户端凭证(Client Credentials)——机器对机器授权</h3>
+    <p>当无人类用户参与时使用——一个后端服务直接以自身身份认证以调用另一个服务的 API。客户端把它的 <code>client_id</code> 和 <code>client_secret</code> 直接发到 token 端点并收到一个访问令牌。无重定向、无用户同意屏、无授权码。常见于:微服务间调用、cron 作业、访问 API 的 CI/CD 流水线、调用车队管理 API 的 IoT 设备后端。</p>
+    <p>关键安全考量:<code>client_secret</code> 必须存在密钥管理器(AWS Secrets Manager、HashiCorp Vault、GCP Secret Manager)——绝不在源码或纳入版本控制的环境变量里。定期轮换它。机器对机器流程里泄露的客户端 secret 给攻击者无限制的服务级访问,而没有用户会注意到异常行为。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 客户端凭证——无需用户重定向</span>
+POST https://auth.example.com/token
+Content-Type: application/x-www-form-urlencoded
+Authorization: Basic <span class="str">base64(client_id:client_secret)</span>
+
+grant_type=<span class="str">client_credentials</span>
+&scope=<span class="str">internal:orders.read internal:inventory.write</span>
+
+<span class="cm"># 响应:服务级访问令牌</span>
+{
+  <span class="str">"access_token"</span>: <span class="str">"eyJhbGci..."</span>,
+  <span class="str">"token_type"</span>:  <span class="str">"Bearer"</span>,
+  <span class="str">"expires_in"</span>:  <span class="num">3600</span>
+  <span class="cm"># 无 refresh_token——过期就重新请求</span>
+}</code></pre>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 客户端凭证授权流程图" loading="lazy">
+        <figcaption>OAuth 2.0 客户端凭证授权流程图</figcaption>
+      </figure>
+
+    <h3>3. 设备授权(Device Authorization Grant)——给输入受限设备</h3>
+    <p>为输入 URL 不实际的设备设计——智能电视、游戏主机、CLI 工具、IoT 设备。设备显示一个短码和一个 URL。用户在另一台设备(手机或笔记本)上访问该 URL、输入码并授权。设备轮询 token 端点直到授权完成。定义在 RFC 8628。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 步骤 1 — 设备请求一个 device code</span>
+POST https://auth.example.com/device/code
+grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
+&client_id=<span class="str">my-tv-app</span>
+&scope=<span class="str">read:profile</span>
+
+<span class="cm"># 响应——设备在屏幕上显示 user_code</span>
+{
+  <span class="str">"device_code"</span>:  <span class="str">"GmRhm..."</span>,
+  <span class="str">"user_code"</span>:    <span class="str">"WDJB-MJHT"</span>,  <span class="cm"># 显示在电视屏幕上</span>
+  <span class="str">"verification_uri"</span>: <span class="str">"https://example.com/activate"</span>,
+  <span class="str">"expires_in"</span>:   <span class="num">1800</span>,
+  <span class="str">"interval"</span>:     <span class="num">5</span>             <span class="cm"># 每 5 秒轮询</span>
+}
+
+<span class="cm"># 步骤 2 — 设备轮询直到用户在手机上批准</span>
+POST https://auth.example.com/token
+grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
+&device_code=<span class="str">GmRhm...</span>
+&client_id=<span class="str">my-tv-app</span>
+<span class="cm"># → 用户批准前返回 "authorization_pending"</span>
+<span class="cm"># → 批准后返回令牌</span></code></pre>
+    </div>
+
+    <h3>4. 隐式(已弃用)与资源所有者密码(避免)</h3>
+    <p><strong>隐式授权(Implicit grant)</strong>是在 PKCE 存在前为单页应用设计的:令牌直接在 URL 片段(<code>#access_token=...</code>)返回,跳过码交换步骤。这把令牌暴露给浏览器历史、referrer 头,以及页面上运行的任何 JavaScript——包括来自分析或广告的第三方脚本。OAuth 2.1 草案正式移除它。<strong>新应用不要用。</strong>用授权码 + PKCE 替代。</p>
+    <p><strong>资源所有者密码凭证授权(ROPC)</strong>让客户端直接收集用户的用户名和密码并转发给授权服务器。这彻底违背了 OAuth 的初衷——用户必须把原始凭证托付给客户端。它仅适合在脱离直接凭证处理的遗留迁移期间用于高度可信的第一方客户端。OAuth 2.1 草案也移除了这个 grant。</p>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 隐式授权流程图" loading="lazy">
+        <figcaption>OAuth 2.0 隐式授权流程图(已弃用——由授权码 + PKCE 替代)</figcaption>
+      </figure>
+
+      <figure class="article-figure">
+        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 资源所有者密码凭证流程图" loading="lazy">
+        <figcaption>OAuth 2.0 资源所有者密码凭证流程(新系统避免)</figcaption>
+      </figure>
+
+    <h3>刷新令牌——长命凭证</h3>
+    <p>访问令牌刻意短命(通常 15 分钟到 1 小时)以限制令牌被盗的爆炸半径。<strong>刷新令牌</strong>是一个长命凭证(数天、数周,或直到被吊销),客户端可用它获取新访问令牌而无需再次提示用户。这实现无缝用户会话,同时让任何单个访问令牌的攻击窗口保持狭窄。</p>
+    <p>生产中重要的刷新令牌安全实践:</p>
+    <ul>
+      <li><strong>刷新令牌轮换</strong>——每次使用时,授权服务器签发一个新刷新令牌并使旧的失效。若被盗的刷新令牌被使用,合法客户端的下次刷新尝试会失败,触发重新认证流程。这是 RFC 6819 和 OAuth 2.1 草案推荐的模式。</li>
+      <li><strong>存储</strong>——服务端 web 应用:存在 HttpOnly、Secure、SameSite=Strict cookie 或服务端会话里(绝不 localStorage)。SPA:只用 HttpOnly cookie——JavaScript 读不到它们。移动应用:用平台安全存储(iOS Keychain、Android Keystore)。</li>
+      <li><strong>吊销</strong>——实现一个令牌吊销端点(RFC 7009),让用户能登出且令牌即便未过期也立即失效。</li>
+      <li><strong>绝对过期</strong>——刷新令牌应有独立于活动的最大寿命(如 90 天),之后用户必须重新认证。这限制了存在旧备份里的刷新令牌的风险。</li>
+    </ul>
+
+    <h2>PKCE——Proof Key for Code Exchange</h2>
+    <p>PKCE(RFC 7636,读作 "pixie")是授权码流程的扩展,为公开客户端设计——无法安全存储客户端 secret 的移动应用和 SPA。没有 PKCE,若攻击者截获重定向里的授权码(通过注册同一 URI scheme 的恶意应用,或泄露的 referrer 头),他们能用自己的客户端凭证换取令牌。PKCE 用密码学手段堵上这个缺口。</p>
+    <p>机制:授权请求前,客户端生成一个密码学随机的 32–96 字节 <code>code_verifier</code>,然后计算 <code>code_challenge = BASE64URL(SHA256(code_verifier))</code>。challenge 包含在授权请求里。当客户端稍后用码换令牌时,它发送原始 <code>code_verifier</code>。授权服务器重算哈希并验证它匹配——证明换码的人就是发起请求的同一方,而无需静态客户端 secret。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">javascript</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// SPA 里的 PKCE 实现(Web Crypto API)</span>
+<span class="kw">async function</span> <span class="fn">generatePKCE</span>() {
+  <span class="kw">const</span> verifier = <span class="fn">generateRandomString</span>(<span class="num">64</span>);  <span class="cm">// 64 随机字节,base64url 编码</span>
+  <span class="kw">const</span> encoder = <span class="kw">new</span> <span class="ty">TextEncoder</span>();
+  <span class="kw">const</span> data = encoder.<span class="fn">encode</span>(verifier);
+  <span class="kw">const</span> digest = <span class="kw">await</span> crypto.subtle.<span class="fn">digest</span>(<span class="str">'SHA-256'</span>, data);
+  <span class="kw">const</span> challenge = <span class="fn">base64urlEncode</span>(digest);
+  <span class="kw">return</span> { verifier, challenge };
+}
+
+<span class="cm">// 步骤 1 — 在授权请求里包含 code_challenge</span>
+<span class="kw">const</span> { verifier, challenge } = <span class="kw">await</span> <span class="fn">generatePKCE</span>();
+sessionStorage.<span class="fn">setItem</span>(<span class="str">'pkce_verifier'</span>, verifier);  <span class="cm">// 存起来备用</span>
+
+<span class="kw">const</span> authUrl = <span class="str">`https://auth.example.com/authorize
+  ?response_type=code
+  &client_id=my-spa
+  &code_challenge=${challenge}
+  &code_challenge_method=S256
+  &redirect_uri=https://myapp.com/callback
+  &scope=read:profile
+  &state=xK9mN2pQ`</span>;
+
+<span class="cm">// 步骤 2 — 换码,发送 verifier(不是 secret)</span>
+<span class="kw">const</span> tokenResponse = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'https://auth.example.com/token'</span>, {
+  method: <span class="str">'POST'</span>,
+  body: <span class="kw">new</span> <span class="ty">URLSearchParams</span>({
+    grant_type: <span class="str">'authorization_code'</span>,
+    code: authCode,
+    code_verifier: sessionStorage.<span class="fn">getItem</span>(<span class="str">'pkce_verifier'</span>),  <span class="cm">// verifier,不是 challenge</span>
+    redirect_uri: <span class="str">'https://myapp.com/callback'</span>,
+    client_id: <span class="str">'my-spa'</span>
+    <span class="cm">// 无 client_secret——公开客户端</span>
+  })
+});</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">机密客户端也用 PKCE</div>
+      <p>RFC 7636 最初瞄准公开客户端,但 OAuth 2.1 草案对<em>所有</em>授权码流程强制 PKCE——包括服务端机密客户端。原因:即便有客户端 secret,PKCE 也防御授权码注入攻击。给机密客户端加 PKCE 无任何坏处,且免费堵上一类攻击。</p>
+    </div>
+
+    <h2>JWT 访问令牌——结构与校验</h2>
+    <p>访问令牌有两种口味:<strong>不透明字符串</strong>(资源服务器必须通过内省在授权服务器查找的随机标识符)和 <strong>JWT</strong>(资源服务器能本地校验的自包含令牌)。JWT 在现代系统里常见得多,因为它们消除内省往返——每次 API 调用省一跳网络。</p>
+    <p>JWT 有三部分,用点分隔:<code>header.payload.signature</code>,每部分 base64url 编码。header 标识算法;payload 携带声明;signature 是完整性的密码学证明。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// JWT header——标识签名算法</span>
+{
+  <span class="str">"alg"</span>: <span class="str">"RS256"</span>,   <span class="cm">// RSA-SHA256 非对称——授权服务器签名,</span>
+  <span class="str">"typ"</span>: <span class="str">"JWT"</span>,    <span class="cm">// 资源服务器用公钥验证(无需共享 secret)</span>
+  <span class="str">"kid"</span>: <span class="str">"key-v2"</span>  <span class="cm">// key ID——支持无停机的密钥轮换</span>
+}
+
+<span class="cm">// JWT payload——注册声明 + 自定义</span>
+{
+  <span class="str">"iss"</span>: <span class="str">"https://auth.example.com"</span>,  <span class="cm">// 签发者——必须匹配预期值</span>
+  <span class="str">"sub"</span>: <span class="str">"user-42"</span>,                  <span class="cm">// 主体——用户或服务身份</span>
+  <span class="str">"aud"</span>: <span class="str">"https://api.example.com"</span>,   <span class="cm">// 受众——预期接收者</span>
+  <span class="str">"exp"</span>: <span class="num">1716553600</span>,                  <span class="cm">// 过期——UNIX 时间戳,过期则拒绝</span>
+  <span class="str">"iat"</span>: <span class="num">1716550000</span>,                  <span class="cm">// 签发时间</span>
+  <span class="str">"jti"</span>: <span class="str">"a1b2c3d4"</span>,                  <span class="cm">// JWT ID——用于吊销和重放检测</span>
+  <span class="str">"scope"</span>: <span class="str">"read:orders write:cart"</span>,   <span class="cm">// 所授 scope</span>
+  <span class="str">"roles"</span>: [<span class="str">"customer"</span>]               <span class="cm">// 自定义声明——应用特定授权</span>
+}</code></pre>
+    </div>
+
+    <p>资源服务器在服务数据前必须全部通过的校验步骤:</p>
+    <ol>
+      <li>用授权服务器的公钥(从 <code>/.well-known/jwks.json</code> 的 JWKS 端点取)验证签名。</li>
+      <li>检查 <code>exp</code> 在未来(带小的时钟偏移容差,如 30 秒)。</li>
+      <li>检查 <code>iss</code> 匹配预期的授权服务器 URL。</li>
+      <li>检查 <code>aud</code> 含此资源服务器的标识符——防止令牌跨服务复用。</li>
+      <li>检查 <code>scope</code> 含被调用的特定端点所需的权限。</li>
+      <li>对敏感操作,可选地对照一个短命吊销列表检查 <code>jti</code>。</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">算法混淆攻击</div>
+      <p>绝不把 JWT header 里的 <code>alg</code> 字段当权威——在服务端用白名单校验它。经典攻击:攻击者把 <code>alg</code> 从 <code>RS256</code> 改成 <code>HS256</code>,然后用授权服务器的<em>公</em>钥作为 HMAC secret(它常可获得)签名令牌。一个信任 header 里 alg 的天真库会验证成功。务必在服务端钉死预期算法。</p>
+    </div>
+
+    <h2>Scope——细粒度授权</h2>
+    <p>Scope 是定义客户端请求权限的空格分隔字符串。授权服务器把它们放进令牌;资源服务器强制它们。好的 scope 设计遵循最小权限原则——客户端应只请求当前操作所需的,而非一个笼统的"admin" scope。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 请求特定 scope——遵循 resource:action 命名约定</span>
+scope=<span class="str">orders:read orders:write profile:read</span>
+
+<span class="cm"># 资源服务器中间件:服务前检查 scope</span>
+<span class="cm"># (伪代码——在 Express、FastAPI、Spring Security 等里都适用)</span>
+<span class="kw">function</span> <span class="fn">requireScope</span>(scope) {
+  <span class="kw">return</span> (req, res, next) => {
+    <span class="kw">const</span> tokenScopes = req.auth.scope.<span class="fn">split</span>(<span class="str">' '</span>);
+    <span class="kw">if</span> (!tokenScopes.<span class="fn">includes</span>(scope)) {
+      <span class="kw">return</span> res.<span class="fn">status</span>(<span class="num">403</span>).<span class="fn">json</span>({ error: <span class="str">'insufficient_scope'</span> });
+    }
+    <span class="fn">next</span>();
+  };
+}
+
+<span class="cm"># 按路由应用</span>
+app.<span class="fn">get</span>(<span class="str">'/orders'</span>, <span class="fn">requireScope</span>(<span class="str">'orders:read'</span>), ordersController);
+app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class="fn">requireScope</span>(<span class="str">'orders:write'</span>), ordersController);</code></pre>
+    </div>
+
+    <h2>state 参数与 CSRF 防护</h2>
+    <p><code>state</code> 参数不是可选的——它是授权码流程里的主要 CSRF 防御。没有它,攻击者能构造一个授权 URL、自己完成认证流程,然后骗受害者用攻击者的授权码访问回调端点。受害者的会话随后与攻击者的账号关联(登录 CSRF 攻击)。修法:生成一个密码学随机 nonce,存在服务端会话或签名 cookie 里,在授权请求里作为 <code>state</code> 包含它,并在回调时严格校验它匹配再继续。</p>
+
+    <h2>常见安全坑与令牌防盗</h2>
+
+    <h3>redirect_uri 里的开放重定向</h3>
+    <p>若授权服务器不严格对照预注册白名单校验 <code>redirect_uri</code>,攻击者能构造一个带 <code>redirect_uri=https://attacker.com/steal</code> 的 URL。授权码被重定向到攻击者的服务器。缓解:注册精确的 redirect URI(无通配符)并在授权服务器上把它们作为精确字符串匹配校验——而非前缀匹配。</p>
+
+    <h3>SPA 里的访问令牌存储</h3>
+    <p>把访问令牌存在 <code>localStorage</code> 或 <code>sessionStorage</code> 里会把它们暴露给 XSS 攻击——任何注入脚本都能读取并外泄它们。推荐模式:令牌只放内存(一个 JavaScript 变量或 React state),刷新令牌存在 <strong>HttpOnly、Secure、SameSite=Strict cookie</strong> 里。HttpOnly cookie 无法被 JavaScript 读取,所以 XSS 偷不到它。令牌在同源请求上自动发送。配合一个只能从同源调用的令牌刷新端点。</p>
+
+    <h3>通过 Referrer 头的令牌泄露</h3>
+    <p>若访问令牌出现在 URL 里(已弃用的隐式流程就这样,或有人不小心把它嵌进 query string),浏览器的 Referrer 头会把它暴露给页面加载的任何外部资源——分析脚本、CDN 资源、嵌入内容。绝不把令牌放进 URL。只在 HTTP 头里携带它们:<code>Authorization: Bearer &lt;token&gt;</code>。</p>
+
+    <h3>刷新令牌被盗与检测</h3>
+    <p>若刷新令牌被盗,攻击者能无限期静默维持访问。刷新令牌轮换提供检测:当攻击者使用被盗刷新令牌时,授权服务器签发一个新的并使旧的失效。当合法客户端下次试图用现已失效的令牌刷新时,服务器检测到这次复用——一个表明被盗的异常——并能使整个刷新令牌族失效,强制重新认证。这是 Auth0、Okta 和大多数现代 IdP 实现的"刷新令牌族"检测模式。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>攻击向量</th><th>缓解</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>回调端点上的 CSRF</td><td>每次回调校验 <code>state</code> 参数(密码学 nonce)</td></tr>
+        <tr><td>授权码截获</td><td>PKCE(所有流程,按 OAuth 2.1 连机密客户端也用)</td></tr>
+        <tr><td>开放重定向</td><td>在授权服务器对照预注册白名单做精确 URI 匹配</td></tr>
+        <tr><td>XSS 令牌窃取(SPA)</td><td>访问令牌只放内存;刷新令牌放 HttpOnly cookie</td></tr>
+        <tr><td>刷新令牌被盗</td><td>轮换 + 复用检测时令牌族失效</td></tr>
+        <tr><td>重放攻击</td><td>短访问令牌 TTL;敏感操作用 <code>jti</code> 声明 + 吊销列表</td></tr>
+        <tr><td>算法混淆</td><td>服务端算法白名单;绝不信任 JWT header 的 <code>alg</code></td></tr>
+        <tr><td>受众混淆</td><td>每个资源服务器校验 <code>aud</code> 声明;一个服务的令牌不得在另一个上工作</td></tr>
+      </tbody>
+    </table>
+
+    <h2>实践用例</h2>
+    <ul>
+      <li><strong>第三方应用集成</strong>——"连接你的 Google 日历"——应用获得对日历数据的读访问而从不看到你的 Google 密码。用户可随时在 Google 账号设置里吊销访问而无需改密码。</li>
+      <li><strong>单点登录(SSO)</strong>——用一个身份提供者(Okta、Auth0、Google Workspace)认证一次并访问多个内部应用。IdP 签发短命访问令牌和 ID token;每个应用本地校验它们而无需每个请求都回调 IdP。</li>
+      <li><strong>给第三方开发者的 API 授权</strong>——给 API 消费者签发带 scope 的令牌。一个只读集成伙伴得到 <code>scope=read:products</code>;一个物流伙伴得到 <code>scope=read:orders write:shipments</code>。泄露的伙伴令牌只危及他们的 scope,而非整个 API。</li>
+      <li><strong>微服务对微服务</strong>——订单服务用客户端凭证获取一个限于 <code>internal:inventory.read</code> 的令牌,再调用库存服务。每个服务校验令牌的 <code>aud</code> 和 <code>scope</code> 声明,所以被攻陷的订单服务无法调用支付服务。</li>
+      <li><strong>CLI 工具与开发者工作流</strong>——设备授权 grant 让 CLI 工具(<code>kubectl</code>、<code>gh</code>、Terraform Cloud)让用户通过浏览器授权,同时 CLI 轮询令牌。终端里从不输入密码。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>所有面向用户的流程用授权码 + PKCE——按 OAuth 2.1,web 和移动皆然。服务对服务用客户端凭证。输入受限客户端用设备授权。新系统绝不用隐式或密码 grant。让访问令牌短命且放内存,刷新令牌存 HttpOnly cookie 或平台安全存储,每次使用轮换,并校验 <code>state</code> 参数防 CSRF。记住:OAuth 2.0 是授权——在其上叠 OpenID Connect 做身份。每个资源服务器请求都校验 JWT 的签名、过期、签发者和受众。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>OAuth vs OpenID Connect——区别是什么?</strong>OAuth 2.0 是授权(这个应用能访问你的日历吗?)。OIDC 在其上加认证——它签发一个带 name、email 等身份声明的 ID token(JWT)。"用 Google 登录"用 OIDC 叠 OAuth。ID token 回答"这是谁?";访问令牌回答"这个客户端能做什么?"<br>
+      <strong>隐式授权为什么被弃用?</strong>令牌在 URL 片段返回,暴露给浏览器历史、referrer 头,以及页面上任何 JavaScript 包括第三方脚本。授权码 + PKCE 为 SPA 实现同样目标而无此暴露——PKCE 替代公开客户端对 secret 的需要。<br>
+      <strong>PKCE 防御什么?</strong>授权码截获攻击。<code>code_challenge</code> 证明令牌交换来自发起授权请求的同一方,即便没有客户端 secret。OAuth 2.1 对所有授权码流程强制它。<br>
+      <strong>SPA 应在哪存令牌?</strong>访问令牌只放内存(不放 localStorage——XSS 能读它)。刷新令牌放 HttpOnly、Secure、SameSite=Strict cookie(JavaScript 读不到,所以 XSS 偷不到)。刷新端点只从同源服务。<br>
+      <strong>怎么校验一个 JWT 访问令牌?</strong>用 JWKS 端点取来的授权服务器公钥验证 RS256 签名,然后检查 exp(未过期)、iss(预期签发者)、aud(此服务标识符)、scope(此端点所需权限)。绝不信任 header 的 alg 字段——在服务端钉死它。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/nosql/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">NoSQL</div>
+      </a>
+      <a href="/tech-stacks/spark-joins/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">Spark Join 策略</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
