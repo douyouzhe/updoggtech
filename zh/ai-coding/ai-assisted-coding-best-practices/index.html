@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:AI 辅助编码的实践指南——审查每份 diff、维持理解、用 AI 写测试并自我验证、保持迭代小步、刻意的上下文管理、何时不该用 AI、secret/PII/合规、AI 技术债的“看起来对”陷阱、团队规范,以及诚实度量生产力。">
+<title>AI 辅助编程:最佳实践与陷阱 — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="AI 辅助编程:最佳实践与陷阱">
+<meta property="og:description" content="AI 辅助编码最佳实践:审查每份 diff、维持理解、自我验证、小步迭代、合规、诚实度量生产力。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="AI 辅助编程:最佳实践与陷阱">
+<meta name="twitter:description" content="AI 辅助编码:审查 diff、维持理解、测试自我验证、上下文管理、安全合规、AI 技术债。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI 辅助编程:最佳实践与陷阱", "description": "AI 编程:AI 辅助编码的实践指南——审查每份 diff、维持理解、用 AI 写测试并自我验证、保持迭代小步、刻意的上下文管理、何时不该用 AI、secret/PII/合规、AI 技术债的“看起来对”陷阱、团队规范,以及诚实度量生产力。", "datePublished": "2026-05-14", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/ai-assisted-coding-best-practices/">EN</a>
+        <a href="/zh/ai-coding/ai-assisted-coding-best-practices/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">ai-assisted-coding-best-practices</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">AI 辅助编程:最佳实践与陷阱</h1>
+    <div class="article-meta">
+      <span>2026年5月14日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>到了今天,AI 编码工具已是入场标配。问题不再是“我们该不该用”,而是“怎么用才不至于失去对代码库的掌控”。这个区分很重要,因为激进采用 AI 的失败模式很隐蔽:看起来干净却没人真正理解的代码;表面上的生产力提升,实则是向未来的维护债借来的速度;以及由模型自信地误用凭证或用户数据所引发的安全事故。</p>
+    <p>本文是写给已经度过新鲜期的工程师的实践指南——你已见识过 AI 编码工具能做什么,你想认真地用它,并且想用一种让你和团队变得更强而非更依赖的方式。我们会讲职业人士遵守的不可妥协的实践、最常被低估的陷阱,以及如何建立全团队的规范来收割收益而不付出隐藏成本。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>你提交的每一行都归你所有</strong>——审查每一份 AI 生成的 diff 不可妥协;签下这次 commit 的不是模型,是你。</li>
+        <li><strong>理解不是可选项。</strong>如果你在 PR 评审或调试时讲不清这段代码,你就不该 merge 它。</li>
+        <li><strong>让 AI 写测试并自我验证。</strong>让模型生成测试并运行,在你读到输出之前就闭合了反馈回路。</li>
+        <li><strong>小步、频繁的迭代胜过单次大生成。</strong>窄 diff 更易审查、更易回退,产出也更好。</li>
+        <li><strong>secret、PII 与合规是你的责任。</strong>模型会乐呵呵地把密码打进日志,或建议把 token 存进 localStorage——你必须拦下它。</li>
+        <li><strong>诚实地度量生产力。</strong>每天交付的代码行数不是生产力指标;缺陷率、评审耗时、事故间隔时间才是。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>AI 编码工具给了你一个强大但毫无批判力的协作者。用它跑得更快;用你的判断保持正确。审查每份 diff、维持你的理解、刻意管理上下文、尊重合规边界、度量真实结果——而非活动量。做对这件事的团队会变得真正更快;做不对的则积累起隐形债务,最终以事故的形式爆发。</p>
+    </div>
+
+    <h2>永远审查每一份 diff</h2>
+    <p>这是其余一切据以推导的根本规则。当你不读就提交 AI 生成的代码时,你不只是在赌那一份 diff——你在侵蚀你将来凌晨两点排障时所需的心智模型。你也在向自己和团队示意:作者身份与理解是可分离的——而它们并不可分。</p>
+    <p>审查 AI 生成的代码不同于审查同事的 PR。人类协作者带来上下文、判断力,以及对你代码库的理解。模型一样都不带;它带来的是对训练数据的模式匹配。这意味着失败模式也不同:</p>
+    <ul>
+      <li><strong>自信的错误</strong>——模型产出语法正确、风格干净、逻辑却错误的代码。没有编译错误能抓住它。</li>
+      <li><strong>违反约束</strong>——你说“别改公开接口”,模型还是改了,改得很隐蔽,只会弄坏你本地没在跑的下游调用方。</li>
+      <li><strong>范围蔓延</strong>——模型“热心地”重构了你没让它碰的函数,并在过程中引入回归。</li>
+      <li><strong>幻觉式 API</strong>——模型调用了你这个版本的库里不存在的函数,或用了语义相反的 flag。</li>
+    </ul>
+    <p>这些失败没有一个能被“看起来合理”抓住。它们要求你带着“这真的对吗?”而不是“这大致符合我的要求吗?”去读代码。</p>
+    <h3>一份实用的 AI diff 审查清单</h3>
+    <ul>
+      <li>它做了我要求的事、且仅做了我要求的事吗?(检查有无未请求的改动。)</li>
+      <li>有没有我不认识的 API、函数或库特性?(验证它们存在且语义如假设。)</li>
+      <li>有没有哪条错误路径悄悄吞掉了错误或返回了错误的状态码?</li>
+      <li>代码处理了我在意的边界情况吗——空输入、零值、并发访问?</li>
+      <li>有没有敏感数据(凭证、PII、内部端点)暴露在日志或错误信息里?</li>
+      <li>代码符合团队约定吗——命名、错误包装、日志格式?</li>
+    </ul>
+
+    <h2>维持你对代码的理解</h2>
+    <p>AI 编码的生产力陷阱在于:交付你没完全理解的代码太容易了。你第一次不理解就 merge 一个非平凡函数时,就接受了一笔负债:当那个函数出问题时——它一定会——你将花调试时间去建立本该在 merge 时就有的理解,但这次是在压力下、在生产环境、有客户受影响的情况下。</p>
+    <p>“merge 前先理解”这条规则不只关乎事故响应。它关乎长期可维护性。团队里没人完全理解的代码,往往被绕过而非被演进——开发者会加 hack 而不去改他们推理不清的代码,架构于是退化得比本该更快。</p>
+    <h3>维持理解的技巧</h3>
+    <ul>
+      <li><strong>让 AI 解释它自己的输出。</strong>生成代码后问:“解释这是怎么工作的,包括任何不显然的选择。”如果解释揭示了你没预料到的东西,merge 前先调查。</li>
+      <li><strong>自己写 commit message,要详细。</strong>写“这把 X 改成 Y,因为 Z”这种纪律,逼你把理解说清楚。如果你写不出一条精确的 commit message,说明你对改动理解得还不够。</li>
+      <li><strong>把 AI 输出与你自己写的测试配对。</strong>哪怕实现是 AI 写的,自己写测试需要你理解什么才是正确行为。</li>
+      <li><strong>你能在 PR 评审里为它辩护吗?</strong>想象一个挑剔的资深工程师问“这里为什么传指针而不是值?”如果你无法为 diff 里每个非平凡选择回答这个,merge 前先弄清楚。</li>
+    </ul>
+    <p>这里有个重要的标定:“理解”不等于“能从零重写”。它意味着“能解释它做什么、为什么做出那些主要设计选择、需求若变了什么得改”。这个门槛,对你 merge 的每个函数都是可达的。</p>
+
+    <h2>用 AI 写测试并自我验证</h2>
+    <p>AI 辅助开发中最强大的工作流之一,是自动闭合循环:生成代码、生成测试、跑测试、迭代。这对能执行命令的 agentic 工具尤其有效,因为模型能在你什么都不做的情况下抓住自己的错误。</p>
+    <h3>自我验证工作流</h3>
+    <ol>
+      <li>描述你想要的函数或 feature,把验收标准写成具体的、可测试的行为。</li>
+      <li>让模型先写测试(若 spec 复杂到你不信任模型能正确推导,就自己写)。</li>
+      <li>让模型实现代码直到测试通过,每次迭代后跑 <code>go test</code> / <code>pytest</code> / <code>jest</code>。</li>
+      <li>把最终实现与测试一起读——测试记录了期望行为,也让实现更易理解。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">自我验证 prompt(agentic 工具)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 发给 agentic 工具的 prompt(如 Claude Code)</span>
+Implement a sliding-window rate limiter in ratelimit/ratelimit.go.
+
+Spec:
+- func NewLimiter(limit int, window time.Duration) *Limiter
+- func (l *Limiter) Allow(key string) bool
+- Thread-safe; use sync.Mutex
+- Pure in-memory; no external dependencies
+
+First, write the table-driven tests in ratelimit/ratelimit_test.go
+covering: under limit, at limit, over limit, window reset, concurrent
+access (use t.Parallel + race detector).
+
+Then implement until `go test -race ./ratelimit/...` passes.
+Show me the test output before and after.</code></pre>
+    </div>
+
+    <p>一个关键的微妙之处:当你让模型为它自己写的代码写测试时,有风险——测试编码的是模型的假设,而非正确的规格。对任何 spec 含糊或风险高的场景,自己写测试——或至少像审查实现一样仔细审查它们。测试即规格;让模型写样板,但行为断言你自己拿主意。</p>
+
+    <h2>保持迭代小步</h2>
+    <p>用 AI 编码工具时的诱惑,是用一个 prompt 描述一个大 feature 让它全部生成。这很少奏效:输出更难审查、更难理解、更难回退,且往往比小而聚焦的生成更不正确。模型的注意力在长而复杂的任务上会退化;约束满足度随约束数量增长而变差。</p>
+    <p>小步迭代也强制更紧的反馈回路。如果你生成一个函数、跑测试、它挂了,你确切知道该看哪个函数。如果你跨五个文件生成一百行而测试挂了,你面对的是个难得多的调试问题。</p>
+    <h3>实践中的“小”是什么意思</h3>
+    <ul>
+      <li>对非平凡逻辑,<strong>每次生成一个函数或一个文件</strong>。</li>
+      <li><strong>一次一个概念性改动</strong>——先改数据模型,再更新业务逻辑,再更新 API 层。不要三个一起来。</li>
+      <li><strong>每个已验证的步骤后提交。</strong>频繁提交意味着小爆炸半径:若后续步骤出错,你回退到一个已知良好的状态,而非全盘皆失。</li>
+      <li><strong>每步都测试。</strong>别积累没跑过的代码。每次生成后都跑测试,哪怕测试还没完全覆盖新代码。</li>
+    </ul>
+    <p>这种纪律当下感觉更慢,但端到端更快。一个十步迭代、每步五分钟、每步都测试,是三十分钟你心里有底的时间。同等范围的一次性生成,花三十分钟审查、出错时再花一小时调试,是更慢,而非更快。</p>
+
+    <h2>刻意的上下文管理</h2>
+    <p>每次 AI 编码会话都活在一个上下文窗口里。窗口里有什么,决定了模型对你代码库、约定、约束的了解。把上下文管理交给运气——让工具自动决定纳入什么,或从不提供相关文件——是输出质量波动的一大来源。</p>
+    <h3>需要显式管理的东西</h3>
+    <ul>
+      <li><strong>相关的现有代码</strong>——总是纳入你正在改的函数、它的直接调用方与被调方、它操作的数据类型。</li>
+      <li><strong>模型推不出来的约定</strong>——如果你团队有非标准的错误处理、日志格式或命名约定,显式说明或贴一个例子。模型会默认用它训练数据里最常见的模式,那可能不是你的。</li>
+      <li><strong>会话中先前的决策</strong>——在长 agentic 会话里,定期摘要已决定的事并贴回去。对话变长时模型会跟丢早期决策。</li>
+      <li><strong>已经实现了什么</strong>——做多步工作时,每步开头都把上一步的输出作为上下文贴入,而不只是原始 spec。</li>
+    </ul>
+    <h3>agentic 工具的上下文卫生</h3>
+    <p>对 Claude Code 这类维持长时会话的工具,上下文压实(摘要旧回合)是自动的但有损。长会话早期声明的重要约束,等模型做到第 7 步时可能已被遗忘或权重过低。防御性习惯是:在每个主要步骤的开头重申关键约束,而不只在会话开始时说一次。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">为 agentic 步骤重申上下文</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 每个主要步骤开头 —— 重申不变量</span>
+Step 3 of 5: implement the payment reconciliation job.
+
+Invariants (apply to all code in this session):
+- Go 1.22, no new dependencies beyond what's in go.mod
+- All DB writes must be in explicit transactions; never autocommit
+- Log at key decision points with key=value format using slog.Default()
+- Do not touch files outside the /jobs/ directory
+
+Current state: Steps 1-2 are done. The job is registered in scheduler.go
+and the DB schema migration (jobs/migrations/20260512_reconcile.sql)
+is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></pre>
+    </div>
+
+    <h2>何时不该用 AI 编码工具</h2>
+    <p>AI 工具是强大的默认选项,但并不总是正确选择。识别何时该放下工具、自己思考,是工程成熟度的标志。</p>
+    <h3>安全关键代码</h3>
+    <p>加密实现、认证逻辑、授权检查,应当极其谨慎地编写。不是因为模型在这些上特别糟——它们常产出看起来正确的代码——而是因为隐蔽错误的后果严重,而错误本身又隐蔽。模型也许为密码生成了时序安全的比较,却没注意到你还通过另一条代码路径暴露了一个次级 oracle。对安全关键代码,优先用经过良好审计的库、阅读实现源码,并无论代码怎么写都考虑一次专门的安全评审。</p>
+    <h3>新颖或文档稀少的领域</h3>
+    <p>模型在现有代码上训练。如果你为一个新协议、一个内部专有系统,或一个在模型知识截止后发生重大变化的 API 写代码,模型会从已知的东西外推,可能对具体细节自信地出错。这些情况下,永远对照一手文档验证,而不只是看模型的输出。</p>
+    <h3>架构决策</h3>
+    <p>AI 工具擅长在架构内实现,而非选择架构。问模型“这个集成该用消息队列还是直接 HTTP 调用?”会得到一个合理的答案,但那答案基于通用模式,而非你的具体约束——团队规模、容错度、运维预算、现有基础设施。需要时用模型探索权衡,但决策你自己拿。</p>
+    <h3>当你需要深入理解新东西时</h3>
+    <p>如果你在学一门新语言、新框架或新概念,让 AI 替你写所有代码适得其反。手动写代码、犯错、调试的挣扎,正是理解形成的方式。把 AI 当补充(解释概念、检查你的工作)很有价值;把它当替代(生成所有代码)会让你得到一个能跑的程序和一份浅薄的理解。</p>
+
+    <h2>secret、隐私、许可与合规</h2>
+    <p>这些是 AI 编码工具制造真实组织风险的领域,也是许多团队准备不足之处。</p>
+    <h3>secret 与凭证</h3>
+    <p>永远不要把凭证、API key、数据库密码或私钥贴进发往任何云端模型的 prompt。这本该显而易见,但实践中经常被违反,往往是无意的——开发者贴一个配置文件去问某个设置,忘了它含有生产凭证。建立一个习惯:把任何文件或代码块贴进 prompt 前,扫一遍看有没有像 secret 的东西。例子里用环境变量;贴之前把真实值脱敏成 <code>YOUR_API_KEY_HERE</code>。</p>
+    <h3>PII 与敏感数据</h3>
+    <p>同样地,不要把真实用户数据——姓名、邮箱、支付信息、健康数据——当例子,或放进你正在调试的错误信息里。用匿名化或合成数据。对许多组织,这不只是好做法;在 GDPR、HIPAA 等框架下是法律要求。查你组织的 AI 工具政策,看哪些数据能与哪些服务共享的具体要求。</p>
+    <h3>AI 生成的代码与安全漏洞</h3>
+    <p>模型会引入人类审查者未必能立刻识别为漏洞的安全问题。AI 生成代码里最常见的类别:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>漏洞类别</th><th>AI 工具如何引入</th><th>缓解</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SQL 注入</td>
+          <td>模型用旧模式时在查询里做字符串插值</td>
+          <td>永远用参数化查询;grep 出 DB 调用里的字符串格式化</td>
+        </tr>
+        <tr>
+          <td>不安全的默认值</td>
+          <td>禁用 TLS 校验、宽松 CORS、调试端点开着没关</td>
+          <td>显式审查 config 与 middleware 选项</td>
+        </tr>
+        <tr>
+          <td>日志里的敏感数据</td>
+          <td>模型常为调试而记录函数参数;这些可能含密码或 token</td>
+          <td>审计日志语句里的敏感字段名</td>
+        </tr>
+        <tr>
+          <td>依赖混淆</td>
+          <td>幻觉出的包名恰好作为恶意包真实存在</td>
+          <td>安装前对照官方 registry 验证每个新依赖</td>
+        </tr>
+        <tr>
+          <td>路径穿越</td>
+          <td>未做脱敏的朴素文件路径处理</td>
+          <td>用 filepath.Clean / os.Open 配合谨慎校验;审查任何受用户影响的路径</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>许可与 IP</h3>
+    <p>AI 模型在海量开源代码上训练。对多数组织和多数输出,这不是实际顾虑——模型生成的是样板模式,而非复制特定的受版权保护的实现。然而,对商业场景的生产代码,值得了解你组织的政策。有些企业只批准了特定 AI 工具用于特定用例;另一些则一刀切限制。不确定就咨询法务或政策团队。</p>
+
+    <h2>AI 引入的技术债与“看起来对”陷阱</h2>
+    <p>AI 编码最阴险的失败模式之一,是看起来像干净代码的技术债。人写的技术债通常可辨认——一条 TODO 注释、命名不一致、一个明显的 hack。AI 生成的技术债往往风格干净、格式规整、结构上与周围代码一致。它只是做了糟糕的设计选择,而这些选择要到后来才显现。</p>
+    <h3>AI 技术债的常见形态</h3>
+    <ul>
+      <li><strong>不必要的抽象。</strong>模型倾向通用解。让它加一个端点,它可能造出一整套“可配置端点”框架。这种无理由的抽象增加了间接层却无收益。</li>
+      <li><strong>不一致的错误处理策略。</strong>模型生成的代码在不同函数间有不同的错误处理约定——有的 log-and-return、有的 panic、有的返回包装后的 error——因为它多少是独立地生成每个函数。</li>
+      <li><strong>缺失领域不变量。</strong>模型正确实现了 happy path,却不知道你的业务规则。一张发票总额必须始终等于行项之和——除非你显式指定,否则不会被强制执行。</li>
+      <li><strong>乐观并发。</strong>除非你要求,生成的代码常不考虑并发访问。AI 生成代码里的竞态在评审时特别难发现,因为代码结构看着很稳。</li>
+      <li><strong>臃肿的依赖足迹。</strong>让模型“解析一个 URL”,它可能搬来一整个 URL 解析库,而标准库的 <code>url.Parse</code> 就够。审查每个新 import。</li>
+    </ul>
+    <p>“看起来对”陷阱被一个事实放大:这些问题往往能通过代码评审。评审者在做“这代码看起来像在做它该做的事吗?”的模式匹配,而非“这是对的设计吗?”。显式的设计评审——独立于正确性评审——对任何非平凡的 AI 生成改动都很有价值。</p>
+
+    <h2>团队协作与规范</h2>
+    <p>当团队采用一致规范、而非把个人用法放任自流时,AI 编码最有价值——也最安全。没有规范的团队最终会有一个代码库:有些代码被仔细审查过,有些是自动驾驶 merge 的,而你无从分辨。</p>
+    <h3>值得建立的规范</h3>
+    <ul>
+      <li><strong>评审标准。</strong>AI 生成的代码与人写的代码持同一评审标准,无一例外。评审者不因“是 AI 写的”而更宽容。</li>
+      <li><strong>署名。</strong>有些团队加个约定,如用 commit tag 或注释标注某段是 AI 辅助的,好让评审者施加适当审视。另一些则偏好完全不区分。两者都行;一致地选一个。</li>
+      <li><strong>共享 prompt 库。</strong>对常见任务(写迁移脚本、脚手架新服务 handler、生成测试 fixture),维护一个高质量 prompt 的共享库。这抬高全队的下限,避免每个人各自重复领悟同样的“哪些 prompt 有效”。</li>
+      <li><strong>领域特定护栏。</strong>识别代码库中需要额外审查的区域——安全关键代码、支付逻辑、基础设施配置——并在贡献指南或 PR 模板里显式点名。</li>
+      <li><strong>CI 强制。</strong>不论来源,对所有代码在 CI 里跑 linter、静态分析、安全扫描。Semgrep、Snyk、go vet 这类工具能抓住人类评审会漏掉的错误类别,作为 AI 输出的兜底尤其有价值。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">PR 模板新增示例</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## AI 辅助代码清单(如适用)</span>
+- [ ] 我已读懂这份 diff 里的每一行
+- [ ] prompt 中未包含任何 secret 或 PII
+- [ ] 所有新依赖已对照官方 registry 验证
+- [ ] 错误处理已审查 —— 无被悄悄吞掉的错误
+- [ ] 日志语句已审查 —— 输出中无敏感数据
+- [ ] 验收标准已测试,而非只是“它能跑”</code></pre>
+    </div>
+
+    <h2>诚实地度量生产力</h2>
+    <p>组织常用每天交付的代码行数,或开发者完成工单快了多少,来度量 AI 编码生产力。这两个指标都极易被 AI 工具以不代表真实生产力提升的方式刷高。</p>
+    <p>一个用 AI 把每天行数翻倍、却一行都不仔细审查的工程师,并没有两倍生产力——他在以双倍速率积累未来的调试会话、事故与重构。真正的生产力问题不是“我们交付得多快”,而是“我们多快交付了我们能维护的正确代码”。</p>
+    <h3>更好的指标</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>误导性指标</th><th>为何误导</th><th>更好的替代</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>每天代码行数</td>
+          <td>AI 轻松刷高;量 ≠ 价值</td>
+          <td>交付后仍在生产、30 天后未被改动的 feature 数</td>
+        </tr>
+        <tr>
+          <td>每个 sprint 关闭的工单</td>
+          <td>AI 能更快关单,同时制造重开与回归</td>
+          <td>缺陷逃逸率(每交付 feature 漏到生产的 bug 数)</td>
+        </tr>
+        <tr>
+          <td>首次 commit 耗时</td>
+          <td>初始代码生成很快;费时的是审查与迭代</td>
+          <td>从开始到 PR merge 的周期时间(含多轮评审)</td>
+        </tr>
+        <tr>
+          <td>AI 接受率</td>
+          <td>高接受坏建议比低接受更糟</td>
+          <td>与 AI 使用相关联的 merge 后缺陷率</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>对有良好纪律地采用 AI 编码工具的团队,一个现实的预期:在定义良好的任务上,端到端周期时间真正改善 20–40%,集中在样板、测试生成与文档上。这很可观。声称 5 倍提升的团队,通常要么在度量错的东西,要么还没付技术债的账单。</p>
+    <h3>开发者满意度与技能成长</h3>
+    <p>一个常被忽视的维度,是开发者随时间推移的体验。用得好的 AI 工具往往提升满意度——枯燥样板消失,开发者花更多时间在有趣问题上。用得糟的 AI 工具——开发者感觉自己只是在审查看不懂的代码——往往增加焦虑、降低投入。追踪这一点。定期的团队 AI 工具使用复盘很有价值,不只为流程,更因为它揭示工具到底是真在帮忙,还是只是加了一层不透明。</p>
+
+    <h2>建立长期能力,而非依赖</h2>
+    <p>关于 AI 编码最重要的长期顾虑,是技能萎缩的风险。如果你两年里什么都用 AI,你不靠它写代码的能力会怎样?当 AI 的模式匹配失效、你需要真正的理解时,你调试复杂系统的能力会怎样?</p>
+    <p>答案不是少用 AI 工具,而是刻意地用。一些保持并发展技能的具体习惯:</p>
+    <ul>
+      <li><strong>每周至少有些任务自己写第一稿。</strong>用 AI 来审查并改进你写的,而非总是先生成再编辑。方向对技能发展很重要。</li>
+      <li><strong>问 AI 之前先手动调试。</strong>东西坏了时,先用调试器、日志语句和你自己的推理花至少 10–15 分钟,再交给模型。调试直觉就是这么建立的。</li>
+      <li><strong>永远读生成的代码。</strong>哪怕你不改它,仔细读是你从中学习的方式。模型常用你没意识到的库特性或模式;那些值得知道。</li>
+      <li><strong>理解测试。</strong>测试是代码库里最重要的文档。如果 AI 生成了它们,读每条断言,理解它在测什么、为什么。</li>
+    </ul>
+    <p>在一个拥有强大 AI 编码工具的世界里最有价值的工程师,不是 prompt 写得最流畅的——那种技能会商品化。而是那些深入理解自己所建系统、能调试任何出错之处、能做出稳健架构决策的工程师。AI 工具是这些工程师的力量倍增器;对那些已经外包了自己理解的工程师,它则是负债制造器。</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>AI 辅助编码是一门纪律,而不只是一套工作流。工具强大到能让你真正更快——又随性到能让你悄悄变差。获得持久价值的工程师,是那些审查每份 diff、维持自己的理解、认真对待安全与合规、并度量真正重要的结果的人:不是交付的行数,而是他们能自信拥有的、正确且可维护的系统。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试尖锐观点</div>
+      <p><strong>激进采用 AI 编码最大的风险是什么?</strong>理解的萎缩与隐形技术债——看起来干净、能过评审、却慢慢积累设计问题的代码,只在运维压力下才浮现。<br>
+      <strong>团队该如何度量 AI 编码生产力?</strong>缺陷逃逸率与到 merge 的周期时间,而非代码行数或关闭的工单——后两者极易被刷,且不反映代码质量。<br>
+      <strong>为什么“看起来对”不足以作为 AI 代码的审查标准?</strong>AI 输出默认风格干净;它的失败模式是逻辑错误、被违反的约束、隐蔽的安全问题——这些都不会从表面阅读中浮现,而需要理解代码实际做了什么。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/prompt-engineering-for-code/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">面向代码的提示工程</div>
+      </a>
+      <a href="/ai-coding/how-ai-coding-agents-work/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">AI coding agent 是如何工作的</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
