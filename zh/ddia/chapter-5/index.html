@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 5 章:复制的三种方法——单主/多主/无主、同步 vs 异步、故障转移陷阱、复制日志实现、复制滞后与读己之写/单调读/一致前缀读、多主写冲突、无主 quorum(w+r>n)与读修复/反熵。">
+<title>DDIA 第5章 — 复制 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-5/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-5/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-5/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-5/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="复制 (Replication)">
+<meta property="og:description" content="DDIA 第 5 章:单主/多主/无主复制、同步异步、故障转移、复制滞后、quorum。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-5/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="复制 (Replication)">
+<meta name="twitter:description" content="DDIA 第 5 章:复制策略、故障转移、读己之写、写冲突、w+r>n quorum。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 5 章 — 复制", "description": "DDIA 第 5 章:复制的三种方法——单主/多主/无主、同步 vs 异步、故障转移陷阱、复制日志实现、复制滞后与读己之写/单调读/一致前缀读、多主写冲突、无主 quorum(w+r>n)与读修复/反熵。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-5/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-5/">EN</a>
+        <a href="/zh/ddia/chapter-5/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-5</span>
+    </div>
+    <span class="article-tag">DDIA · 第 5 章</span>
+    <h1 class="article-title">复制 (Replication)</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 5 章开启 DDIA 第二部分"分布式数据"。复制意味着<strong>在多台经网络连接的机器上保留同一数据的副本</strong>。我们这么做有三个原因:让数据地理上靠近用户(更低延迟)、即便部分失败系统仍工作(可用性)、横向扩展服务读查询的机器数(吞吐)。若数据从不改变,复制就微不足道——拷一次就完事。全部困难、以及整章,都关于<strong>处理对复制数据的变更</strong>。Kleppmann 把一切围绕三种算法构建:单主、多主、无主复制。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>三种方法</strong>——单主(一个节点接受写)、多主(几个接受)、无主(客户端直接写多个节点)。几乎每个分布式数据存储都是这些的变体。</li>
+        <li><strong>同步 vs 异步是持久性/可用性取舍</strong>——同步复制保证一份最新副本但若 follower 挂了就阻塞;异步快但故障转移时可能丢失刚确认的写。</li>
+        <li><strong>故障转移危险</strong>——提升新 leader 冒丢写、脑裂(两个 leader)、坏超时调优的风险。自动故障转移真的难做对。</li>
+        <li><strong>复制滞后破坏直觉保证</strong>——你需要读己之写、单调读、一致前缀读来弥合一个落后的异步 follower。</li>
+        <li><strong>多主的核心问题是写冲突</strong>——同一记录在两个 leader 上被编辑必须被调和(LWW、CRDT、自定义合并)。</li>
+        <li><strong>无主用 quorum</strong>——若 w + r &gt; n,读集和写集重叠,所以一次读看到最新写。读修复和反熵治愈陈旧副本。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>单主复制简单且是默认(大多数关系 DB):写去一个 leader,它把变更日志流给 follower。多主跨数据中心增加写可用性,代价是冲突解决。无主(Dynamo 风格)完全去掉 leader,依赖 quorum 加修复。反复出现的主题是网络不可靠、复制异步时一致性与可用性间的张力。</p>
+    </div>
+
+    <h2>单主复制(Single-Leader)</h2>
+    <p>最常见的方法,被 PostgreSQL、MySQL、SQL Server、MongoDB 等许多系统使用,是<strong>基于 leader</strong> 的复制(也叫 active/passive 或 master/slave)。一个副本被指定为 <strong>leader</strong>。所有写必须去 leader,它先把新数据写到自己的本地存储。其他副本是 <strong>follower</strong>:每当 leader 写,它也把变更作为<strong>复制日志</strong>或变更流的一部分发给每个 follower。每个 follower 按 leader 处理的<em>相同顺序</em>应用变更。读能由 leader 或任何 follower 服务,但写仅 leader。</p>
+
+    <h3>同步 vs 异步复制</h3>
+    <p>一个关键配置旋钮是复制同步还是异步发生:</p>
+    <ul>
+      <li><strong>同步</strong>——leader 等到一个 follower 确认它收到写后才向客户端报告成功。该 follower 保证有一份最新副本,但若它不响应(崩溃、网络故障),写无法进行——leader 必须阻塞所有写。</li>
+      <li><strong>异步</strong>——leader 发变更而不等。写快,且即便 follower 落后 leader 也继续工作,但若 leader 在一个写传播前失败,那个写<strong>丢失</strong>即便它已被向客户端确认。</li>
+    </ul>
+    <p>让每个 follower 都同步不切实际——一个慢节点会让整个系统停摆。一个常见折中是<strong>半同步(semi-synchronous)</strong>:一个 follower 同步,若它太慢,另一个 follower 被替换为同步的。这保证至少两个节点有最新数据。实践中,许多基于 leader 的系统全异步运行,接受故障转移时丢失近期写的风险以换性能和可用性。</p>
+
+    <h3>设置新 Follower</h3>
+    <p>要不停机加 follower,你不能在写发生时只是拷文件。标准流程:取 leader 数据库的一致<strong>快照</strong>(大多数 DB 支持这个而不锁),拷到新 follower,然后让 follower 连到 leader 并请求自快照以来发生的所有变更——由复制日志中的精确位置标识(PostgreSQL 叫它日志序列号,MySQL 叫 binlog 坐标)。follower 追上后,它实时处理变更。</p>
+
+    <h2>处理节点故障</h2>
+    <p>任何节点都可能宕,复制的一个目标是让系统挺过单个故障。如何恢复取决于哪个节点失败。</p>
+
+    <h3>Follower 故障:追赶恢复</h3>
+    <p>这是容易的情况。每个 follower 保留它收到的变更日志。崩溃或网络抖动后,它知道它处理的最后一个事务;它重连到 leader 并请求自那以来的每个变更、应用它们,就重新同步了。无需人工介入。</p>
+
+    <h3>Leader 故障:故障转移</h3>
+    <p>这是难的情况。若 leader 失败,一个 follower 必须被提升为新 leader,客户端必须被重新配置去把写发给它,其他 follower 必须开始从它消费变更。这个过程——叫<strong>故障转移(failover)</strong>——可手动或自动,且布满陷阱:</p>
+    <ul>
+      <li><strong>丢写。</strong>异步复制下,被提升的 follower 可能没收到 leader 最近的写。若旧 leader 重新加入,那些写与新的冲突。通常的解决是丢弃旧 leader 未复制的写——这违反客户端的持久性期望。</li>
+      <li><strong>与其他系统的危险交互。</strong>Kleppmann 的警世故事:在 GitHub,一个过时的 MySQL follower 被提升;它重用了旧 leader 已分配的主键(自增),那些键也用在 Redis 里,导致私有数据泄露给错误用户。</li>
+      <li><strong>脑裂(Split brain)。</strong>两个节点可能都相信自己是 leader 并都接受写,无法调和——数据被损坏或丢失。一些系统关掉一个,但粗心的机制可能把两个都关了。</li>
+      <li><strong>超时调优。</strong>多久才宣告一个 leader 死了?太长意味更长的宕机;太短意味不必要的故障转移让事情更糟,尤其在负载峰值下。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">为什么这要紧</div>
+      <p>这些故障转移问题没有简单答案——这正是为什么许多运维团队偏好<strong>手动</strong>故障转移,即便那意味更长的宕机。这些问题如此棘手的深层原因是网络、时钟的不可靠,以及就单一真相达成一致的困难——第 8、9 章的主题。</p>
+    </div>
+
+    <h2>复制日志的实现</h2>
+    <p>leader 实际如何把变更传达给 follower?有几种方法,各有取舍。</p>
+    <ul>
+      <li><strong>基于语句</strong>——leader 运送字面写语句(如每个 <code>INSERT</code>/<code>UPDATE</code>)。紧凑,但在非确定性上崩溃:<code>NOW()</code>、<code>RAND()</code>、自增列和带副作用的语句在每个副本上产生不同结果。因此大体被弃用。</li>
+      <li><strong>预写日志(WAL)运送</strong>——复制存储引擎已写的精确字节级日志。非常精确,但把复制紧耦合到存储引擎的内部格式,所以 leader 和 follower 通常必须跑<em>同一数据库版本</em>——使零停机升级难。</li>
+      <li><strong>逻辑(基于行)日志</strong>——一个在行级别描述变更(哪行、哪列、新值)的单独日志,与存储引擎内部解耦。这种解耦允许版本不匹配并让外部系统消费这个流——<strong>变更数据捕获(CDC)</strong>的基础。</li>
+      <li><strong>基于触发器</strong>——用数据库触发器/存储过程的应用级复制。最灵活(你能转换或过滤数据)但开销更大、更易出 bug。</li>
+    </ul>
+
+    <h2>复制滞后的问题</h2>
+    <p>从异步 follower 读让你便宜地扩展读,但 follower 可能落后 leader。若你从落后的 follower 读,你可能看到<strong>陈旧</strong>数据——系统是<em>最终</em>一致的,但"最终"刻意含糊,在负载下可能是数秒或数分钟。三个具体异常、以及修复它们的保证,在面试里不断出现:</p>
+
+    <h3>读己之写一致性(Read-After-Write)</h3>
+    <p>用户提交一个变更,然后重载——若他们的读命中一个还没收到该写的 follower,他们自己的更新看似消失了。<strong>读己之写</strong>(或 read-your-writes)一致性保证用户总看到自己的写。技术:从 leader 读用户可能修改过的东西;跟踪用户最后一次写的时间戳,只从追上它的 follower 读。</p>
+
+    <h3>单调读(Monotonic Reads)</h3>
+    <p>若用户从不同副本做几次读,他们可能看到一个值,片刻后看到一个<em>更旧</em>的值——时间看似倒流。<strong>单调读</strong>保证一旦你读了更新的数据,你之后不会读更旧的。一个简单实现:每个用户总从同一副本读(如按其用户 ID 的哈希选)。</p>
+
+    <h3>一致前缀读(Consistent Prefix Reads)</h3>
+    <p>若一连串写以某顺序发生,任何读它们的人都应以同样顺序看到。违反令人不安——你可能在问题本身之前看到一个答案。<strong>一致前缀读</strong>保证因果相关的写被按序读。这在分区(分片)数据库里尤其是问题,那里不同分区以不同速度复制。</p>
+
+    <div class="callout">
+      <div class="callout-label">关键要点</div>
+      <p>"最终一致性"是一个弱保证,把大量复杂度推给应用开发者。与其希望滞后保持小、然后在它没保持时惊讶,不如用这些具体保证思考——并认识到提供更强保证正是事务和共识(后续章节)的用途。</p>
+    </div>
+
+    <h2>多主复制(Multi-Leader)</h2>
+    <p>单主有一个明显缺点:所有写漏斗式通过一个节点。<strong>多主</strong>复制允许多于一个节点接受写;每个 leader 同时充当其他 leader 的 follower。主要用例:</p>
+    <ul>
+      <li><strong>多数据中心运行</strong>——每个数据中心一个 leader,所以写是本地的(低延迟),且若另一个 DC 或它们之间的链路失败,每个 DC 继续工作。</li>
+      <li><strong>带离线操作的客户端</strong>——如你手机上的日历应用实际是一个 leader(它离线接受写),重连时与服务器同步。</li>
+      <li><strong>协作编辑</strong>——Google Docs 等实时工具是多主复制的一种形式。</li>
+    </ul>
+
+    <h3>写冲突</h3>
+    <p>多主引入的大问题是<strong>写冲突</strong>:同一数据能在两个不同 leader 上并发被修改,而冲突直到变更被异步合并才被检测到。方法:</p>
+    <ul>
+      <li><strong>冲突避免</strong>——把给定记录的所有写路由到同一 leader,绕开冲突。在那个 leader 失败或用户移动时崩溃。</li>
+      <li><strong>收敛到一致状态</strong>——每个副本必须到达同一最终值。选项包括<strong>最后写入胜(LWW)</strong>(选时间戳最高的写——简单但丢数据)、给每个写一个唯一 ID 并选最高的,或记录冲突稍后解决。</li>
+      <li><strong>自定义解决逻辑</strong>——让应用代码在写时或读时合并冲突。</li>
+      <li><strong>自动数据结构</strong>——<strong>CRDT</strong>(无冲突复制数据类型)和操作转换被设计来明智地合并并发编辑。</li>
+    </ul>
+
+    <h3>复制拓扑</h3>
+    <p>多于两个 leader 时,你必须决定写在它们之间走的路径。<strong>全互联(all-to-all)</strong>(每个 leader 发给每个其他)最健壮但若某些链路比其他快可能有因果问题。<strong>环形</strong>和<strong>星形</strong>拓扑减少流量但引入单点故障,且若一个节点宕可能断。为防无限循环,每个写被标上它已经过的节点标识符。</p>
+
+    <h2>无主复制(Leaderless)</h2>
+    <p>第三种方法完全放弃 leader 概念:任何副本都能直接从客户端接受写。这种风格由 Amazon 的 Dynamo 推广,被 Cassandra、Riak、Voldemort 使用(常叫 Dynamo 风格)。客户端(或代表它的协调者节点)把每个写发给<em>几个</em>副本并从<em>几个</em>副本并行读。</p>
+
+    <h3>Quorum 读写</h3>
+    <p>要知道一次读尽管有些节点宕了也看到最新写,无主系统用 <strong>quorum</strong>。有 <code>n</code> 个副本,一个写必须被 <code>w</code> 个节点确认、一个读必须查询 <code>r</code> 个节点。只要 <code>w + r &gt; n</code>,被写的节点集和被读的集保证至少<strong>重叠</strong>一个节点——所以一次读会看到至少一份最新副本。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">quorum condition</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>n = 3 副本
+
+  w + r &gt; n   保证写集和读集重叠
+
+  例:  w = 2, r = 2,  n = 3
+        2 + 2 = 4 &gt; 3   ✓  每次读看到最新写
+
+  为读调优:   w = 3, r = 1   (读快,写慢/脆弱)
+  为写调优:  w = 1, r = 3   (写快,必须广泛读)</code></pre>
+    </div>
+
+    <h3>保持副本同步</h3>
+    <p>当一个宕掉的节点回来,它错过了写。两个机制治愈这个:</p>
+    <ul>
+      <li><strong>读修复(Read repair)</strong>——当客户端从几个节点读并注意到一个有陈旧值,它把更新的值写回那个节点。对频繁读的数据工作得好。</li>
+      <li><strong>反熵(Anti-entropy)</strong>——一个后台进程持续找副本间差异并拷贝缺失数据。不像基于 WAL 的复制,它不保留写顺序且可能有显著延迟。</li>
+    </ul>
+
+    <h3>Quorum 的局限与检测并发写</h3>
+    <p>Quorum 不是密不透风的。<strong>宽松 quorum(sloppy quorum)</strong>(带 hinted handoff)让写在"家"节点不可用时去其他可达节点,增加可用性但削弱重叠保证。且因为多个客户端能并发写一个无主存储,冲突像在多主里一样出现。检测它们需要推理 <strong>"happens-before"</strong> 关系:若两个操作都不知道对方,它们是并发的。系统用<strong>每 key 版本号</strong>,或跨副本的<strong>版本向量(version vector)</strong>,来判断一个写是否取代另一个,还是它们真正并发(那种情况下冲突值,叫 <em>sibling</em>,必须由应用合并)。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th>单主</th><th>多主</th><th>无主</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>谁接受写</td><td class="col-a">一个节点</td><td class="col-b">几个节点</td><td>任何副本</td></tr>
+        <tr><td>写冲突</td><td class="col-a">无(串行化)</td><td class="col-b">有——必须解决</td><td>有——必须解决</td></tr>
+        <tr><td>处理节点丢失</td><td class="col-a">故障转移(难)</td><td class="col-b">其他 leader 继续</td><td>quorum 容忍丢失</td></tr>
+        <tr><td>一致性</td><td class="col-a">较强(若读 leader)</td><td class="col-b">最终</td><td>最终(可调 quorum)</td></tr>
+        <tr><td>示例</td><td class="col-a">PostgreSQL、MySQL</td><td class="col-b">多 DC、CouchDB</td><td>Cassandra、Riak、Dynamo</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>复制是每个分布式数据存储的基础,三种策略是写可用性与解决冲突成本之间取舍的谱系。单主避免冲突但成瓶颈、失败别扭;多主和无主用可用性换取你必须调和并发写。知道一个给定数据库坐落在哪——以及它对滞后和冲突做什么——是强大的分布式系统面试答案的核心。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>同步 vs 异步复制?</strong>同步保证一份持久的最新副本但在慢 follower 上阻塞;异步快但故障转移时可能丢已确认的写。半同步(一个同步 follower)是常见折中。<br>
+      <strong>为什么故障转移难?</strong>丢失异步写、脑裂(两个 leader)、坏超时调优,以及与外部系统的危险交互——这就是为什么许多团队手动做它。<br>
+      <strong>w + r &gt; n 给你什么?</strong>读 quorum 和写 quorum 至少重叠一个节点,所以一次读保证看到最新写——无主一致性的核心旋钮。<br>
+      <strong>怎么检测并发写?</strong>用版本号或版本向量跟踪 happens-before 关系;两个都没看到对方的写是需要合并的并发 sibling。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-4/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">编码与演化</div>
+      </a>
+      <a href="/ddia/chapter-6/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">分区</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

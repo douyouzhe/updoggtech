@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 4 章:数据编码与 schema 演化——向后/向前兼容、语言特定序列化的陷阱、JSON/XML、Protobuf/Thrift 字段标签、Avro 写者/读者 schema,以及通过数据库/服务(REST/RPC)/消息代理的三种数据流。">
+<title>DDIA 第4章 — 编码与演化 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-4/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-4/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-4/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-4/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="编码与演化">
+<meta property="og:description" content="DDIA 第 4 章:编码、向后/向前兼容、Protobuf/Thrift/Avro、REST/RPC、消息代理数据流。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-4/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="编码与演化">
+<meta name="twitter:description" content="DDIA 第 4 章:编码与演化、字段标签、Avro schema、RPC 批判、消息传递。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 4 章 — 编码与演化", "description": "DDIA 第 4 章:数据编码与 schema 演化——向后/向前兼容、语言特定序列化的陷阱、JSON/XML、Protobuf/Thrift 字段标签、Avro 写者/读者 schema,以及通过数据库/服务(REST/RPC)/消息代理的三种数据流。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-4/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-4/">EN</a>
+        <a href="/zh/ddia/chapter-4/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-4</span>
+    </div>
+    <span class="article-tag">DDIA · 第 4 章</span>
+    <h1 class="article-title">编码与演化</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 4 章为 DDIA 第一部分收尾,处理每个长寿命系统都面对的问题:<strong>应用会变,而当代码变,它产生的数据形状也变</strong>。新功能加字段,重构重命名它们,旧功能被移除。同时,已写到磁盘和在网络上飞行的数据不会神奇地自我更新。本章讲数据如何被<strong>编码</strong>(变成字节)、那些编码如何能<strong>演化</strong>而不破坏运行中的系统,以及数据在进程间流动的三种方式——通过数据库、通过服务、通过消息代理。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>兼容的两个方向</strong>——<em>向后</em>:新代码能读旧数据(通常容易);<em>向前</em>:旧代码能读新数据(更难——它必须忽略不理解的字段)。</li>
+        <li><strong>滚动升级同时强制两者</strong>——分阶段部署期间,新旧版本并排运行,所以格式必须能在两个方向同时被读。</li>
+        <li><strong>语言特定的序列化是陷阱</strong>——Java Serializable、Python pickle 之流带来锁定、安全漏洞、糟糕的版本化和臃肿。任何被持久化或共享的东西都避免。</li>
+        <li><strong>JSON/XML/CSV 无处不在但马虎</strong>——模糊的数字、无二进制字符串、可选 schema。对开放性极好,对精度和大小弱。</li>
+        <li><strong>基于 schema 的二进制格式在规模上胜出</strong>——Protobuf 和 Thrift 用编号字段标签;Avro 把写者 schema 与读者 schema 匹配。两者都显式编码演化规则。</li>
+        <li><strong>"数据比代码活得长"</strong>——你的编码选择决定演化一个已在生产运行的系统有多痛苦。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>编码把内存对象变成字节;解码反过来。因为新旧代码在滚动升级期间共存,格式必须既向后又向前兼容。基于 schema 的二进制格式(Protobuf、Thrift、Avro)使演化安全且紧凑。数据以三种方式流动——数据库(写者和读者被时间分隔)、服务(REST/RPC,被网络分隔)、消息代理(异步、解耦)——它们每一个都是编码边界。</p>
+    </div>
+
+    <h2>为什么编码重要</h2>
+    <p>程序用(至少)两种不同表示处理数据。<strong>在内存里</strong>,数据住在对象、struct、列表、数组、哈希表和树里——为 CPU 高效访问和操作优化、充满指针的结构。要把数据写到文件或经网络发送,你必须把它翻译成<strong>自包含的字节序列</strong>——字节流里没有另一个进程能跟随的指针。从内存表示到字节序列的翻译叫<strong>编码</strong>(也叫序列化或 marshalling),反过来是<strong>解码</strong>(解析、反序列化、unmarshalling)。</p>
+    <p>因为这持续发生——每次数据库写、每次 API 调用、每条消息——编码的选择对效率有超大影响,且关键地,对系统随时间能多容易地改变有超大影响。</p>
+
+    <h3>滚动升级与共存的版本</h3>
+    <p>大应用很少一次性部署。服务端系统用<strong>滚动升级</strong>(分阶段发布):几个节点拿到新版本,你检查没坏,然后继续直到所有节点更新。客户端应用受用户摆布,他们可能数周不更新。后果不可避免:<strong>新旧版本的代码,以及新旧数据格式,全在系统里同时共存</strong>。</p>
+    <p>要让系统继续平稳运行,兼容必须在两个方向成立:</p>
+    <ul>
+      <li><strong>向后兼容(backward)</strong>——较新代码能读较旧代码写的数据。这通常容易:你知道旧格式,所以你写新代码去处理它。</li>
+      <li><strong>向前兼容(forward)</strong>——较旧代码能读较新代码写的数据。这更难,因为旧代码必须<em>忽略</em>一个它一无所知的版本所做的添加,而非被它噎住。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">关键区别</div>
+      <p><strong>向后</strong>兼容看<em>过去</em>:新代码读旧数据。<strong>向前</strong>兼容看<em>未来</em>:旧代码读来自未来的数据。棘手的是向前兼容——它要求格式和代码优雅地跳过未知字段。基于 schema 的格式内建这个;临时解析通常没有。</p>
+    </div>
+
+    <h2>语言特定格式</h2>
+    <p>许多语言自带序列化:Java 有 <code>java.io.Serializable</code>、Python 有 <code>pickle</code>、Ruby 有 <code>Marshal</code>。它们诱人因为让你用最少代码保存和恢复内存对象。但 Kleppmann 直言为什么它们对一次性用途之外的任何东西都是坏选择:</p>
+    <ul>
+      <li><strong>语言锁定</strong>——编码绑定到一种编程语言,使另一个系统(也许用不同语言写)很难读你的数据。你把数据格式耦合到一个可能撑不过十年的语言选择上。</li>
+      <li><strong>安全</strong>——要恢复对象,解码器必须实例化任意类。这是臭名昭著的远程代码执行漏洞来源:能让你的应用反序列化恶意字节的攻击者常能运行任意代码。</li>
+      <li><strong>版本化是事后想法</strong>——因为这些库瞄准快速便利,向前和向后兼容通常被忽视。</li>
+      <li><strong>效率</strong>——Java 的内建序列化以又臃肿又慢闻名。</li>
+    </ul>
+    <p>结论:语言特定格式对临时、同进程、同版本用途没问题,对任何你持久化或跨边界发送的东西是个负担。</p>
+
+    <h2>文本格式:JSON、XML、CSV</h2>
+    <p>大多数开发者伸手去拿的标准化、语言无关编码是 <strong>JSON、XML 和 CSV</strong>。它们人类可读、处处支持、对开放性极好。它们也有在规模上咬人的真实缺陷:</p>
+    <ul>
+      <li><strong>数字歧义。</strong>XML 和 CSV 没有 schema 无法区分一个数字和一串数字字符。JSON 区分字符串和数字但不区分整数和浮点,且无精度概念。大于 2^53 的数字在 IEEE 754 double 里丢失精度——这正是为什么 Twitter 把推文 ID 同时返回为数字<em>和</em>字符串,以挺过 JavaScript 解析器。</li>
+      <li><strong>无二进制字符串。</strong>JSON 和 XML 没有原生二进制类型。变通是 Base64 编码数据——可行但膨胀大小约 33%,且是个 hack。</li>
+      <li><strong>可选、别扭的 schema。</strong>XML 和 JSON 有 schema 语言(XSD、JSON Schema),强大但复杂,许多工具完全跳过它们。没有 schema,应用代码必须硬编码数据的解释。</li>
+      <li><strong>CSV 完全没有 schema</strong>,且对转义、引号和一行到底意味什么出了名地含糊。</li>
+    </ul>
+    <p>尽管如此,文本格式对许多目的仍是优秀默认——对公开 API 和面向人的数据,无处不在和工具通常胜过低效。问题在你编码巨量数据或需要内部精确、紧凑、可演化的数据时最要紧。</p>
+
+    <h2>二进制编码</h2>
+    <p>对只在你组织内用的数据,你能选一个远更紧凑、解析更快的格式。第一步是 <strong>JSON 的二进制编码</strong>——MessagePack、BSON 等格式。这些稍微缩小数据,但因为它们没有 schema,仍必须在编码字节里包含对象的所有<em>字段名</em>。那是下一个格式家族移除的关键低效。</p>
+    <p>洞见:若写者和读者提前就<strong>schema</strong> 达成一致,字段名永远不必随数据传播。你能用一个紧凑数字标签替换每个字段名,且免费获得类型信息。这是 Thrift、Protocol Buffers 和 Avro 的基础。</p>
+
+    <h2>Thrift 与 Protocol Buffers</h2>
+    <p>Apache Thrift(原自 Facebook)和 Protocol Buffers(Protobuf,来自 Google)是密切相关的二进制编码库。两者都要求数据由一个用接口定义语言(IDL)写的 <strong>schema</strong> 描述,且两者都附一个从那个 schema 在许多语言里产生类的代码生成工具。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">person.proto — Protocol Buffers schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">message</span> <span class="ty">Person</span> {
+  <span class="kw">required</span> <span class="ty">string</span> user_name       = <span class="num">1</span>;   <span class="cm">// 标签 1</span>
+  <span class="kw">optional</span> <span class="ty">int64</span>  favorite_number = <span class="num">2</span>;   <span class="cm">// 标签 2 — 以后加是安全的</span>
+  <span class="kw">repeated</span> <span class="ty">string</span> interests       = <span class="num">3</span>;   <span class="cm">// 0..n 个值</span>
+}</code></pre>
+    </div>
+
+    <h3>字段标签与编码</h3>
+    <p>关键细节是每个字段有一个<strong>数字标签</strong>(那些 <code>= 1</code>、<code>= 2</code>、<code>= 3</code>)。在编码字节里,标签——而非字段名——标识字段,连同字段的类型和值。字段名只存在于 schema 里,所以它们在运行时一文不值。这就是让编码紧凑的原因。</p>
+
+    <h3>Schema 演化规则</h3>
+    <p>因为标签携带含义,安全改 schema 的规则自然落出:</p>
+    <ul>
+      <li><strong>你能加一个新字段</strong>,只要给它一个新标签号。旧代码读新数据只是忽略它不认识的标签(向前兼容)。新代码读旧数据看到字段缺失并用默认或 null(向后兼容)——这就是为什么<strong>新字段必须可选或有默认</strong>,绝不 <code>required</code>。</li>
+      <li><strong>你永远不能改字段的标签号</strong>,因为那会使每个已写的字节流失效。</li>
+      <li><strong>你能移除一个字段</strong>仅当它是可选的,且此后永远不能重用它的标签号。</li>
+      <li><strong>改字段的数据类型</strong>在有限情况下可能,但有丢精度或截断值的风险(如 64 位到 32 位)。</li>
+    </ul>
+    <p>Thrift 和 Protobuf 在细节上不同——Thrift 提供几种编码口味(BinaryProtocol、CompactProtocol)和更丰富的容器类型集——但字段标签机制和演化规则本质相同。</p>
+
+    <h2>Avro</h2>
+    <p>Apache Avro(诞生于 Hadoop 生态)采取不同方法。它也用 schema,但编码字节里<strong>只含值</strong>——无标签号、无字段名、无类型注解。这使 Avro 编码是三者中最紧凑的,但它引出一个明显问题:读者怎么知道字节意味什么?</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">person.avsc — Avro schema (JSON 形式)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"type"</span>: <span class="str">"record"</span>,
+  <span class="str">"name"</span>: <span class="str">"Person"</span>,
+  <span class="str">"fields"</span>: [
+    {<span class="str">"name"</span>: <span class="str">"userName"</span>,       <span class="str">"type"</span>: <span class="str">"string"</span>},
+    {<span class="str">"name"</span>: <span class="str">"favoriteNumber"</span>, <span class="str">"type"</span>: [<span class="str">"null"</span>, <span class="str">"long"</span>], <span class="str">"default"</span>: null},
+    {<span class="str">"name"</span>: <span class="str">"interests"</span>,      <span class="str">"type"</span>: {<span class="str">"type"</span>: <span class="str">"array"</span>, <span class="str">"items"</span>: <span class="str">"string"</span>}}
+  ]
+}</code></pre>
+    </div>
+
+    <h3>写者 Schema vs 读者 Schema</h3>
+    <p>Avro 的答案是本章的关键想法。数据被编码时,用<strong>写者 schema</strong> 编码——生产代码当时有的任何版本。数据被解码时,读者期待一个<strong>读者 schema</strong>——消费代码有的任何版本。这两个 schema <em>无需</em>相同;它们只需<strong>兼容</strong>。Avro 库通过并排看两个 schema 来解决差异:</p>
+    <ul>
+      <li>字段<strong>按名</strong>匹配,而非按位置或标签,所以顺序能不同。</li>
+      <li>在写者 schema 但不在读者 schema 里的字段被<strong>忽略</strong>。</li>
+      <li>在读者 schema 但不在写者 schema 里的字段用读者的<strong>默认值</strong>填充。</li>
+    </ul>
+    <p>这就是为什么你加或移除的每个字段都必须有默认——那个默认正是让 schema 解析弥合版本鸿沟、给出向后和向前兼容的东西。</p>
+
+    <h3>读者如何得知写者的 Schema</h3>
+    <p>读者需要写者 schema 来解码。Avro 按上下文不同处理:</p>
+    <ul>
+      <li><strong>带许多记录的大文件</strong>(Hadoop 情况)——写者 schema 在文件开头包含一次,摊薄到数百万记录上。</li>
+      <li><strong>一个记录数据库,每条可能用不同 schema 写</strong>——给每条记录存一个版本号并保留一个 schema 版本注册表(这正是 Confluent 的 Schema Registry 为 Kafka 做的)。</li>
+      <li><strong>通过网络连接发送记录</strong>——两个进程在连接建立时协商 schema 版本(一次 RPC 握手)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">Avro 为何出彩</div>
+      <p>因为 Avro 没有标签号且按名匹配字段,当 schema 被<strong>动态生成</strong>时它理想——例如,从关系数据库的列自动派生。若 DB schema 变,你只生成一个新 Avro schema;没有标签号要手动分配,也无意外重用一个的风险。那个属性是 Avro 在 Hadoop、Kafka 和数据管道工具里流行的一大原因。</p>
+    </div>
+
+    <h2>Schema 的优点</h2>
+    <p>退一步,基于 schema 的二进制格式共享一组优势,解释了为什么它们在规模上主导,即便它们不如倾倒 JSON 方便:</p>
+    <ul>
+      <li><strong>紧凑性</strong>——它们能从编码数据里完全省略字段名。</li>
+      <li><strong>不会漂移的文档</strong>——schema 是数据的精确、始终最新的描述,且代码从它生成。</li>
+      <li><strong>兼容检查</strong>——保留一个 schema 版本数据库让你在部署<em>前</em>检查一个变更的向前和向后兼容。</li>
+      <li><strong>代码生成</strong>——对静态类型语言,生成的类给编译期类型检查和 IDE 自动补全。</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>文本 (JSON/XML)</th><th>Schema 二进制 (Protobuf/Thrift/Avro)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>可读性</td><td class="col-a">人类可读</td><td class="col-b">不透明字节(需 schema)</td></tr>
+        <tr><td>大小</td><td class="col-a">冗长;字段名重复</td><td class="col-b">紧凑;名被丢弃</td></tr>
+        <tr><td>Schema</td><td class="col-a">可选,常被跳过</td><td class="col-b">必需且强制</td></tr>
+        <tr><td>字段身份</td><td class="col-a">数据里按名</td><td class="col-b">按标签(PB/Thrift)或 schema(Avro)</td></tr>
+        <tr><td>演化</td><td class="col-a">临时、易错</td><td class="col-b">显式规则、可检查</td></tr>
+        <tr><td>最适合</td><td class="col-a">开放/公开 API、调试</td><td class="col-b">高量内部数据</td></tr>
+      </tbody>
+    </table>
+
+    <h2>数据流的模式</h2>
+    <p>本章后半拉远:每当你把数据发给一个不共享你内存的进程,你就编码它。有三种主要<strong>数据流模式</strong>,每个都是兼容要紧的地方。</p>
+
+    <h3>通过数据库的数据流</h3>
+    <p>对数据库,<strong>写</strong>的进程编码数据,<strong>读</strong>的进程解码它。那两个进程可能是同一应用在不同时间——所以某种意义上<em>你在给未来的自己发消息</em>。显然需要向后兼容(未来代码必须读过去代码写的)。但向前兼容也要紧,且以一种棘手方式:滚动升级期间,新代码可能写一条带新字段的记录,然后<strong>旧代码可能读那条记录、修改它、写回去</strong>。若旧代码不理解新字段,危险是它<strong>丢掉它不认识的字段</strong>——悄悄丢失数据。修法是让格式和代码在往返时<em>保留未知字段</em>。</p>
+    <p>Kleppmann 这节的口号是<strong>"数据比代码活得长"</strong>。你可能几分钟内部署新版本代码,但你数据库里的数据可能有几年。重写(迁移)每条旧记录到新 schema 很昂贵,所以大多数数据库转而允许简单 schema 变更——如加一个带 null 默认的列——并在飞行中解码旧行。LinkedIn 的文档存储 Espresso 正是用 Avro 来获得这些演化属性。</p>
+
+    <h3>通过服务的数据流:REST 与 RPC</h3>
+    <p>当进程经网络通信,常见安排是<strong>客户端和服务器</strong>:服务器暴露 API,客户端调它。Web 这样工作(浏览器和 web 服务器),且服务端应用越来越被分解成相互调用的更小服务——<strong>面向服务或微服务架构</strong>。一个关键目标是服务能被<strong>独立部署和演化</strong>,意味着新旧版本的客户端和服务器必须互操作——又是同样的兼容问题。</p>
+    <p>Web 服务的两大哲学:</p>
+    <ul>
+      <li><strong>REST</strong>——建在 HTTP 原则上的设计哲学:资源由 URL 标识、用标准动词(GET、POST、PUT、DELETE)操作、简单格式、可缓存。RESTful API 简单,对公开 API 主导。</li>
+      <li><strong>SOAP</strong>——基于 XML 的协议,刻意避免用 HTTP 特性,由冗长的机器可读契约(WSDL)描述,带重型工具和代码生成。如今在遗留企业系统外大体失宠。</li>
+    </ul>
+
+    <h3>RPC 的问题</h3>
+    <p>远程过程调用(RPC)框架试图让网络请求<strong>看起来像调用你自己进程里的本地函数</strong>(这叫<em>位置透明</em>)。Kleppmann 主张这个抽象根本有缺陷,因为网络请求以你无法掩盖的方式不同于本地调用:</p>
+    <ul>
+      <li>本地调用<strong>可预测</strong>——它仅基于你的代码成功或失败。网络请求能因你控制外的原因失败:请求或响应可能丢失,或远程机器可能慢或不可用。</li>
+      <li>本地调用返回结果、抛异常,或永不返回(无限循环/崩溃)。网络请求有另一个结果:它可能<strong>超时而毫无答案</strong>,你根本不知道它是否成功。</li>
+      <li>重试失败请求危险,若请求实际通过了但只是响应丢失——你会执行动作两次,除非它<strong>幂等</strong>。</li>
+      <li>延迟剧烈变化,且每个参数必须被<strong>编码</strong>成字节——对原始类型容易,对大对象或指针棘手。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试级要点</div>
+      <p>这是本章与"分布式计算谬误"的连接。假装网络可靠、快速、同质——位置透明 RPC 讲的谎言——正是导致系统在生产中行为糟糕的原因。一个好答案指出区别:远程调用能以<em>未知</em>结果超时,本地调用从不,而那种不确定性驱动了对幂等、重试和超时的需要。</p>
+    </div>
+    <p>现代 RPC 框架对此更诚实:gRPC(建于 Protobuf)、Thrift、Finagle 和 Avro RPC 用 future/promise 和流暴露异步性质,并加服务发现。RPC 对同一组织拥有的服务间请求仍是好搭配,通常在一个数据中心内。对 API <strong>演化</strong>,服务比数据库容易:你常能在客户端前更新所有服务器,所以只跨几个版本维护兼容是合理的,在 URL 或 HTTP 头里标明版本。</p>
+
+    <h3>消息传递数据流</h3>
+    <p>第三种模式坐落在 RPC 和数据库之间:通过<strong>消息代理</strong>(RabbitMQ、ActiveMQ、Kafka、NATS 等)的<strong>异步消息传递</strong>。发送者(生产者)把消息投到一个命名队列或主题;代理存它并投递给一个或多个消费者。像 RPC,消息以低延迟去另一个进程;像数据库,它经过一个临时持有数据的中介。相对直接 RPC 的优势:</p>
+    <ul>
+      <li><strong>缓冲</strong>——若接收者不可用或过载,代理充当缓冲,改善可靠性。</li>
+      <li><strong>重投</strong>——它能自动把消息重投给崩溃的进程,防止消息丢失。</li>
+      <li><strong>解耦</strong>——发送者无需知道接收者的 IP 地址或端口,这在实例来来去去的云里尤其有用。</li>
+      <li><strong>一对多</strong>——一条消息能投递给几个消费者(发布/订阅)。</li>
+      <li><strong>发送者独立</strong>——发送者只是发布即忘;它通常不期待回复。</li>
+    </ul>
+    <p>因为消息只是带些元数据的字节序列,所有同样的编码和兼容关切都适用——而异步、解耦的性质实际使向前/向后兼容<em>更</em>重要,因为生产者和消费者被完全独立地部署和升级。</p>
+
+    <h3>分布式 Actor 框架</h3>
+    <p>一个相关模型是 <strong>actor 模型</strong>:并发被表达为 actor——持有本地状态、只通过相互发送异步消息通信的独立实体,绕开共享内存线程问题。在<strong>分布式 actor 框架</strong>(Akka、Microsoft Orleans、Erlang OTP)里,这个消息传递模型被透明地跨节点扩展;因为消息已是通信单位,同一框架把应用从一台机器扩展到许多台。陷阱最后一次回归:当你对基于 actor 的应用做滚动升级,你仍必须确保一个版本编码的消息能被另一个版本解码。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>编码是"演化一个系统"的抽象想法遇到具体字节的地方。选一个让兼容显式的格式(高量内部数据用基于 schema 的二进制;开放 API 用 JSON),并记住数据库、服务和消息代理都是新旧代码相遇的编码边界。把这个做对你就能无畏地改变运行中的系统;做错每次部署都冒着悄悄损坏或丢失数据的风险。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>向后 vs 向前兼容?</strong>向后 = 新代码读旧数据(容易)。向前 = 旧代码读新数据(难;它必须忽略未知字段)。滚动升级同时需要两者。<br>
+      <strong>为什么字段标签在 Protobuf/Thrift 里这么重要?</strong>数字标签而非名字在字节里标识字段——那是保持它紧凑、且使演化规则(用新标签加可选字段、绝不重用标签)安全的原因。<br>
+      <strong>Avro 特别在哪?</strong>它按字段名把写者 schema 与读者 schema 匹配,用默认填补空缺——无标签号——对 Kafka + Schema Registry 这类动态生成的 schema 完美。<br>
+      <strong>为什么位置透明 RPC 被批评?</strong>网络调用能以未知结果超时,本地调用不会;假装不是这样忽略了部分失败,并迫使你为幂等、重试和超时设计。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-3/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">存储与检索</div>
+      </a>
+      <a href="/ddia/chapter-5/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">复制</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
