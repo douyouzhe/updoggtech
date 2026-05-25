@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解数据库分片(Sharding):水平 vs 垂直分区、扩展阶梯、三种分片策略(哈希/范围/目录)、一致性哈希与虚拟节点、分片键设计、热点与重分片、跨分片查询与事务、分片 vs 复制,以及 Vitess/Cassandra/DynamoDB 等真实架构。">
+<title>分片 (Sharding) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/sharding/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="分片 (Sharding)">
+<meta property="og:description" content="水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/sharding/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="分片 (Sharding)">
+<meta name="twitter:description" content="数据库分片怎么做:哈希/范围/目录策略、一致性哈希、分片键、跨分片查询与事务。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"分片 (Sharding)","description":"水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/sharding/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/sharding/">EN</a>
+        <a href="/zh/tech-stacks/sharding/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">sharding</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">分片 (Sharding)</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>分片(sharding)是一种把数据库<strong>水平分区</strong>到多个独立节点(每个叫一个分片)的技术,让数据集和写负载被分散而非集中在单台机器上。当单台数据库服务器再也扛不住数据量或查询吞吐——且垂直扩展(更大 CPU、更多 RAM)已触顶时,分片是下一步。但分片不是免费午餐:它用一个简单、强一致的单节点模型,换来一个让跨分片查询、事务和 schema 变更都急剧变难的分布式系统。理解何时以及如何分片——以及用三种核心策略里的哪一种——是你将做出的最有后果的架构决策之一。</p>
+
+    <p>本指南覆盖完整的分片决策空间:水平 vs 垂直分区、三种分片策略的深入、一致性哈希算法和虚拟节点为何重要、分片键选择标准、热点管理、最小中断的重分片、跨分片查询处理、分布式事务,以及分片与复制的关系。读完你将拥有做出自信分片决策的词汇和心智模型——并能在系统设计面试中清晰表述取舍。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>哈希分片</strong>给出均匀分布但破坏范围查询,且节点数变化时需要全量数据迁移——除非你用一致性哈希。</li>
+        <li><strong>范围分片</strong>支持高效范围扫描但在时间戳、自增 ID 等顺序键上有写热点风险。</li>
+        <li><strong>目录分片</strong>提供最大灵活性,代价是关键路径上有一个高可用查找服务。</li>
+        <li><strong>一致性哈希</strong>在加一个节点时把数据移动最小化到 ~k/n 个 key;虚拟节点平滑不均分布。</li>
+        <li><strong>分片键设计是最有后果的决策</strong>——高基数、写均匀分布、与查询模式对齐。</li>
+        <li><strong>跨分片 join</strong> 必须在应用层做(取数 + 内存合并)——通过围绕访问模式设计分片键来避免它们。</li>
+        <li><strong>分片和复制是正交的</strong>——每个分片本身应被复制以实现 HA;你两者都需要,不是二选一。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>分片按分片键把数据切到多个数据库节点上。哈希分片给均匀分布;范围分片支持高效范围扫描;目录分片提供最大灵活性。一致性哈希在重分片时把数据移动最小化。代价是真实的复杂度:跨分片查询、join 和事务需要大量工程投入。只在耗尽垂直扩展、读副本和缓存之后才分片。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/sharding-1.jpg" alt="跨多个节点的水平数据库分片" loading="lazy">
+        <figcaption>跨多个节点的水平数据库分片</figcaption>
+      </figure>
+
+    <h2>分片之前:扩展阶梯</h2>
+    <p>分片是一项昂贵的运维承诺。在动手之前,按顺序耗尽扩展阶梯上的选项——每一步增加的复杂度都比分片小:</p>
+    <ol>
+      <li><strong>垂直扩展</strong>——给主库更多 CPU、RAM 和更快存储。直截了当,但受限于商用最大实例类型。一台现代云实例可载 192 vCPU 和 3 TB RAM,处理每秒数十万查询——大多数负载从不需要超过这个。</li>
+      <li><strong>读副本</strong>——把读流量路由到副本;把写集中在主库。对读多的负载(90:1 或更高读写比)通常带来 5–10 倍有效读容量。主库仍在写上成为瓶颈。</li>
+      <li><strong>缓存</strong>——一个吸收 95% 读流量的 Redis 缓存意味着你的数据库只见 5% 的完整负载。有效容量增益巨大,且无需数据架构变更。</li>
+      <li><strong>功能拆分(垂直分区)</strong>——把不同业务域拆成独立数据库,各跑在自己的服务器上。订单库、目录库、用户库各自独立扩展,而无任何单表行级拆分。</li>
+      <li><strong>分片(水平分区)</strong>——当单张表即使做了上述步骤后对一台服务器仍太大或太热,把它的行切到多个分片。</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">经验法则</div>
+      <p>一个带副本和 Redis 缓存的单 PostgreSQL 主库能轻松处理 10 万读/秒和 1 万写/秒。在 100 万读/秒或 10 万写/秒时,你开始需要在写路径上分片。大多数初创公司从未达到那个规模。在痛苦真实时分片,而非在架构图看起来更酷时。</p>
+    </div>
+
+    <h2>垂直 vs. 水平分区</h2>
+    <p>"分区(partitioning)"这个词的含义因你沿列轴还是行轴拆分而不同。理解这个区别重要,因为它们解决不同问题且常一起用。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">垂直分区</th><th class="col-b">水平分区(分片)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>拆什么</td><td class="col-a">列——不同表/列在不同服务器(功能拆分)</td><td class="col-b">行——同一张表分散到多个节点</td></tr>
+        <tr><td>扩展上限</td><td class="col-a">受限于你能划出的域边界数量</td><td class="col-b">随节点数横向扩展——理论上无界</td></tr>
+        <tr><td>引入的复杂度</td><td class="col-a">跨服务 API 调用代替 join;服务边界设计</td><td class="col-b">跨分片查询、分布式事务、重分片运维</td></tr>
+        <tr><td>用例</td><td class="col-a">微服务拆分、分离读多与写多的列</td><td class="col-b">单表超过一台服务器容量(用户、事件、消息)</td></tr>
+        <tr><td>示例</td><td class="col-a">用户服务库、订单服务库、商品服务库</td><td class="col-b">用户 1–10M 在分片 1,用户 10M–20M 在分片 2,...</td></tr>
+      </tbody>
+    </table>
+
+    <p>垂直分区(功能拆分)本质就是微服务做的事:每个服务拥有自己的数据库,服务通过 API 而非 SQL join 通信。这常是正确的第一步,因为它消除跨域 join、允许独立扩展、并干净映射到团队所有权——而无任何水平分片的行级复杂度。</p>
+
+    <p>当单个服务的表增长超过一台服务器能处理时,水平分片才登场。经典例子:有 20 亿用户的社交平台、每天处理 1 亿交易的支付系统、存 1 万亿消息的消息系统。没有垂直拆分能解决这些——表本身必须跨机器切分。</p>
+
+    <h2>三种分片策略</h2>
+
+    <h3>哈希分片(Hash-Based)</h3>
+    <p>对分片键应用哈希函数并计算 <code>shard_id = hash(key) % num_shards</code> 来决定哪个分片持有给定行。哈希函数无视键的自然排序而均匀分布值,所以数据和写负载均匀分散到所有分片。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">get_shard</span>(user_id: <span class="ty">int</span>, num_shards: <span class="ty">int</span>) -> <span class="ty">int</span>:
+    <span class="cm"># 跨分片一致性哈希——均匀分布</span>
+    <span class="kw">return</span> <span class="fn">hash</span>(user_id) % num_shards
+
+<span class="cm"># user_id=1234567,8 个分片 → 分片 3</span>
+<span class="cm"># 用户 1234567 的所有数据都在分片 3</span>
+<span class="cm"># 范围查询 "users WHERE id BETWEEN 1M AND 2M" → 必须查所有 8 个分片</span></code></pre>
+    </div>
+
+    <ul>
+      <li><strong>优点:</strong>均匀分布——除非键空间本身倾斜,否则没有单个分片变得过大。所有分片写负载均匀。</li>
+      <li><strong>缺点:</strong>范围查询需要对所有分片做 scatter-gather 扇出并在应用层合并。增删分片改变 <code>num_shards</code> 并重映射几乎每个 key——一次影响 <code>(N-1)/N * total_data</code> 行的全量数据迁移。</li>
+      <li><strong>最适合:</strong>查询总包含分片键(按 user_id、order_id 点查)、范围扫描罕见或路由到单独分析副本的负载。</li>
+    </ul>
+
+    <h3>范围分片(Range-Based)</h3>
+    <p>把行分区成分片键的连续范围——如用户 ID 1–1,000,000 在分片 1、1,000,001–2,000,000 在分片 2。分片边界在一个把每个范围映射到分片的路由表里显式定义。</p>
+    <ul>
+      <li><strong>优点:</strong>针对连续键范围的范围查询只命中相关分片——常见的时间或顺序查询无需 scatter-gather。容易推理数据放置。对查询频繁针对近期窗口的时序数据高效。</li>
+      <li><strong>缺点:</strong><strong>热点风险</strong>——最关键的失效模式。若近期数据最活跃(时间戳或自增 ID 几乎总是如此),最高范围的分片(含最新数据)承担几乎所有写负载,而较旧的分片大多冷着。这完全抵消分片的写吞吐增益。</li>
+      <li><strong>最适合:</strong>时间分区的归档数据,旧数据冷且查询频繁针对特定日期窗口。除非你预先分片以分散"热"范围,否则不适合作为活跃写负载的主策略。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">范围分片热点缓解</div>
+      <p>对活跃写负载,避免用时间戳或顺序自增 ID 作范围分片键。改用一个把哈希前缀和时间戳结合的复合键:<code>shard = crc32(user_id) % 16</code> 决定初始分片,而在该分片内数据按时间序存储。这在分片内给出范围查询效率,同时把写分散到所有分片。</p>
+    </div>
+
+    <h3>目录分片(Directory-Based)</h3>
+    <p>一个集中查找表("目录")显式把每个 key(或 key 范围)映射到其目标分片。每个数据库请求先查目录找到正确分片,再直接查那个分片。目录本身必须高可用且极低延迟,因为它在每个数据库操作的关键路径上。</p>
+    <ul>
+      <li><strong>优点:</strong>最大灵活性——任何 key 可在任何时候重映射到任何分片,而无需改哈希或范围逻辑。允许渐进、外科手术式的数据迁移:把特定热租户或账号移到专用分片而无需重分片全部。干净处理租户级隔离需求(多租户 SaaS,每个企业客户得到自己的分片)。</li>
+      <li><strong>缺点:</strong>目录是<strong>单点故障</strong>和潜在性能瓶颈;它必须被复制(通常通过 Raft 等强一致共识)、激进缓存,并以与主数据库同样的可靠性严格对待。给每个查询加一个延迟下限(通过本地缓存目录缓解)。</li>
+      <li><strong>最适合:</strong>多租户平台、需要不规则或策略驱动数据放置的场景,以及偏好外科手术式逐 key 迁移而非批量数据移动的渐进重分片操作。</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>分布</th><th>范围查询</th><th>重分片成本</th><th>灵活性</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>哈希分片</td><td class="col-a">均匀</td><td>scatter-gather 所有分片</td><td>高(重映射 ~所有 key)</td><td>低(固定算法)</td></tr>
+        <tr><td>范围分片</td><td class="col-b">不均(热点风险)</td><td>单个或少数分片</td><td>中(拆分范围)</td><td>中(范围可调)</td></tr>
+        <tr><td>目录分片</td><td class="col-a">可配置</td><td>取决于映射</td><td>低(更新映射)</td><td>高(任意放置)</td></tr>
+        <tr><td>一致性哈希</td><td class="col-a">带 vnode 均匀</td><td>scatter-gather</td><td>低(~k/n 个 key 移动)</td><td>中</td></tr>
+      </tbody>
+    </table>
+
+    <h2>一致性哈希:算法深入</h2>
+    <p>标准取模哈希分片有一个灾难性的重分片问题:给 8 节点集群加一个节点把模数从 8 变到 9,使 <code>7/8 ≈ 88%</code> 的所有 key-分片映射失效。每一个这样的 key 都必须迁到新分片。这对一个在线生产系统贵得离谱。一致性哈希优雅地解决了它。</p>
+
+    <h3>环抽象</h3>
+    <p>一致性哈希把<strong>节点和 key 都</strong>映射到一个整数逻辑环(通常是完整 MD5 或 SHA-1 哈希空间:0 到 2<sup>128</sup>–1)。每个节点被放在由哈希其标识符决定的环上位置。每个 key 被放在由哈希 key 本身决定的位置。一个 key 由从其位置顺时针最近的节点拥有。</p>
+
+    <p>加节点时,它被放在环上一个新位置,只认领它与其逆时针邻居之间的 key 范围。所有其他 key 分配不受扰动。移除节点时,它的 key 范围传给其顺时针后继。两种情况下,只有 <code>~k/n</code> 个 key 移动——总数据集中与新增或移除容量成比例的一部分。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> hashlib
+<span class="kw">from</span> sortedcontainers <span class="kw">import</span> SortedDict
+
+<span class="kw">class</span> <span class="ty">ConsistentHashRing</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, virtual_nodes=<span class="num">150</span>):
+        self.ring = <span class="fn">SortedDict</span>()          <span class="cm"># 按哈希位置排序</span>
+        self.vnodes = virtual_nodes
+
+    <span class="kw">def</span> <span class="fn">_hash</span>(self, key: <span class="ty">str</span>) -> <span class="ty">int</span>:
+        <span class="kw">return</span> <span class="fn">int</span>(hashlib.<span class="fn">md5</span>(key.<span class="fn">encode</span>()).<span class="fn">hexdigest</span>(), <span class="num">16</span>)
+
+    <span class="kw">def</span> <span class="fn">add_node</span>(self, node: <span class="ty">str</span>):
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(self.vnodes):
+            h = self.<span class="fn">_hash</span>(<span class="fn">f</span><span class="str">"{node}#vn{i}"</span>)
+            self.ring[h] = node               <span class="cm"># 每个物理节点 150 个虚拟节点</span>
+
+    <span class="kw">def</span> <span class="fn">remove_node</span>(self, node: <span class="ty">str</span>):
+        <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(self.vnodes):
+            h = self.<span class="fn">_hash</span>(<span class="fn">f</span><span class="str">"{node}#vn{i}"</span>)
+            <span class="kw">del</span> self.ring[h]
+
+    <span class="kw">def</span> <span class="fn">get_node</span>(self, key: <span class="ty">str</span>) -> <span class="ty">str</span>:
+        <span class="kw">if</span> <span class="kw">not</span> self.ring:
+            <span class="kw">raise</span> <span class="ty">ValueError</span>(<span class="str">"Ring is empty"</span>)
+        h = self.<span class="fn">_hash</span>(key)
+        idx = self.ring.<span class="fn">bisect_right</span>(h) % <span class="fn">len</span>(self.ring)
+        <span class="kw">return</span> self.ring.<span class="fn">peekitem</span>(idx)[<span class="num">1</span>]   <span class="cm"># 顺时针最近节点</span></code></pre>
+    </div>
+
+    <h3>虚拟节点:为什么是 150?</h3>
+    <p>物理节点数少(比如 3 个)时,哈希函数把它们均匀放在环上的概率低——你可能落得一个节点拥有 60% 的 key 空间、另一个拥有 15%。虚拟节点通过给每个物理节点分配环上<em>多个</em>位置解决这个(150 是 Cassandra 默认)。每个物理节点 150 个虚拟节点,大数定律生效,负载平衡到理想值的几个百分点内。取舍是内存——环表按虚拟节点数增长,但即便 100 个物理节点各 1000 个虚拟节点,环表也只有 10 万条目,小到可忽略。</p>
+
+    <p>虚拟节点也简化异构集群:一个有两倍内存和 CPU 容量的节点可被分配 300 个虚拟节点而非 150,使它拥有 ~两倍 key 空间并承担两倍流量——而路由逻辑无需任何特殊处理。</p>
+
+    <h2>分片键设计:最有后果的决策</h2>
+    <p>分片键是决定哪个分片持有给定行的列(或列组合)。坏分片键造成热点、迫使常见查询 scatter-gather,或破坏应用层 join 模式。一旦数据分片,改分片键极具破坏性——它需要跨分片全表重洗。在写第一行之前把这个做对。</p>
+
+    <h3>好分片键的属性</h3>
+    <ul>
+      <li><strong>高基数</strong>——足够多的不同值把数据无冲突地分散到所有分片。一个布尔列(活跃/不活跃)基数为 2——作分片键灾难性地糟。UUID 或高基数 ID 列工作良好。</li>
+      <li><strong>写均匀分布</strong>——写在键值空间上的分布应均匀。单调递增的键(自增 ID、时间戳)在哈希分片下失败,因为"当前"值总是最高的,集中了写。改用哈希或 UUID 派生的键。</li>
+      <li><strong>与访问模式对齐</strong>——最重要的单一属性。若你最常见的查询是"取用户 X 的所有订单",按 <code>user_id</code> 分片订单意味着该查询恰好命中一个分片。按 <code>order_id</code> 分片把一个用户的订单分散到所有分片,迫使每个面向用户的请求扇出。</li>
+      <li><strong>稳定</strong>——若分片键值改变(如用户改了你天真地用作分片键的 email),该行需要移到不同分片。不可变的键(内部 UUID、插入时生成的自增 ID)完全避免这个问题。</li>
+    </ul>
+
+    <h3>真实世界的分片键例子</h3>
+    <ul>
+      <li><strong>社交平台用户表</strong>——按 <code>user_id</code> 分片(哈希)。所有按用户读都是单分片。跨用户分析扇出到所有分片并重定向到数仓。</li>
+      <li><strong>电商订单表</strong>——按 <code>user_id</code> 分片(不是 <code>order_id</code>!)让"我的订单"读是单分片。商家侧"商品 X 的所有订单"必须扇出——若路由到单独分析副本则可接受。</li>
+      <li><strong>时序 IoT 事件表</strong>——按 <code>device_id</code> 分片(哈希)让一个设备的所有事件共置、单设备时间窗查询是单分片。仅按时间戳分片会把所有当前写集中到一个分片。</li>
+      <li><strong>多租户 SaaS</strong>——用目录按 <code>tenant_id</code> 分片,让大企业客户能被隔离到专用分片、小客户共置在共享分片。</li>
+    </ul>
+
+    <h2>热点与重分片</h2>
+
+    <h3>热点:当一个分片成为瓶颈</h3>
+    <p>热点发生在不成比例的读或写路由到单个分片时。这可能因三个原因:</p>
+    <ul>
+      <li><strong>倾斜的键分布</strong>——若分片键的值分布不均(如大多数用户在一个地理区域),哈希分片不会均匀分布。</li>
+      <li><strong>热实体</strong>——社交平台上一个名人用户可能有 5000 万关注者,全在同一分片产生事件。没有分片键设计能完全防止实体级热点;缓解是反规范化(把事件扇出到关注者分片)或在热分片前加缓存层。</li>
+      <li><strong>范围分片下的基于时间的写</strong>——"当前"范围分片吸收所有写。缓解:用哈希分片做写分布、范围分片只用在分析/归档层。</li>
+    </ul>
+
+    <h3>重分片:不做全量迁移就增加容量</h3>
+    <p>随着数据增长,单个分片填满、性能退化。重分片——拆分现有分片或加新的——是分片系统中运维最密集的任务之一。技术大致从最小到最大破坏性:</p>
+
+    <ol>
+      <li><strong>读副本提升</strong>——若一个分片写热但读多,把一个副本提升为独立处理读的共主。这买到时间但并未真正拆分数据。</li>
+      <li><strong>分片拆分</strong>——把一个过载分片分成两个。范围分片:更新路由表里的边界并把上半行迁到新分片。一致性哈希:给环加一个新节点;只有新节点与其前驱之间的 key 范围迁移。</li>
+      <li><strong>在线 schema 变更工具</strong>——当重分片需要跨所有分片的 schema 变更时,用 <code>gh-ost</code>(GitHub 的在线 Schema 变更)或 <code>pt-online-schema-change</code> 做变更而不阻塞生产写。</li>
+      <li><strong>双写 + 回填模式</strong>——同时写旧和新分片布局,同时一个后台作业把现有数据从旧拷到新。一旦回填完成并验证,把读切到新布局并停止双写。这允许零停机重分片,代价是临时写放大。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 在线重分片:双写 + 回填模式</span>
+
+阶段 1 — 双写(无停机):
+  所有写 → 旧分片 和 新分片布局
+  读仍由旧分片服务
+
+阶段 2 — 回填(后台):
+  把所有现有行从旧 → 新布局拷贝
+  按主键范围跟踪进度
+  每批验证校验和
+
+阶段 3 — 切换(短暂读暂停或零停机):
+  验证新分片与旧完全一致
+  把读切到新分片布局
+  停止对旧布局的双写
+
+阶段 4 — 清理:
+  验证期后删除旧分片数据</code></pre>
+    </div>
+
+    <h2>跨分片查询与事务</h2>
+
+    <h3>跨分片查询:scatter-gather 问题</h3>
+    <p>任何 WHERE 子句不含分片键的查询都必须广播到所有分片(scatter),并在应用层合并结果(gather)。这叫 <strong>scatter-gather 扇出</strong>,是分片系统中最常见的性能问题:</p>
+    <ul>
+      <li>查询延迟受<strong>最慢分片</strong>限制,而非平均。若 16 个分片中 1 个慢,所有扇出查询都等它。</li>
+      <li>扇出查询产生 <code>N</code> 个查询,<code>N</code> 是分片数。64 个分片时,单个面向用户的请求产生 64 个数据库查询。这给有效并发用户容量封顶。</li>
+      <li>应用层的结果合并(排序、去重、聚合)给应用层加 CPU 和内存压力。</li>
+    </ul>
+
+    <p><strong>缓解:</strong></p>
+    <ul>
+      <li><strong>设计分片键与你最常见的查询模式对齐</strong>——这是唯一真正的修法。接受其他查询模式会更贵。</li>
+      <li><strong>把分析/跨分片查询路由到单独的数仓或 OLAP 系统</strong>(Redshift、BigQuery、ClickHouse),它持有数据的反规范化副本。绝不直接对 OLTP 分片跑分析。</li>
+      <li><strong>激进反规范化</strong>——在多个分片存数据的冗余副本以支持本地读。例如在每个订单分片存一份用户名,这样"带用户名的订单"查询无需跨分片用户 join。</li>
+      <li><strong>维护全局二级索引</strong>——一个把非分片键字段映射到分片位置的单独索引分片。增加写复杂度(必须保持索引同步)但避免了索引查找的 scatter-gather。</li>
+    </ul>
+
+    <h3>跨分片事务:最难的问题</h3>
+    <p>跨多个分片的 ACID 事务是分布式系统中最难的问题之一。两种标准方式及其取舍:</p>
+
+    <ul>
+      <li><strong>两阶段提交(2PC)</strong>——一个协调者请求所有参与分片准备(阶段 1)再提交(阶段 2)。保证原子性。问题:协调者在阶段 1 和阶段 2 之间持有所有参与分片的锁。若协调者在两阶段间崩溃,分片被留在不确定状态,无限期阻塞("阻塞问题")。还造成性能瓶颈:所有跨分片范围的事务都通过协调者串行化。</li>
+      <li><strong>Saga 模式</strong>——把事务分解成一系列本地单分片事务,每个发布一个触发下一步的事件。补偿事务在失败时撤销已完成步骤。Saga 是最终一致,而非原子一致——有一个系统处于部分提交状态的窗口。适合业务事务(电商结账、转账)但不适合底层数据完整性约束。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">设计洞见</div>
+      <p>避免跨分片事务最干净的方法是设计你的分片,让每个关键事务只触及一个分片。这通常意味着共置参与同一事务的相关数据。对电商平台,把订单和购物车数据都按 <code>user_id</code> 分片,意味着结账事务(读购物车、写订单)对给定用户是单分片。</p>
+    </div>
+
+    <h2>分片 vs. 复制:正交的关注点</h2>
+    <p>分片和复制常被混淆,但解决完全不同的问题:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">分片</th><th class="col-b">复制</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>解决什么</td><td class="col-a">超过单节点的写吞吐和数据集大小</td><td class="col-b">读吞吐、高可用和容错</td></tr>
+        <tr><td>数据分布</td><td class="col-a">每行恰好存在于一个分片(无重复)</td><td class="col-b">每行存在于多个副本(全量重复)</td></tr>
+        <tr><td>节点故障影响</td><td class="col-a">丢一个分片 = 那部分数据不可用</td><td class="col-b">丢主 = 副本提升;无数据丢失</td></tr>
+        <tr><td>读可扩展性</td><td class="col-a">N 个分片 × 各 1 主 = N 个并行写+读主</td><td class="col-b">把读扇到副本;主只处理写</td></tr>
+        <tr><td>它们互斥吗?</td><td class="col-a" colspan="2">不——组合它们。每个分片本身应被复制:4 分片集群各 3 副本 = 共 12 节点。</td></tr>
+      </tbody>
+    </table>
+
+    <p>一个生产分片系统总是组合两者:<strong>分片实现写可扩展性和数据集分区</strong>、<strong>复制实现读可扩展性和高可用</strong>。没有复制,丢一个分片节点会让你整整一个数据分区不可用。没有分片,单个被复制的主在数据增长时成为写瓶颈。</p>
+
+    <h2>跨分片的 Schema 变更</h2>
+    <p>DDL 操作(加列、加索引、改数据类型)必须应用到每个分片——常是 8、16 或 64 个相同的 schema 变更,每个都需要在不锁生产流量的情况下运行。所需的运维纪律:</p>
+    <ul>
+      <li><strong>在线 schema 变更工具</strong>——<code>gh-ost</code>(GitHub)和 <code>pt-online-schema-change</code>(Percona)通过影子表加触发器的方式应用 DDL,从不取全表锁。对百万行表必不可少。</li>
+      <li><strong>向后兼容的迁移</strong>——总是分两阶段做 schema 变更:先部署能处理新旧两种 schema 的代码,再应用 DDL,再移除处理旧 schema 的代码。这允许在任何步骤回滚而无 schema 不一致。</li>
+      <li><strong>逐分片滚动</strong>——一次对一个分片应用 DDL 并监控错误再继续。一个分片上的坏迁移可在影响其他之前被停下。</li>
+      <li><strong>自动化不可妥协</strong>——手动 SSH 进 64 个分片跑 <code>ALTER TABLE</code> 不是一个流程。构建系统性地把变更应用到所有分片的 schema 迁移工具,带每分片成功/失败跟踪和自动回滚。</li>
+    </ul>
+
+    <h2>真实世界的分片架构</h2>
+
+    <h3>Vitess(YouTube / PlanetScale)</h3>
+    <p>Vitess 是一个围绕 MySQL 构建的分片中间件层,在标准 MySQL 之上加连接池、查询路由和水平分片。它最初由 YouTube 构建以处理数十亿行视频元数据。Vitess 引入一个叫 <strong>VShard</strong>(逻辑分片)的概念,可重映射到物理 MySQL 实例而无需应用代码变更。路由层自动处理 scatter-gather、跨分片聚合和分片感知的 SQL 重写。PlanetScale 把 Vitess 作为托管服务提供。</p>
+
+    <h3>Cassandra 的内建分片</h3>
+    <p>Cassandra 是一个内部用带虚拟节点一致性哈希的分布式数据库——分片内建在存储引擎里,而非在应用层外挂。数据按分区键分区,同分区键的行共置(这些叫 <strong>wide row</strong> 或 <strong>clustering column</strong>)。一个设计良好的 Cassandra 数据模型让分区键与最常见访问模式对齐,并保持分区大小可控(~100 MB 以内)。Cassandra 的优势——线性写可扩展、无主节点、可调一致性——使它很适合高写、已知访问模式的负载,如消息系统、IoT 时序和活动 feed。</p>
+
+    <h3>DynamoDB 的透明分片</h3>
+    <p>DynamoDB 基于你预置或按需的容量设置自动分片——分片拓扑对应用不可见。你设计一个分区键(hash key)和可选的排序键(range key),DynamoDB 把请求路由到正确的内部分片。约束是单个分区键不能超过 10 GB 存储或 3,000 RCU / 1,000 WCU——违反它会造成节流请求的热分区。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>只在你耗尽垂直扩展、读副本和缓存之后才分片——增加的运维复杂度真实且永久。当你确实分片,在分片键设计上重投入:高基数、写均匀分布、与最常见查询模式对齐。用带虚拟节点的一致性哈希最小化拓扑变化时的数据移动。接受跨分片查询和事务昂贵,并设计你的数据模型让它们罕见。并记住:每个分片需要自己的复制——分片和复制是正交、互补的工具。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>哈希 vs 范围分片——何时选哪个?</strong>跨多 key 的写均匀分布用哈希(user_id、device_id);需要高效时间窗或连续键扫描且能容忍热点风险(或通过哈希前缀路由写来分散它们)时用范围。<br>
+      <strong>一致性哈希为什么比取模分片好?</strong>取模哈希加节点重映射 ~(N-1)/N 的所有 key(几乎一切);一致性哈希只把 ~k/n 个 key 移到新节点,最小化数据迁移并允许在线重分片而最小中断。<br>
+      <strong>什么是坏分片键?</strong>低基数(布尔、枚举)、哈希分片下的单调递增值(时间戳、自增),或与查询模式不对齐的键——都造成热点或迫使昂贵的 scatter-gather 扇出。<br>
+      <strong>怎么处理跨分片事务?</strong>设计上优先把相关事务数据共置在同一分片。无法避免时,用 Saga 模式(带补偿动作的最终一致)而非 2PC(造成阻塞和协调者瓶颈)。<br>
+      <strong>分片和复制的区别是什么?</strong>分片把不同行分散到节点以实现写可扩展;复制把相同行拷到多节点以实现读可扩展和 HA。生产系统两者都需要——每个分片本身被复制。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/caching/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">缓存 (Caching)</div>
+      </a>
+      <a href="/tech-stacks/message-queue/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">消息队列</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

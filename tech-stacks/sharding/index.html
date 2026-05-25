@@ -6,6 +6,9 @@
 <meta name="description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
 <title>Sharding — Consistent Hashing, Shard Keys & Database Partitioning | updoggtech</title>
 <link rel="canonical" href="https://updoggtech.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/sharding/">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="updoggtech">
 <meta property="og:title" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
@@ -132,6 +135,10 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -145,6 +152,7 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/tech-stacks/sharding/" class="active">EN</a><a href="/zh/tech-stacks/sharding/">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>

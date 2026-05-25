@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解缓存:分层缓存栈、五种读写策略(cache-aside/read-through/write-through/write-behind/write-around)、淘汰算法(LRU/LFU/ARC/FIFO/TTL)、TTL 设计、三大失效模式(击穿/穿透/雪崩)、热点 key、分布式缓存一致性、Redis vs Memcached、CDN 边缘缓存与可观测性。">
+<title>缓存 (Caching) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/caching/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/caching/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/caching/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/caching/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="缓存 (Caching)">
+<meta property="og:description" content="分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/caching/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="缓存 (Caching)">
+<meta name="twitter:description" content="缓存怎么做:读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、Redis vs Memcached。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"缓存 (Caching)","description":"分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/caching/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/caching/">EN</a>
+        <a href="/zh/tech-stacks/caching/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">caching</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">缓存 (Caching)</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>缓存把昂贵操作的结果——一次数据库查询、一次 API 调用、一个计算值——存进快速存储,这样后续请求无需重复工作即可被服务。它是分布式系统中杠杆最高的性能技术之一:一个放对位置的缓存能把数据库负载降低数个数量级,把响应时间从几百毫秒砍到个位数。其核心是一个简单的经验观察,即 <strong>80/20 法则</strong>:80% 的流量只触及 20% 的数据。如果你能把那热的 20% 留在内存里,就能吸收绝大部分负载而完全不碰更慢的持久层。</p>
+
+    <p>但缓存不仅仅是"把东西塞进 Redis"。每个设计决策——在栈的哪一层缓存、用哪种写策略、什么淘汰策略管理内存压力、怎么处理 TTL、怎么防御击穿和雪崩——叠加起来,要么成就一个高可用、低延迟的系统,要么成为一个在生产高负载下崩溃的微妙一致性雷区。本指南覆盖全部:从五种经典读/写策略到淘汰算法内部,到分布式缓存一致性、热点 key 病理、CDN 边缘缓存,以及失效模式的完整分类与缓解。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>Cache-aside</strong>(懒加载)是最安全的默认——只缓存实际被请求的,缓存故障时优雅降级。</li>
+        <li><strong>Write-through</strong> 让缓存和 DB 同步但在从不读取的数据上浪费空间;<strong>write-behind</strong> 最大化写吞吐但崩溃时有丢数据风险。</li>
+        <li><strong>Write-around</strong> 在写时绕过缓存——当写入数据短期内不太可能被再读时有用(大批量导入、归档写)。</li>
+        <li><strong>LRU</strong> 是通用淘汰策略;稳定热点 key 负载用 <strong>LFU</strong>;<strong>ARC</strong> 自动适应;加 <strong>TTL 抖动</strong>防雪崩。</li>
+        <li><strong>缓存击穿</strong>——热门 key 过期时,大量线程同时打 DB;用互斥锁或概率提前刷新修复。</li>
+        <li><strong>Redis vs Memcached</strong>——丰富数据结构、持久化、pub/sub 用 Redis;规模化纯简单字符串吞吐用 Memcached。</li>
+        <li><strong>布隆过滤器</strong>无需 DB 查找就能防止不存在 key 的缓存穿透。</li>
+        <li><strong>热点 key</strong> 在分布式缓存中会打爆单个分片——复制到多个槽,或在 Redis 前加进程内 L1 缓存。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把频繁读取、很少变化的数据缓存到靠近消费者的地方。按你的一致性和写放大预算选写策略(cache-aside、write-through、write-behind、write-around、read-through)。用 TTL 和淘汰策略(LRU 是安全默认,ARC 自适应)约束内存。为缓存未命中而设计——冷启动或击穿应优雅降级,而非级联成数据库崩溃。用布隆过滤器防穿透,用本地复制防热点 key,用谨慎失效或短 TTL 防分布式不一致。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/caching-1.jpg" alt="分布式系统栈中的缓存层" loading="lazy">
+        <figcaption>分布式系统栈中的缓存层</figcaption>
+      </figure>
+
+    <h2>在哪里缓存:分层缓存栈</h2>
+    <p>缓存可以存在于栈的多个层,各有不同的延迟、可见性和失效复杂度取舍:</p>
+    <ul>
+      <li><strong>客户端(浏览器)</strong>——HTTP 缓存头(<code>Cache-Control</code>、<code>ETag</code>、<code>Last-Modified</code>)让浏览器无需任何服务器往返就复用资源。静态内容的免费性能;问题是不改资源 URL 就无法主动让浏览器缓存失效。</li>
+      <li><strong>CDN(边缘缓存)</strong>——地理分布的缓存(Cloudflare、Fastly、AWS CloudFront)从靠近用户的接入点服务静态和半静态内容。把延迟从 ~200 ms 降到个位数毫秒,大幅削减源服务器负载。可配置 TTL 和缓存清除 API 允许定向失效。</li>
+      <li><strong>反向代理 / API 网关缓存</strong>——位于应用层前的 Nginx 或 Varnish 能缓存完整 HTTP 响应。当许多用户发相同请求时有用(公开新闻页、商品详情页);响应因用户而异时自动绕过。</li>
+      <li><strong>应用级进程内(L1)</strong>——一个 hash map 或像 Caffeine(JVM)、django-cacheops(Python)这样的库活在应用进程里。零网络开销,纳秒级访问。缺点:不跨实例共享、重启时被淘汰、对其他服务不可见。最适合作为 Redis 前最热 key 的超快层。</li>
+      <li><strong>分布式缓存(L2)</strong>——所有应用实例可访问的共享外部存储(Redis、Memcached)。会话数据、计算结果、热数据库行,以及任何必须在一群应用服务器间一致的数据的标准方案。加一跳网络(~0.1–1 ms)但能挺过进程重启并横向扩展。</li>
+      <li><strong>数据库查询缓存</strong>——某些数据库(MySQL query cache、PostgreSQL 的 shared buffer pool)在内部缓存结果集或缓冲页。这通常是不透明的、不是你设计的东西;它是热实例上首次慢查询不必恐慌的原因。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">设计原则</div>
+      <p>把缓存从快到慢分层:L1 进程内 → L2 分布式 → 数据库。L1 未命中先打 L2 再碰数据库。这让数据库连接留给写和真正不可缓存的读。关键洞见是每层吸收不同比例的流量,所以即使中等的 L1 命中率也能显著降低 L2 和 DB 压力。</p>
+    </div>
+
+    <h2>五种缓存写策略</h2>
+    <p>没有唯一正确的策略。正确选择取决于你的一致性容忍度、写频率,以及缓存和数据库分歧时会发生什么。大多数真实系统跨不同数据类型组合多种策略。</p>
+
+    <h3>1. Cache-Aside(懒加载)</h3>
+    <p>应用完全拥有缓存交互。<strong>读</strong>时:先查缓存;未命中则查数据库,把结果写入缓存,再返回。<strong>写</strong>时:更新数据库,然后删除或更新缓存条目。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">get_product</span>(product_id):
+    key = <span class="fn">f</span><span class="str">"product:{product_id}"</span>
+    data = cache.<span class="fn">get</span>(key)                     <span class="cm"># 1. 查缓存</span>
+    <span class="kw">if</span> data:
+        <span class="kw">return</span> data                            <span class="cm"># 命中——结束</span>
+    data = db.<span class="fn">query</span>(<span class="str">"SELECT * FROM products WHERE id=?"</span>, product_id)
+    cache.<span class="fn">setex</span>(key, <span class="num">300</span>, data)               <span class="cm"># 2. 未命中时回填</span>
+    <span class="kw">return</span> data
+
+<span class="kw">def</span> <span class="fn">update_product</span>(product_id, payload):
+    db.<span class="fn">execute</span>(<span class="str">"UPDATE products SET ... WHERE id=?"</span>, product_id)
+    cache.<span class="fn">delete</span>(<span class="fn">f</span><span class="str">"product:{product_id}"</span>)     <span class="cm"># 3. 写时失效</span></code></pre>
+    </div>
+
+    <ul>
+      <li><strong>优点:</strong>只缓存被请求的数据——不在冷数据上浪费内存。缓存故障时降级为只用 DB。</li>
+      <li><strong>缺点:</strong>过期后的首个请求总是慢(缓存冷启动延迟尖峰)。若你在写时让条目失效但写本身在失效后失败,缓存就被白白搞冷了。</li>
+      <li><strong>最适合:</strong>读多、更新少的负载。大多数商品、用户、会话缓存的默认选择。</li>
+    </ul>
+
+    <h3>2. Read-Through(读穿透)</h3>
+    <p>类似 cache-aside,但<strong>缓存库本身</strong>位于应用和数据库之间。应用总是与缓存对话;未命中时缓存去数据库、回填自己并返回值。应用代码无需显式实现"未命中并回填"逻辑。</p>
+    <ul>
+      <li><strong>优点:</strong>应用代码更简单——缓存关注点被完全封装。与 ORM 级缓存库配合良好。</li>
+      <li><strong>缺点:</strong>初始未命中延迟仍在。更难定制回填逻辑(如 fallback、转换)。</li>
+      <li><strong>最适合:</strong>ORM 或框架管理的缓存,你想避免在每个服务里写"未命中并回填"样板代码。</li>
+    </ul>
+
+    <h3>3. Write-Through(写穿透)</h3>
+    <p>每次写在向调用方确认成功前<strong>同步</strong>写入缓存和数据库。任何写之后缓存立即与数据库一致。</p>
+    <ul>
+      <li><strong>优点:</strong>强一致——读总命中一个温热、准确的缓存。无陈旧数据窗口。</li>
+      <li><strong>缺点:</strong>每次写都付缓存写代价(额外一跳网络)。写入但从不读取的数据浪费缓存内存。写延迟是两个操作之和。</li>
+      <li><strong>最适合:</strong>读一致性关键、写频率低到中等的系统(用户资料更新、配置数据)。</li>
+    </ul>
+
+    <h3>4. Write-Behind(写回)</h3>
+    <p>写立即落到缓存;数据库写在后台被<strong>延迟并批量异步</strong>执行。缓存作为主要写目标,数据库最终被带入同步。</p>
+    <ul>
+      <li><strong>优点:</strong>对调用方而言写极快、写延迟极小。降低数据库写压力——对同一 key 的多个 in-flight 更新可合并成一次 DB 写。</li>
+      <li><strong>缺点:</strong>若缓存节点在刷盘前故障,数据丢失。数据库瞬时陈旧,若其他系统直接读 DB 则有问题。需要复杂的故障恢复逻辑。</li>
+      <li><strong>最适合:</strong>写多、能接受近期写丢失的负载(分析计数器、游戏分数)。绝不用于金融交易。</li>
+    </ul>
+
+    <h3>5. Write-Around(写绕过)</h3>
+    <p>写<strong>直接到数据库,完全绕过缓存</strong>。缓存仅在后续读时(懒加载)被回填。这防止缓存被写入后短期内不太可能被再读的数据填满。</p>
+    <ul>
+      <li><strong>优点:</strong>防止大而不频繁的写(批量导入、归档操作)污染缓存。缓存保持温热,装着真正的热数据。</li>
+      <li><strong>缺点:</strong>写后首次读总会未命中缓存并打数据库——刚写完即被读的数据可能有高未命中率。</li>
+      <li><strong>最适合:</strong>批量写入但读取不频繁的数据(日志摄取、数仓 ETL 加载、媒体上传)。</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>写路径</th><th>一致性</th><th>写速度</th><th>最适合</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cache-Aside</td><td class="col-a">DB,然后让缓存失效</td><td>最终(TTL 受限)</td><td>快(无缓存写)</td><td>通用读多</td></tr>
+        <tr><td>Read-Through</td><td class="col-a">DB,缓存未命中时自动回填</td><td>最终</td><td>快</td><td>ORM 管理缓存</td></tr>
+        <tr><td>Write-Through</td><td class="col-a">缓存 + DB(同步)</td><td>强</td><td>较慢(双写)</td><td>写少、读关键</td></tr>
+        <tr><td>Write-Behind</td><td class="col-b">缓存立即,DB 异步</td><td>最终(有风险)</td><td>最快</td><td>高写吞吐</td></tr>
+        <tr><td>Write-Around</td><td class="col-b">仅 DB,绕过缓存</td><td>最终(冷写)</td><td>快</td><td>批量/归档写</td></tr>
+      </tbody>
+    </table>
+
+    <h2>淘汰策略:算法深入</h2>
+    <p>缓存满时,必须淘汰一些东西腾地方。你选的策略决定哪些数据存活——选错就会淘汰热条目而留下冷的,毁掉你的命中率。每种算法编码了对你访问模式的不同假设。</p>
+
+    <h3>LRU——最近最少使用</h3>
+    <p>淘汰最久未被访问的项。实现为一个双向链表,被访问的项移到头部;尾部的项是淘汰候选。配合哈希表支撑链表,访问和更新都是 O(1)。</p>
+    <p>LRU 工作得好是因为大多数负载呈现<strong>时间局部性</strong>——最近访问的数据往往很快又被访问。然而 LRU 有个著名失效模式:对大数据集的一次顺序扫描(全表备份、批量报表)会淘汰整个工作集,留下冷缓存给随后的热 OLTP 查询。这有时被称为<strong>缓存污染</strong>事件。</p>
+
+    <h3>LFU——最不经常使用</h3>
+    <p>淘汰访问计数最低的项。无论访问新近度如何,自然保活病毒式内容和稳定热点 key。缺点:新插入项以计数 1 开始,即使即将变热也易被立即淘汰。现代 LFU 实现(TinyLFU,在 Redis 4.0+ 中作为 <code>allkeys-lfu</code>)把频率 sketch 与一个小的新近度窗口结合,处理"新热门项"问题。</p>
+
+    <h3>ARC——自适应替换缓存</h3>
+    <p>ARC 通过维护两个列表自动在 LRU 和 LFU 间适应:一个给最近使用项(T1)、一个给频繁使用项(T2),外加 ghost 列表(B1、B2)记住最近淘汰项的身份而不存其数据。当 ghost 列表命中时,ARC 把平衡向那个列表的策略倾斜。结果是一个实时学习你访问模式、无需配置就自调的缓存。ARC 有专利(IBM),所以一些系统转而实现 LIRS 或 CLOCK-Pro 等近似。</p>
+
+    <h3>FIFO——先进先出</h3>
+    <p>最简单的策略:淘汰最早插入的项。不需要访问跟踪,实现起来快且省内存。对缓存几乎从不最优,因为它与访问频率或新近度无关;最先插入的项可能是系统中访问最多的。FIFO 的正当用例是简单消息缓冲和限流窗口,而非通用缓存。</p>
+
+    <h3>基于 TTL 的过期</h3>
+    <p>项在越过其过期时间戳时被淘汰,独立于淘汰策略。TTL 和淘汰协同工作:TTL 控制数据新鲜度;淘汰控制内存压力。Redis 把两者结合——你为每个 key 设 TTL,并选一个策略(LRU、LFU 等)管理内存满而尚无 TTL 触发时该怎么办。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>淘汰</th><th>优势</th><th>弱点</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>LRU</strong></td><td>最近最少访问</td><td>时间局部性极好;简单 O(1)</td><td>顺序扫描污染;忽略频率</td></tr>
+        <tr><td><strong>LFU</strong></td><td>总访问次数最少</td><td>长期保活稳定热点 key</td><td>新热点项起步冷;陈旧计数滞留</td></tr>
+        <tr><td><strong>ARC</strong></td><td>动态适应 LRU+LFU</td><td>自调;两全其美</td><td>更多内存开销;有专利</td></tr>
+        <tr><td><strong>FIFO</strong></td><td>最早插入</td><td>零开销;确定性</td><td>与访问模式无关系</td></tr>
+        <tr><td><strong>TTL</strong></td><td>越过过期时间戳</td><td>保证新鲜;可预测的陈旧窗口</td><td>非内存压力驱动;过期触发前数据陈旧</td></tr>
+      </tbody>
+    </table>
+
+    <h2>TTL 设计:新鲜度 vs. 稳定性</h2>
+    <p>设 TTL 是<strong>新鲜度</strong>(缓存更新多快反映数据库变化)和<strong>稳定性</strong>(你多久付一次未命中代价)之间的取舍。设对它需要理解数据的变化频率和服务陈旧数据的业务成本。</p>
+
+    <ul>
+      <li><strong>商品价格</strong>——陈旧价格是法律和金融风险;用短 TTL(30–60 秒)并在价格变更事件上急切失效。</li>
+      <li><strong>用户资料</strong>——几分钟陈旧可接受;5 分钟 TTL 加资料更新时事件驱动失效是合理取舍。</li>
+      <li><strong>会话数据</strong>——通常用滑动 TTL,每次访问重置,带一个绝对上限(如每请求重置到 30 分钟,7 天硬过期)。</li>
+      <li><strong>静态参考数据</strong>——国家列表、货币代码、配置——可设小时甚至天级 TTL,因为它们极少变。</li>
+      <li><strong>限流计数器</strong>——固定 TTL 等于限流窗口(如 100 req/分钟用 1 分钟);无需淘汰策略,因为过期是唯一的生命周期事件。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">TTL 抖动</div>
+      <p>绝不要给一大批 key 设相同 TTL——若你把 1 万条商品记录用统一 300 秒 TTL 加载进 Redis,它们 5 分钟后会同时过期,在数据库上产生 thundering-herd 雪崩。加随机抖动:<code>ttl = base_ttl + random.randint(0, base_ttl // 5)</code>。这把过期分散到时间上,消除同步的未命中突发。</p>
+    </div>
+
+    <h2>三种致命失效模式</h2>
+
+    <h3>缓存击穿(Thundering Herd)</h3>
+    <p>当单个热门 key 在高流量下过期,许多并发请求同时发现缓存未命中,全都竞相从数据库重建它。若重建耗时 200 ms、你有 1000 req/s 打那个 key,光第一秒你就产生 200 个并发数据库查询——足以搞垮一个中等规模的数据库。</p>
+
+    <p><strong>缓解:</strong></p>
+    <ul>
+      <li><strong>互斥锁</strong>——首个未命中获取分布式锁(Redis <code>SET NX</code>)并重建条目;所有其他并发未命中等待或服务一个略陈旧的值。以等待请求的未命中延迟增加为代价消除 thundering herd。</li>
+      <li><strong>概率提前过期(PER)</strong>——在 TTL 触发前,以一个随过期临近而增加的概率重新计算并刷新缓存条目。公式:若 <code>-beta * log(rand()) > time_to_expiry</code> 则刷新。这把刷新工作分散到时间上,所以 key 在重负载下从不真正过期。</li>
+      <li><strong>后台刷新</strong>——立即服务陈旧值,同时一个后台 goroutine/线程异步重填缓存。用户一个请求看到略陈旧数据;后续请求看到新鲜数据。需接受短暂不一致。</li>
+      <li><strong>TTL 抖动</strong>——若许多用户在同一时刻缓存同一 key(如部署刷新后),抖动防止同步过期。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time, math, random
+
+<span class="kw">def</span> <span class="fn">fetch_with_per</span>(key, beta=<span class="num">1.0</span>):
+    <span class="cm"># 概率提前重算——避免击穿</span>
+    entry = cache.<span class="fn">get_with_ttl</span>(key)          <span class="cm"># 返回 (value, remaining_ttl)</span>
+    <span class="kw">if</span> entry <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">return</span> <span class="fn">recompute_and_store</span>(key)       <span class="cm"># 冷未命中</span>
+    value, ttl = entry
+    delta = time.<span class="fn">monotonic</span>() - time.<span class="fn">monotonic</span>()  <span class="cm"># 计算耗时的代理</span>
+    <span class="kw">if</span> -beta * math.<span class="fn">log</span>(random.<span class="fn">random</span>()) > ttl:
+        <span class="kw">return</span> <span class="fn">recompute_and_store</span>(key)       <span class="cm"># 提前重算</span>
+    <span class="kw">return</span> value                               <span class="cm"># 服务缓存值</span></code></pre>
+    </div>
+
+    <h3>缓存穿透(Cache Penetration)</h3>
+    <p>对<strong>缓存和数据库里都不存在</strong>的 key 的请求,每次调用都穿透到数据库。每个请求都未命中缓存(结果为空没什么可缓存)并触发完整数据库查询。一个常见原因是恶意客户端循环查询无效 ID——一个完全绕过缓存的 DoS 向量。</p>
+
+    <p><strong>缓解:</strong></p>
+    <ul>
+      <li><strong>缓存空结果</strong>——key 未找到时存一个哨兵值(如 <code>"__null__"</code> 或空对象)带短 TTL(30–60 秒)。对同一不存在 key 的后续请求命中缓存并立即返回。</li>
+      <li><strong>布隆过滤器</strong>——在缓存前维护一个跟踪哪些 key 确实存在的概率数据结构。布隆过滤器从不产生假阴性(若它说"不存在",该 key 一定不在 DB 里),所以过滤器拒绝的任何 key 可立即返回而无需查缓存或 DB。假阳性(过滤器说"存在"但 key 缺失)仍打 DB,所以把过滤器大小定到低假阳性率(~1%)。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> redis, random
+<span class="kw">from</span> pybloom_live <span class="kw">import</span> BloomFilter
+
+r = redis.<span class="fn">Redis</span>(host=<span class="str">'localhost'</span>, port=<span class="num">6379</span>)
+bloom = <span class="fn">BloomFilter</span>(capacity=<span class="num">1_000_000</span>, error_rate=<span class="num">0.01</span>)
+
+<span class="kw">def</span> <span class="fn">get_user</span>(user_id):
+    <span class="kw">if</span> user_id <span class="kw">not in</span> bloom:
+        <span class="kw">return</span> <span class="kw">None</span>                            <span class="cm"># 布隆说一定缺失</span>
+
+    key = <span class="fn">f</span><span class="str">"user:{user_id}"</span>
+    cached = r.<span class="fn">get</span>(key)
+    <span class="kw">if</span> cached == <span class="str">"__null__"</span>:
+        <span class="kw">return</span> <span class="kw">None</span>                            <span class="cm"># 缓存的空结果</span>
+    <span class="kw">if</span> cached:
+        <span class="kw">return</span> cached
+
+    user = db.<span class="fn">query</span>(<span class="str">"SELECT * FROM users WHERE id=?"</span>, user_id)
+    <span class="kw">if</span> user <span class="kw">is</span> <span class="kw">None</span>:
+        r.<span class="fn">setex</span>(key, <span class="num">30</span>, <span class="str">"__null__"</span>)            <span class="cm"># 缓存空结果</span>
+        <span class="kw">return</span> <span class="kw">None</span>
+
+    ttl = <span class="num">300</span> + random.<span class="fn">randint</span>(<span class="num">0</span>, <span class="num">60</span>)         <span class="cm"># 抖动防雪崩</span>
+    r.<span class="fn">setex</span>(key, ttl, user)
+    bloom.<span class="fn">add</span>(user_id)
+    <span class="kw">return</span> user</code></pre>
+    </div>
+
+    <h3>缓存雪崩(Cache Avalanche)</h3>
+    <p>一大批 key <strong>同时过期</strong>,在完全相同的时刻向数据库发送未命中洪流。常见触发:刷新缓存的滚动部署、用相同 TTL 填充数千 key 的批量数据导入,或维护窗口后缓存层重启。</p>
+
+    <p><strong>缓解:</strong></p>
+    <ul>
+      <li><strong>TTL 抖动</strong>——写时随机化过期时间,让过期分散在窗口内而非同步。</li>
+      <li><strong>缓存预热</strong>——在会刷新缓存的部署前,跑一个预热脚本把最高流量 key 填进新缓存,再切换流量。</li>
+      <li><strong>数据库连接池熔断器</strong>——若数据库突然被未命中流量压垮,熔断器防止应用开数百个新连接放大问题。快速失败并返回降级响应,而非无限排队。</li>
+      <li><strong>多层缓存</strong>——若 L2(Redis)雪崩,一个 L1 进程内缓存吸收相当比例的流量数秒,给 Redis 重建的时间。</li>
+    </ul>
+
+    <h2>热点 Key:沉默的瓶颈</h2>
+    <p>在 Redis Cluster 这样的分布式缓存集群里,每个 key 恰好活在一个分片上。一个<strong>热点 key</strong>——单个商品页、一条爆款推文、一篇病毒新闻——可能每秒收到数百万请求,全都路由到同一分片。无论其他分片多空闲,那个分片都成了瓶颈。这是个与缓存击穿(关乎过期)不同的问题——热点 key 是一个吞吐问题,即使 key 已填充且从不过期也存在。</p>
+
+    <p><strong>缓解:</strong></p>
+    <ul>
+      <li><strong>本地复制</strong>——把热点 key 用带后缀的多个名字存(<code>product:42:0</code>、<code>product:42:1</code>、...、<code>product:42:N</code>)分散到不同分片。读请求随机挑一个副本。这把读扇出到 N 个分片,代价是 N 份存储和更新时 N 倍的失效广播。</li>
+      <li><strong>进程内 L1 缓存</strong>——在每个应用实例的 Redis 前加一个小进程内缓存(Caffeine、简单 LRU dict)。热点 key 从本地内存服务;只在本地未命中时才查 Redis。即便 1 秒 TTL 也能在高流量应用服务器群上吸收大比例请求。</li>
+      <li><strong>缓存读副本</strong>——Redis Cluster 默认不把读路由到副本(必须每连接显式启用 <code>READONLY</code> 模式)。启用副本读把热点 key 读负载分散到主和它的副本上。</li>
+      <li><strong>主动识别热点 key</strong>——Redis 提供 <code>redis-cli --hotkeys</code> 和 <code>MONITOR</code> 命令,在热点 key 引发事故前在生产中识别它们。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> random
+
+NUM_REPLICAS = <span class="num">10</span>
+
+<span class="kw">def</span> <span class="fn">get_hot_product</span>(product_id):
+    <span class="cm"># 把读分散到不同分片上的 N 个副本 key</span>
+    replica_idx = random.<span class="fn">randint</span>(<span class="num">0</span>, NUM_REPLICAS - <span class="num">1</span>)
+    key = <span class="fn">f</span><span class="str">"product:{product_id}:r{replica_idx}"</span>
+    <span class="kw">return</span> cache.<span class="fn">get</span>(key) <span class="kw">or</span> <span class="fn">rebuild_and_fan_write</span>(product_id)
+
+<span class="kw">def</span> <span class="fn">invalidate_hot_product</span>(product_id):
+    <span class="cm"># 更新时,让所有副本 key 失效</span>
+    keys = [<span class="fn">f</span><span class="str">"product:{product_id}:r{i}"</span> <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(NUM_REPLICAS)]
+    cache.<span class="fn">delete</span>(*keys)</code></pre>
+    </div>
+
+    <h2>分布式缓存一致性</h2>
+    <p>分布式缓存引入第二个记录系统:缓存和数据库在任意时刻可能为同一 key 持有不同值。管理这种分歧是规模化缓存最难的问题之一。核心张力在两种失效方式之间:</p>
+
+    <ul>
+      <li><strong>写时删除(更安全的选择)</strong>——数据库更新时,删除缓存条目。下个读者付未命中代价并用新鲜数据回填。简单,在大多数失效模式下正确。唯一风险是 DB 写和缓存删除之间,若操作不原子,另一个读者可能缓存一个陈旧值。</li>
+      <li><strong>写时更新</strong>——数据库更新时,也更新缓存条目。避免未命中代价但引入竞态:若两个写并发发生,第二个缓存写可能先于第一个落地,在缓存里留下比 DB 更旧的值。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">正确的顺序</div>
+      <p>总是<strong>先</strong>写数据库,再让缓存失效——不是反过来。若你先让缓存失效然后 DB 写失败,你就有一个冷缓存配一个陈旧(或缺失)的 DB 值。若你先写 DB 然后缓存失效失败,你的缓存短暂陈旧但 DB 是权威的;TTL 最终会清理它。这种不对称很重要。</p>
+    </div>
+
+    <p>对需要更强保证的系统,考虑<strong>通过变更数据捕获(CDC)的事件驱动失效</strong>:一个 CDC 连接器(Debezium、Maxwell)读数据库的预写日志并把变更事件发布到消息队列。缓存 worker 订阅并失效或刷新缓存条目。这把写路径与缓存失效延迟完全解耦,并确保缓存与 DB 的 WAL(所有写的权威记录)最终一致。</p>
+
+    <h2>Redis vs. Memcached:一个诚实的对比</h2>
+    <p>Redis 和 Memcached 都是内存键值存储,但它们在设计哲学和特性集上实质分道扬镳。一旦你知道你的需求,这个决定很少难分高下。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">Redis</th><th class="col-b">Memcached</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>数据结构</td><td class="col-a">字符串、哈希、列表、集合、有序集合、HyperLogLog、流、位图、地理空间</td><td class="col-b">仅字符串(二进制安全)</td></tr>
+        <tr><td>持久化</td><td class="col-a">RDB 快照 + AOF 预写日志;可配置持久性 vs 性能取舍</td><td class="col-b">无——仅内存;重启丢全部数据</td></tr>
+        <tr><td>集群 / HA</td><td class="col-a">原生 Redis Cluster(哈希槽分区)+ Sentinel 自动故障转移</td><td class="col-b">客户端一致性哈希;无服务端集群</td></tr>
+        <tr><td>Pub/Sub</td><td class="col-a">有——原生发布/订阅 + 流(简单用例的轻量 Kafka)</td><td class="col-b">无</td></tr>
+        <tr><td>Lua 脚本</td><td class="col-a">有——原子服务端脚本;支持复杂原子操作</td><td class="col-b">无</td></tr>
+        <tr><td>事务</td><td class="col-a">MULTI/EXEC(乐观)+ WATCH 做 CAS</td><td class="col-b">无</td></tr>
+        <tr><td>线程模型</td><td class="col-a">单线程事件循环(6.0 起网络 I/O 多线程)</td><td class="col-b">多线程——每连接真正 CPU 并行</td></tr>
+        <tr><td>内存效率</td><td class="col-a">丰富结构增加开销;小对象用哈希</td><td class="col-b">精简,裸字符串开销最小</td></tr>
+        <tr><td>用例</td><td class="col-a">会话、排行榜(有序集合)、限流、队列、pub/sub、特性开关</td><td class="col-b">极致规模的简单字符串缓存、只读对象缓存</td></tr>
+      </tbody>
+    </table>
+
+    <p>Redis 是大多数新系统的默认选择。Memcached 在<strong>纯裸字符串吞吐</strong>上在多核机器上保有可观优势——它的多线程架构允许每连接真正的 CPU 级并行,而 Redis 的单线程命令处理无论可用核心多少都串行化所有命令(网络 I/O 在 6.0 多线程,但命令执行仍单线程)。对一个字面上是数百万简单 <code>GET/SET</code> 纯字符串、无需持久化、丰富类型或 pub/sub 的负载,Memcached 在极致规模下能比 Redis 快 20–40%。对其他一切——有序集合排行榜、流处理、Lua 原子限流、持久会话——Redis 毫无疑问是更好的选择。</p>
+
+    <div class="callout">
+      <div class="callout-label">要知道的 Redis 淘汰策略</div>
+      <p>Redis 通过 <code>maxmemory-policy</code> 支持多种淘汰策略:<code>noeviction</code>(满时返回错误)、<code>allkeys-lru</code>(所有 key 上 LRU)、<code>volatile-lru</code>(仅在设了 TTL 的 key 中 LRU)、<code>allkeys-lfu</code>(所有 key 上 LFU)、<code>allkeys-random</code>、<code>volatile-ttl</code>(先淘汰 TTL 最短的 key)。最常见的生产选择是纯缓存用 <code>allkeys-lru</code>,当 Redis 同时被用作缓存和数据存储时用 <code>volatile-lru</code>(只淘汰会过期的缓存条目,绝不淘汰持久数据)。</p>
+    </div>
+
+    <h2>CDN 边缘缓存</h2>
+    <p>内容分发网络是位于网络边缘——地理上靠近终端用户——的全球分布式缓存。对面向公众的内容,CDN 是你能部署的杠杆最高的缓存:与其让一个来自新加坡的请求穿行 200 ms 到你的 US-East 源,它命中新加坡的 CDN 边缘节点并在 10 ms 内返回。</p>
+
+    <h3>在 CDN 缓存什么</h3>
+    <ul>
+      <li><strong>静态资源</strong>——JavaScript、CSS、图片、字体。这些用内容哈希文件名,是不可变的;设 <code>Cache-Control: max-age=31536000, immutable</code> 头实现 1 年 TTL 且无需失效。</li>
+      <li><strong>公开 API 响应</strong>——商品列表、分类页、公开资料。用短 TTL(30–300 秒)缓存,用 <code>Cache-Control: public, max-age=60, s-maxage=300</code>——<code>s-maxage</code> 独立于浏览器 TTL 控制 CDN TTL。</li>
+      <li><strong>HTML 页面</strong>——对非个性化页面(落地页、营销内容),在 CDN 缓存大幅降低源负载。谨慎使用 <code>Vary: Accept-Encoding</code>,避免把 gzip 内容发给无法解压的客户端。</li>
+    </ul>
+
+    <h3>不要在 CDN 缓存什么</h3>
+    <ul>
+      <li><strong>已认证或个性化响应</strong>——绝不在 CDN 后缓存含用户特定数据的响应;设 <code>Cache-Control: private</code> 或 <code>no-store</code> 阻止 CDN 缓存并确保隐私。</li>
+      <li><strong>POST/PUT/DELETE 请求</strong>——CDN 默认只缓存 GET 和 HEAD。变更请求必须总是穿透到源。</li>
+      <li><strong>支付和结账流程</strong>——即使是 <code>GET</code>,也绝不缓存金融数据或安全敏感响应。</li>
+    </ul>
+
+    <h3>CDN 的缓存失效</h3>
+    <p>CDN 失效(缓存清除)在两方面昂贵:它有 API 速率限制,且要数秒才能传播到全球所有边缘节点。标准策略是避免对静态资源需要失效(内容哈希 URL),并对半动态内容依赖短 TTL。对紧急失效(数据泄露需立即移除),用 CDN 的清除 API,但把它当稀有的应急工具,而非常规的缓存刷新机制。</p>
+
+    <h2>生产中的缓存模式:真实场景</h2>
+
+    <h3>电商商品页</h3>
+    <p>一个商品详情页聚合来自多个服务的数据:目录、库存、定价、评论。典型模式是<strong>片段缓存(fragment caching)</strong>:在各自合适的 TTL 独立缓存每个片段,而非缓存组装好的整页。商品描述:1 小时 TTL;定价:30 秒 TTL(或事件失效);库存:不缓存(总从源读)。CDN 为匿名用户以 60 秒 TTL 缓存组装页;个性化或已认证响应完全绕过 CDN。</p>
+
+    <h3>社交 feed(news feed / timeline)</h3>
+    <p>用户时间线从原始图数据组装起来很昂贵。行业标准(Facebook Memcache、Twitter Pelikan)是每用户缓存预组装的时间线对象。写扇出到所有关注者的时间线——<strong>写时推(push-on-write)</strong>模型——所以读总是命中缓存。对有数百万关注者的用户(名人),扇出无界;对那些账号切到<strong>读时拉(pull-on-read)</strong>模型,在读时把他们的内容合并进时间线。</p>
+
+    <h3>用 Redis 限流</h3>
+    <p>Redis 有序集合或原子自增是分布式限流的标准。滑动窗口日志模式把每个请求时间戳存为有序集合成员;<code>ZRANGEBYSCORE</code> 计数最近 N 秒的请求;<code>ZADD</code> 加新请求;<code>ZREMRANGEBYSCORE</code> 修剪旧条目——全在一个 Lua 脚本里保证原子性。固定窗口计数器更简单:<code>INCR key</code> + <code>EXPIRE key window_seconds</code>。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">lua</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Redis Lua:滑动窗口限流器(原子)</span>
+<span class="kw">local</span> key      = KEYS[<span class="num">1</span>]               <span class="cm">-- 如 "ratelimit:user:42"</span>
+<span class="kw">local</span> now      = <span class="fn">tonumber</span>(ARGV[<span class="num">1</span>])     <span class="cm">-- 当前时间戳 ms</span>
+<span class="kw">local</span> window   = <span class="fn">tonumber</span>(ARGV[<span class="num">2</span>])     <span class="cm">-- 窗口大小 ms(如 60000)</span>
+<span class="kw">local</span> limit    = <span class="fn">tonumber</span>(ARGV[<span class="num">3</span>])     <span class="cm">-- 每窗口最大请求数</span>
+
+redis.<span class="fn">call</span>(<span class="str">'ZREMRANGEBYSCORE'</span>, key, <span class="num">0</span>, now - window)
+<span class="kw">local</span> count = redis.<span class="fn">call</span>(<span class="str">'ZCARD'</span>, key)
+<span class="kw">if</span> count >= limit <span class="kw">then</span>
+  <span class="kw">return</span> <span class="num">0</span>                             <span class="cm">-- 被限流</span>
+<span class="kw">end</span>
+redis.<span class="fn">call</span>(<span class="str">'ZADD'</span>, key, now, now)
+redis.<span class="fn">call</span>(<span class="str">'PEXPIRE'</span>, key, window)
+<span class="kw">return</span> <span class="num">1</span>                               <span class="cm">-- 放行</span></code></pre>
+    </div>
+
+    <h2>缓存可观测性:测量什么</h2>
+    <p>无法观测的缓存是无法调优的缓存。要埋的关键指标:</p>
+    <ul>
+      <li><strong>命中率</strong>——<code>hits / (hits + misses)</code>。健康的通用缓存对热数据应维持 90%+ 命中率。低于 80% 的命中率暗示缓存不足、key 设计问题,或短 TTL 造成的过度churn。</li>
+      <li><strong>按 key 前缀的未命中率</strong>——按 key 模式分解未命中,找出哪些数据类型缓存得不好。<code>product:*</code> 高未命中而 <code>session:*</code> 低未命中,指向商品缓存问题,而非系统性问题。</li>
+      <li><strong>淘汰率</strong>——若淘汰率高,你的缓存相对工作集太小。要么增加内存,要么降低 TTL 缩小工作集。</li>
+      <li><strong>内存使用和碎片</strong>——Redis <code>INFO memory</code> 显示 <code>used_memory</code> vs <code>used_memory_rss</code>;高碎片(比率超 1.5)表示可通过重启实例或运行 <code>MEMORY PURGE</code>(Redis 4.0+)回收的内存浪费。</li>
+      <li><strong>P99 缓存延迟</strong>——Redis 应在 1 ms 内服务命令。超过 5 ms 的尖峰表示热点 key 问题、大 key(如巨大的序列化 JSON),或慢命令(对大集合的 <code>KEYS</code>、<code>SMEMBERS</code>)。</li>
+      <li><strong>连接数</strong>——Redis 单线程;连接开销真实存在。用连接池并监控活跃 vs 空闲连接。</li>
+    </ul>
+
+    <h2>最佳实践与反模式</h2>
+
+    <h3>该做</h3>
+    <ul>
+      <li>给每个缓存条目加 TTL——无 TTL 意味着你完美信任你的失效逻辑,而这从不成立。</li>
+      <li>对批量加载的数据用 TTL 抖动——消除同步过期雪崩。</li>
+      <li>在正确的粒度缓存——缓存组装好的对象,而非原始 DB 行,让缓存命中最大化有用。但若子对象有不同新鲜度要求,分别缓存它们。</li>
+      <li>高效序列化——JSON 方便但冗长;高量缓存值用 MessagePack 或 Protocol Buffers 降低内存和反序列化时间。</li>
+      <li>用一致的层级命名方案给 key 命名——<code>service:entity:id:field</code>——让基于模式的失效和监控干净工作。</li>
+      <li>测试缓存故障——定期在 staging 杀掉缓存,验证应用优雅降级而非级联成全面宕机。</li>
+    </ul>
+
+    <h3>不该做</h3>
+    <ul>
+      <li>除非你有铁打的失效,否则别缓存可变金融数据(余额、订单状态)——这里的陈旧有直接金钱后果。</li>
+      <li>别在 Redis 生产用 <code>KEYS *</code>——它是 O(N) 且执行时阻塞所有其他命令。用 <code>SCAN</code>。</li>
+      <li>别在 Redis 存大值——集群里 1 MB 值没问题,但序列化成一个 key 的 100 MB 值会造成延迟尖峰。把大对象分块,或存对象存储配一个缓存指针。</li>
+      <li>别把缓存当主存储——它是数据库的快速配件,不是替代。若缓存空了,应用仍必须(也许慢点)通过落到 DB 正确运作。</li>
+      <li>别忘了序列化版本控制——若你改了缓存对象的 schema 并重新部署,旧缓存条目会反序列化失败。用带版本的 key 前缀,或在序列化载荷里带一个版本字段。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>Cache-aside 是最安全的起点——它简单、只缓存真正需要的,且缓存故障时优雅降级。从第一天起加 TTL 抖动以避免雪崩。理解你的淘汰策略相对于访问模式——通用负载 LRU、稳定热点 key 集 LFU、无法预测时 ARC。需要持久化、pub/sub、有序集合或原子 Lua 脚本时上 Redis;只在极致规模的裸字符串吞吐是唯一需求时才考虑 Memcached。把热点 key、击穿、穿透、雪崩当作不同的失效模式——每个需要特定缓解,而非笼统的"加更多缓存"。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>缓存击穿 vs 缓存雪崩——区别是什么?</strong>击穿:一个热门 key 过期,许多线程同时打 DB——用互斥锁或概率提前刷新修复。雪崩:许多 key 同时过期,发送未命中洪流——用 TTL 抖动和预热修复。不同问题,不同修法。<br>
+      <strong>怎么处理缓存穿透?</strong>缓存空结果(像 <code>"__null__"</code> 这样的哨兵带短 TTL),或在前面放布隆过滤器,在不存在的 key 打缓存或 DB 前拒绝它们。<br>
+      <strong>Redis 还是 Memcached?</strong>超出简单字符串缓存的一切都用 Redis——持久化、pub/sub、排行榜的有序集合、Lua 原子限流、流。只在多核极致规模的裸字符串吞吐是唯一需求且运维简单至上时用 Memcached。<br>
+      <strong>用什么淘汰策略?</strong>纯缓存用 <code>allkeys-lru</code>;Redis 兼作持久数据时用 <code>volatile-lru</code>。工作集有稳定、明确的热点 key(排行榜、爆款内容)时切到 <code>allkeys-lfu</code>。<br>
+      <strong>怎么处理打爆单个 Redis 分片的热点 key?</strong>把 key 用随机后缀复制到 N 个槽并扇出读;加一个 1 秒 TTL 的进程内 L1 缓存,在请求打到 Redis 前就吸收大部分。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/load-balancing/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">负载均衡</div>
+      </a>
+      <a href="/tech-stacks/sharding/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">分片 (Sharding)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
