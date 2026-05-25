@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 Kubernetes(k8s)容器编排:Pod/Service/Ingress 等核心原语、Master/Worker 架构、YAML 配置、命名空间、Helm、调度与亲和性、网络(CNI/Service/Ingress)、存储(PV/PVC/StorageClass)、探针、自动扩缩(HPA/VPA/CA)、Operator 模式与资源管理。">
+<title>Kubernetes (k8s) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/kubernetes/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Kubernetes (k8s)">
+<meta property="og:description" content="容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/kubernetes/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Kubernetes (k8s)">
+<meta name="twitter:description" content="K8s 怎么工作:Pod/Service、控制平面、调度、CNI、PV/PVC、探针、HPA/VPA/CA、Operator。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s)","description":"容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/kubernetes/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/kubernetes/">EN</a>
+        <a href="/zh/tech-stacks/kubernetes/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">kubernetes</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">Kubernetes (k8s)</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Kubernetes 是一个开源的<strong>容器编排平台</strong>,自动化容器化应用的部署、扩缩和管理。随着行业从单体服务转向微服务,需要一个能以<strong>高可用、可扩展、健壮</strong>方式运行独立、轻量应用容器的编排器——而这正是 Kubernetes 提供的。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>Pod</strong>——最小可部署单元;封装一个或多个容器,在集群内获得共享的虚拟 IP。</li>
+        <li><strong>Service</strong>——给 Pod 一个跨重启稳定的 IP/DNS 名;同时充当内部负载均衡器。</li>
+        <li><strong>控制平面</strong>——API Server(唯一网关)、Scheduler(放置 Pod)、Controller Manager(协调循环)、etcd(真相来源)。</li>
+        <li><strong>Deployment vs StatefulSet</strong>——Deployment 给无状态应用;StatefulSet 给需要稳定有序身份的数据库。</li>
+        <li><strong>Secret 是 base64,不是加密</strong>——配合 HashiCorp Vault 或 KMS 做真正的密钥管理。</li>
+        <li><strong>Helm</strong>——Kubernetes 的包管理器;把 YAML 清单打包成有版本、可参数化的 Chart。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Kubernetes 把容器组织成 Pod,通过 Service 给它们分配稳定网络身份,并通过运行 API Server、Scheduler、Controller Manager 和 etcd 的 master 节点协调一切。worker 节点运行 Kubelet 和 Kube Proxy 来承载实际负载。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes 集群架构概览" loading="lazy">
+        <figcaption>Kubernetes 集群架构概览</figcaption>
+      </figure>
+
+    <h2>核心原语</h2>
+
+    <h3>Pod</h3>
+    <p>Kubernetes 中的基本单元。Pod 是<strong>一个或多个容器之上的抽象层</strong>,让 Kubernetes 独立于底层容器运行时(Docker、containerd、CRI-O)。每个 Pod 获得一个供集群内通信的虚拟 IP,但只要 Pod 被替换这个 IP 就会变——这正是 Pod 需要在其上叠加一个稳定寻址机制的原因。</p>
+
+    <h3>Service</h3>
+    <p>Service 提供一个<strong>独立于 Pod 生命周期、保持不变的静态 IP 地址</strong>。当一个 Pod 死掉、新的启动时,Service 的 IP 保持固定,继续把流量路由到健康的 Pod。Service 还充当内部负载均衡器,把请求分摊到同一应用的多个副本上。</p>
+
+    <h3>Ingress</h3>
+    <p>Ingress 位于集群边界,行为像一个<strong>反向代理</strong>。它根据路由规则把外部域名(如 <code>api.example.com</code>)翻译成正确的内部 Service IP 和端口,这样你只暴露一个入口,而不是每个服务一个 NodePort。</p>
+
+    <h3>ConfigMap 与 Secret</h3>
+    <p><strong>ConfigMap</strong> 把应用配置(环境变量、配置文件)外置,这样你无需重建容器镜像就能更新设置。<strong>Secret</strong> 镜像 ConfigMap,但存储敏感数据——凭证、API key、TLS 证书——以 base64 编码。两者都不应被当成安全保险箱;生产密钥管理请配合 HashiCorp Vault 等工具。</p>
+
+    <h3>Volume</h3>
+    <p>容器文件系统是临时的——Pod 重启时数据就消失。Volume 给 Pod 挂载持久存储(本地磁盘或远程块/对象存储),确保数据库这类有状态负载能在 Pod 替换后存活。</p>
+
+    <h3>Deployment vs. StatefulSet</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th class="col-a">Deployment</th><th class="col-b">StatefulSet</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>用例</td><td class="col-a">无状态应用(web 服务、API)</td><td class="col-b">有状态应用(数据库、消息代理)</td></tr>
+        <tr><td>Pod 身份</td><td class="col-a">可互换——任何副本能处理任何请求</td><td class="col-b">稳定、有序的身份(pod-0, pod-1 …)</td></tr>
+        <tr><td>数据同步</td><td class="col-a">不管理</td><td class="col-b">有序滚动确保 leader/follower 同步</td></tr>
+        <tr><td>常见模式</td><td class="col-a">大多数微服务</td><td class="col-b">很多团队偏好外部 DB 而非 StatefulSet</td></tr>
+      </tbody>
+    </table>
+
+    <h2>架构:Master 与 Worker 节点</h2>
+
+    <h3>Worker 节点组件</h3>
+    <ul>
+      <li><strong>容器运行时(Container Runtime)</strong>——真正运行容器的引擎:Docker、containerd、CRI-O 或 Windows Containers。</li>
+      <li><strong>Kubelet</strong>——节点代理。它读 Pod 规约(YAML),把容器调度到节点上,并把节点/Pod 健康状态报告回 master。</li>
+      <li><strong>Kube Proxy</strong>——在网络层实现 Service 抽象。它把 Service 请求智能转发到健康的 Pod,优先同节点副本以降低延迟。</li>
+    </ul>
+
+    <h3>Master 节点组件</h3>
+    <ul>
+      <li><strong>API Server</strong>——唯一的集群网关。所有通信(kubectl、内部组件、CI/CD 流水线)都经过 API Server,它处理认证和请求校验。</li>
+      <li><strong>Scheduler</strong>——监视新建的、尚未分配节点的 Pod,然后根据可用 CPU 和 RAM 选最佳 worker。</li>
+      <li><strong>Controller Manager</strong>——运行协调循环。当它检测到期望状态(如 3 副本)偏离实际状态(2 个健康 pod)时,触发重新调度等纠正动作。</li>
+      <li><strong>etcd</strong>——集群的分布式键值存储——Kubernetes 的"大脑"。所有集群状态(节点、pod、配置、secret)都活在 etcd 里。没有备份就丢失 etcd 意味着丢失整个集群状态。</li>
+    </ul>
+
+    <h2>配置(YAML)</h2>
+    <p>每个 Kubernetes 资源都声明为 YAML。四个必填顶层键是 <code>apiVersion</code>、<code>kind</code>、<code>metadata</code>、<code>spec</code>。集群持续把实际状态向声明的 <code>spec</code> 协调,并自动把当前状态写回 <code>status</code> 字段。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: apps/v1
+<span class="kw">kind</span>: Deployment
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">my-app</span>
+  <span class="kw">labels</span>:
+    <span class="kw">app</span>: <span class="str">my-app</span>
+<span class="kw">spec</span>:
+  <span class="kw">replicas</span>: <span class="num">3</span>
+  <span class="kw">selector</span>:
+    <span class="kw">matchLabels</span>:
+      <span class="kw">app</span>: <span class="str">my-app</span>
+  <span class="kw">template</span>:
+    <span class="kw">metadata</span>:
+      <span class="kw">labels</span>:
+        <span class="kw">app</span>: <span class="str">my-app</span>
+    <span class="kw">spec</span>:
+      <span class="kw">containers</span>:
+        - <span class="kw">name</span>: <span class="str">my-app</span>
+          <span class="kw">image</span>: <span class="str">my-app:1.0.0</span>
+          <span class="kw">ports</span>:
+            - <span class="kw">containerPort</span>: <span class="num">8080</span></code></pre>
+    </div>
+
+    <h2>命名空间(Namespace)</h2>
+    <p>命名空间在单个物理集群内提供<strong>逻辑隔离</strong>,让团队共享基础设施的同时按功能、团队或环境分隔资源。Kubernetes 自带四个内置命名空间:</p>
+    <ul>
+      <li><strong>default</strong>——不指定命名空间时用户资源落到这里。</li>
+      <li><strong>kube-system</strong>——系统进程(API server、scheduler、etcd)。</li>
+      <li><strong>kube-public</strong>——可公开读取的数据,无需认证即可访问。</li>
+      <li><strong>kube-node-lease</strong>——用于可用性跟踪的节点心跳对象。</li>
+    </ul>
+    <p>重要的作用域规则:<strong>ConfigMap 和 Secret 是命名空间级</strong>——每个命名空间需要自己的副本。Service 可用 FQDN <code>service.namespace.svc.cluster.local</code> 跨命名空间引用。Volume 和 Node 是不绑定任何命名空间的全局资源。</p>
+
+    <h2>Helm</h2>
+    <p>Helm 是 <strong>Kubernetes 的包管理器</strong>。它把一个应用的所有 YAML 清单打包成一个可分发单元,叫 <strong>Chart</strong>。Helm 还充当模板引擎——你在 <code>values.yaml</code> 里参数化各种值(镜像 tag、副本数、资源限制),让同一个 chart 用不同设置部署到 dev、staging、production 变得直截了当。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 从公共仓库安装一个 chart</span>
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install my-redis bitnami/redis \
+  --set auth.password=<span class="str">secret</span> \
+  --set replica.replicaCount=<span class="num">2</span>
+
+<span class="cm"># 列出运行中的 release</span>
+helm list
+
+<span class="cm"># 回滚到上一个 release</span>
+helm rollback my-redis <span class="num">1</span></code></pre>
+    </div>
+
+    <h2>工作负载控制器:DaemonSet 与 Job</h2>
+
+    <h3>DaemonSet</h3>
+    <p>DaemonSet 确保在<em>每个</em>节点(或每个匹配选择器的节点)上恰好运行一个 Pod 副本。它是必须节点本地化的基础设施级代理的合适工具:日志采集器(Fluentd、Fluent Bit)、指标导出器(node-exporter)、网络插件(CNI 代理)、安全扫描器。当节点加入集群时,DaemonSet 控制器自动在每个新节点上放置一个 Pod;节点离开时,其 Pod 被垃圾回收。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: apps/v1
+<span class="kw">kind</span>: DaemonSet
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">fluent-bit</span>
+  <span class="kw">namespace</span>: <span class="str">logging</span>
+<span class="kw">spec</span>:
+  <span class="kw">selector</span>:
+    <span class="kw">matchLabels</span>:
+      <span class="kw">app</span>: <span class="str">fluent-bit</span>
+  <span class="kw">template</span>:
+    <span class="kw">metadata</span>:
+      <span class="kw">labels</span>:
+        <span class="kw">app</span>: <span class="str">fluent-bit</span>
+    <span class="kw">spec</span>:
+      <span class="kw">tolerations</span>:                      <span class="cm"># 容忍 master 节点的 taint 以便处处运行</span>
+        - <span class="kw">key</span>: <span class="str">node-role.kubernetes.io/control-plane</span>
+          <span class="kw">effect</span>: <span class="str">NoSchedule</span>
+      <span class="kw">containers</span>:
+        - <span class="kw">name</span>: <span class="str">fluent-bit</span>
+          <span class="kw">image</span>: <span class="str">fluent/fluent-bit:2.1</span>
+          <span class="kw">volumeMounts</span>:
+            - <span class="kw">name</span>: <span class="str">varlog</span>
+              <span class="kw">mountPath</span>: <span class="str">/var/log</span>
+      <span class="kw">volumes</span>:
+        - <span class="kw">name</span>: <span class="str">varlog</span>
+          <span class="kw">hostPath</span>:
+            <span class="kw">path</span>: <span class="str">/var/log</span></code></pre>
+    </div>
+
+    <h3>Deployment vs. StatefulSet vs. DaemonSet——决策矩阵</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th class="col-a">Deployment</th><th class="col-b">StatefulSet</th><th style="color:var(--accent)">DaemonSet</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Pod 身份</td><td class="col-a">可互换——随机后缀</td><td class="col-b">稳定:pod-0, pod-1, pod-2</td><td style="color:var(--accent)">每节点一个,以节点命名</td></tr>
+        <tr><td>存储</td><td class="col-a">共享或无</td><td class="col-b">每 Pod 一个 PVC,删除时保留</td><td style="color:var(--accent)">通常用 HostPath</td></tr>
+        <tr><td>滚动顺序</td><td class="col-a">并发(maxSurge / maxUnavailable)</td><td class="col-b">有序:pod-0 → pod-1 → …</td><td style="color:var(--accent)">逐节点滚动更新</td></tr>
+        <tr><td>缩容</td><td class="col-a">随机移除 Pod</td><td class="col-b">先移除最高序号</td><td style="color:var(--accent)">每节点一个 Pod,不手动扩缩</td></tr>
+        <tr><td>用例</td><td class="col-a">web 服务、API、worker</td><td class="col-b">数据库、Kafka、ZooKeeper、Elasticsearch</td><td style="color:var(--accent)">日志代理、node exporter、CNI 插件</td></tr>
+      </tbody>
+    </table>
+
+    <h2>调度与节点亲和性</h2>
+    <p>Kubernetes Scheduler 做的不止"找一个 CPU 和 RAM 够用的节点"。它应用一个精巧的两阶段算法:<strong>过滤(filtering)</strong>淘汰无法满足 Pod 需求的节点,<strong>打分(scoring)</strong>按偏好对剩余节点排序。理解这点让你能精确控制负载落在哪里。</p>
+
+    <h3>Node Selector 与 Node Affinity</h3>
+    <p><code>nodeSelector</code> 是最简单形式:一组必须匹配节点标签的键值对。Node Affinity 更强大——它支持 <code>requiredDuringSchedulingIgnoredDuringExecution</code>(硬约束)和 <code>preferredDuringSchedulingIgnoredDuringExecution</code>(带权重的软偏好)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">spec</span>:
+  <span class="kw">affinity</span>:
+    <span class="kw">nodeAffinity</span>:
+      <span class="kw">requiredDuringSchedulingIgnoredDuringExecution</span>:   <span class="cm"># 硬约束:只用 GPU 节点</span>
+        <span class="kw">nodeSelectorTerms</span>:
+          - <span class="kw">matchExpressions</span>:
+            - <span class="kw">key</span>: <span class="str">accelerator</span>
+              <span class="kw">operator</span>: <span class="str">In</span>
+              <span class="kw">values</span>: [<span class="str">nvidia-a100</span>]
+    <span class="kw">podAntiAffinity</span>:
+      <span class="kw">preferredDuringSchedulingIgnoredDuringExecution</span>:  <span class="cm"># 软偏好:把副本分散到各 zone</span>
+        - <span class="kw">weight</span>: <span class="num">100</span>
+          <span class="kw">podAffinityTerm</span>:
+            <span class="kw">labelSelector</span>:
+              <span class="kw">matchLabels</span>:
+                <span class="kw">app</span>: <span class="str">my-app</span>
+            <span class="kw">topologyKey</span>: <span class="str">topology.kubernetes.io/zone</span></code></pre>
+    </div>
+
+    <h3>Taint 与 Toleration</h3>
+    <p>Taint 作用方向相反:它们排斥 Pod 远离节点,除非 Pod 明确容忍该 taint。常见用途包括把节点专用于特定负载(只接受 ML 作业的 GPU 节点)、把 Pod 排除在控制平面节点之外,或为维护优雅地排空节点(<code>kubectl drain</code> 自动加一个 <code>NoSchedule</code> taint)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 给节点打 taint,只有容忍它的 GPU Pod 才能落上去</span>
+kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</span>
+
+<span class="cm"># Pod 必须声明这个 toleration 才能被调度到 gpu-node-1</span>
+<span class="cm"># tolerations:</span>
+<span class="cm">#   - key: "accelerator"</span>
+<span class="cm">#     operator: "Equal"</span>
+<span class="cm">#     value: "gpu"</span>
+<span class="cm">#     effect: "NoSchedule"</span></code></pre>
+    </div>
+
+    <h2>网络:深入 CNI、Service 与 Ingress</h2>
+    <p>Kubernetes 网络遵循四条基本规则:每个 Pod 获得唯一 IP;每个 Pod 能与其他所有 Pod 无 NAT 通信;每个节点能与每个 Pod 通信;Pod 看到的 IP 与外部代理用来寻址它的 IP 一致。强制执行这些规则是容器网络接口(CNI)插件的工作。</p>
+
+    <h3>CNI 插件</h3>
+    <p><strong>容器网络接口(CNI)</strong>是 Kubernetes 在创建或删除 Pod 时调用来配置网络接口的一套规范。流行实现的网络模型差异显著:</p>
+    <ul>
+      <li><strong>Flannel</strong>——最简单;用扁平 overlay 网络(VXLAN 或 host-gw)。不支持网络策略。适合开发集群。</li>
+      <li><strong>Calico</strong>——基于 BGP 路由(L3 模式无 overlay)以获高性能;完整支持 NetworkPolicy,可选节点间 WireGuard 加密。</li>
+      <li><strong>Cilium</strong>——基于 eBPF;完全绕过 iptables,支持高吞吐服务路由和深入应用层的网络策略(L7 策略、Kafka 感知、HTTP 感知)。大规模生产集群的首选。</li>
+      <li><strong>Weave Net</strong>——mesh overlay;支持网络加密,但 CPU 开销比 Calico 或 Cilium 高。</li>
+    </ul>
+
+    <h3>Service 类型</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>类型</th><th>行为</th><th>用例</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">ClusterIP</td><td>仅集群内可达的虚拟 IP;默认类型</td><td>内部微服务间通信</td></tr>
+        <tr><td class="col-a">NodePort</td><td>在每个节点外部 IP 的一个端口(30000–32767)上暴露 Service</td><td>开发/测试的外部访问;不用于生产</td></tr>
+        <tr><td class="col-a">LoadBalancer</td><td>开通一个云负载均衡器(AWS ELB、GCP LB),用外部 IP 指向 Service</td><td>在云环境把单个 Service 暴露到公网</td></tr>
+        <tr><td class="col-b">ExternalName</td><td>返回指向外部主机名的 CNAME DNS 别名;不做代理</td><td>把集群服务指向外部 DB 或 SaaS API</td></tr>
+        <tr><td class="col-b">Headless (ClusterIP: None)</td><td>无虚拟 IP;DNS 直接返回 Pod IP</td><td>StatefulSet、应用自身做服务发现(Kafka、Cassandra)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ingress 与 Ingress Controller</h3>
+    <p>一个 <strong>Ingress</strong> 资源定义路由规则(主机名、路径前缀 → Service),但没有 <strong>Ingress Controller</strong>(一个监视 Ingress 对象并据此重配自己的运行中 Pod)它什么也做不了。常见控制器有 Nginx Ingress Controller、Traefik、HAProxy 和云原生的 AWS ALB Ingress Controller。你可以在一个集群里跑多个控制器,用 <code>ingressClassName</code> 注解 Ingress 来区分。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: networking.k8s.io/v1
+<span class="kw">kind</span>: Ingress
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">api-ingress</span>
+  <span class="kw">annotations</span>:
+    <span class="kw">nginx.ingress.kubernetes.io/rewrite-target</span>: <span class="str">/</span>
+    <span class="kw">cert-manager.io/cluster-issuer</span>: <span class="str">letsencrypt-prod</span>   <span class="cm"># 通过 cert-manager 自动签发 TLS</span>
+<span class="kw">spec</span>:
+  <span class="kw">ingressClassName</span>: <span class="str">nginx</span>
+  <span class="kw">tls</span>:
+    - <span class="kw">hosts</span>: [<span class="str">api.example.com</span>]
+      <span class="kw">secretName</span>: <span class="str">api-tls-cert</span>
+  <span class="kw">rules</span>:
+    - <span class="kw">host</span>: <span class="str">api.example.com</span>
+      <span class="kw">http</span>:
+        <span class="kw">paths</span>:
+          - <span class="kw">path</span>: <span class="str">/v1/orders</span>
+            <span class="kw">pathType</span>: <span class="str">Prefix</span>
+            <span class="kw">backend</span>:
+              <span class="kw">service</span>:
+                <span class="kw">name</span>: <span class="str">order-service</span>
+                <span class="kw">port</span>:
+                  <span class="kw">number</span>: <span class="num">8080</span>
+          - <span class="kw">path</span>: <span class="str">/v1/products</span>
+            <span class="kw">pathType</span>: <span class="str">Prefix</span>
+            <span class="kw">backend</span>:
+              <span class="kw">service</span>:
+                <span class="kw">name</span>: <span class="str">product-service</span>
+                <span class="kw">port</span>:
+                  <span class="kw">number</span>: <span class="num">8080</span></code></pre>
+    </div>
+
+    <h2>存储:PV、PVC 与 StorageClass</h2>
+    <p>Kubernetes 通过三层层级抽象存储:<strong>PersistentVolume (PV)</strong> 表示集群中实际的存储容量(由管理员预置,或由 StorageClass 动态预置);<strong>PersistentVolumeClaim (PVC)</strong> 是用户对存储的请求,带特定大小和访问模式要求;<strong>StorageClass</strong> 定义动态创建 PV 的 provisioner 和参数。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">--- StorageClass: 定义 PV 如何被动态预置</span>
+<span class="kw">apiVersion</span>: storage.k8s.io/v1
+<span class="kw">kind</span>: StorageClass
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">fast-ssd</span>
+<span class="kw">provisioner</span>: <span class="str">ebs.csi.aws.com</span>
+<span class="kw">parameters</span>:
+  <span class="kw">type</span>: <span class="str">gp3</span>
+  <span class="kw">iops</span>: <span class="str">"3000"</span>
+  <span class="kw">throughput</span>: <span class="str">"125"</span>
+<span class="kw">reclaimPolicy</span>: <span class="str">Retain</span>          <span class="cm"># 删除 PVC 时不删 EBS 卷</span>
+<span class="kw">volumeBindingMode</span>: <span class="str">WaitForFirstConsumer</span>  <span class="cm"># 在与 Pod 同一 AZ 预置</span>
+
+<span class="cm">--- PVC: 用户从 fast-ssd StorageClass 申请 50 GiB</span>
+<span class="kw">apiVersion</span>: v1
+<span class="kw">kind</span>: PersistentVolumeClaim
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">postgres-data</span>
+<span class="kw">spec</span>:
+  <span class="kw">accessModes</span>: [<span class="str">ReadWriteOnce</span>]    <span class="cm"># 只有一个节点能读写挂载</span>
+  <span class="kw">storageClassName</span>: <span class="str">fast-ssd</span>
+  <span class="kw">resources</span>:
+    <span class="kw">requests</span>:
+      <span class="kw">storage</span>: <span class="str">50Gi</span></code></pre>
+    </div>
+
+    <h3>访问模式</h3>
+    <ul>
+      <li><strong>ReadWriteOnce (RWO)</strong>——被单个节点读写挂载;数据库的标准模式。注意:同一节点上的多个 Pod 都可挂载一个 RWO 卷。</li>
+      <li><strong>ReadOnlyMany (ROX)</strong>——被多个节点同时只读挂载;适合共享配置或模型权重。</li>
+      <li><strong>ReadWriteMany (RWX)</strong>——被多个节点读写挂载;需要分布式文件系统(NFS、CephFS、AWS EFS)。罕见且比块存储慢。</li>
+      <li><strong>ReadWriteOncePod (RWOP)</strong>——Kubernetes 1.22+;全集群只有一个 Pod 能读写挂载该卷。对 StatefulSet 比 RWO 更强。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">StatefulSet + PVC</div>
+      <p>StatefulSet 用 <code>volumeClaimTemplates</code> 自动为每个 Pod 创建一个 PVC(如 <code>postgres-data-postgres-0</code>、<code>postgres-data-postgres-1</code>)。这些 PVC 在 StatefulSet 缩容或删除时<em>不会</em>被删除——一个刻意的安全网,免得你不小心抹掉数据库。真要删数据时显式删它们。</p>
+    </div>
+
+    <h2>探针与自愈</h2>
+    <p>Kubernetes 为每个容器提供三种健康探针。正确配置它们,是"自愈集群"和"故障 Pod 默默接流量直到 on-call 工程师发现"之间的区别。</p>
+
+    <h3>Liveness Probe(存活探针)</h3>
+    <p>判断容器是否活着。存活探针失败会让 kubelet <strong>杀掉并重启</strong>容器。用它来检测死锁和不可恢复的卡死——进程在跑但实际没干活的情况。注意别把初始阈值设太低:在启动期间触发的存活探针会在 Pod 就绪前杀掉它,造成重启循环。</p>
+
+    <h3>Readiness Probe(就绪探针)</h3>
+    <p>判断容器是否准备好服务流量。就绪探针失败会把 Pod 从 Service 的端点里移除——停止把流量路由给它——但容器<em>不会</em>被重启。这是慢启动应用、预热期或临时过载的正确探针:Pod 保持存活但被移出轮转,直到它再次发出就绪信号。</p>
+
+    <h3>Startup Probe(启动探针)</h3>
+    <p>在容器启动期间运行,在它成功前禁用存活和就绪探针。对启动时间长的应用(如 JVM 服务、加载大数据集的数据库)至关重要。一旦启动探针成功,存活和就绪探针接管。没有它,存活探针可能杀掉一个正常启动中的容器。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">containers</span>:
+  - <span class="kw">name</span>: <span class="str">order-service</span>
+    <span class="kw">image</span>: <span class="str">order-service:2.3.1</span>
+    <span class="kw">startupProbe</span>:               <span class="cm"># 允许最多 60s 启动</span>
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">failureThreshold</span>: <span class="num">12</span>      <span class="cm"># 12 * 5s = 最多 60s 启动时间</span>
+      <span class="kw">periodSeconds</span>: <span class="num">5</span>
+    <span class="kw">livenessProbe</span>:
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health/liveness</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">initialDelaySeconds</span>: <span class="num">0</span>    <span class="cm"># 启动探针已处理了延迟</span>
+      <span class="kw">periodSeconds</span>: <span class="num">10</span>
+      <span class="kw">failureThreshold</span>: <span class="num">3</span>
+    <span class="kw">readinessProbe</span>:
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health/readiness</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">periodSeconds</span>: <span class="num">5</span>
+      <span class="kw">failureThreshold</span>: <span class="num">2</span></code></pre>
+    </div>
+
+    <h2>自动扩缩:HPA、VPA 与 Cluster Autoscaler</h2>
+    <p>Kubernetes 提供三种互补的自动扩缩机制,作用于不同粒度。理解何时用哪个——以及它们如何相互作用——是常见面试话题。</p>
+
+    <h3>Horizontal Pod Autoscaler (HPA)</h3>
+    <p>HPA 根据观测指标扩缩 <em>Pod 副本数量</em>。默认指标是相对于 Pod 资源请求的 CPU 利用率,但通过自定义指标 API 也支持自定义指标(请求速率、队列深度、来自 Prometheus 的外部指标)。HPA 每 15 秒轮询一次 metrics server,在 <code>minReplicas</code> 和 <code>maxReplicas</code> 边界内调整副本数。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: autoscaling/v2
+<span class="kw">kind</span>: HorizontalPodAutoscaler
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">order-service-hpa</span>
+<span class="kw">spec</span>:
+  <span class="kw">scaleTargetRef</span>:
+    <span class="kw">apiVersion</span>: apps/v1
+    <span class="kw">kind</span>: Deployment
+    <span class="kw">name</span>: <span class="str">order-service</span>
+  <span class="kw">minReplicas</span>: <span class="num">3</span>
+  <span class="kw">maxReplicas</span>: <span class="num">50</span>
+  <span class="kw">metrics</span>:
+    - <span class="kw">type</span>: Resource
+      <span class="kw">resource</span>:
+        <span class="kw">name</span>: cpu
+        <span class="kw">target</span>:
+          <span class="kw">type</span>: Utilization
+          <span class="kw">averageUtilization</span>: <span class="num">60</span>   <span class="cm"># CPU > 请求的 60% 时扩容</span>
+    - <span class="kw">type</span>: Pods
+      <span class="kw">pods</span>:
+        <span class="kw">metric</span>:
+          <span class="kw">name</span>: <span class="str">http_requests_per_second</span>
+        <span class="kw">target</span>:
+          <span class="kw">type</span>: AverageValue
+          <span class="kw">averageValue</span>: <span class="str">"1000"</span>    <span class="cm"># 每副本 1000 RPS</span>
+  <span class="kw">behavior</span>:
+    <span class="kw">scaleDown</span>:
+      <span class="kw">stabilizationWindowSeconds</span>: <span class="num">300</span>  <span class="cm"># 缩容前等 5 分钟</span></code></pre>
+    </div>
+
+    <h3>Vertical Pod Autoscaler (VPA)</h3>
+    <p>VPA 调整单个 Pod 的 <em>资源请求和限制</em>(CPU 和内存),而非副本数。在 <code>Auto</code> 模式它会驱逐并以更新后的请求重启 Pod;在 <code>Off</code> 模式它只给建议。VPA 在你事先不知道合适的资源请求时有用,但它在 CPU/内存上与 HPA 冲突——用 VPA 调请求、HPA 调自定义指标,或让 VPA 只在建议模式下与 HPA 并存。</p>
+
+    <h3>Cluster Autoscaler</h3>
+    <p>HPA 和 VPA 都假设有可用节点来调度 Pod。当没有时,<strong>Cluster Autoscaler (CA)</strong> 调用云厂商 API(AWS、GCP、Azure)从集群节点组增删节点。当 Pod 因资源不足无法调度时 CA 加节点,并在可配置的冷却期(默认 10 分钟)后移除利用率低的节点。重要的是,CA 在缩容时尊重 Pod Disruption Budget:若移除某节点会违反你的 PDB,它就不会移除。</p>
+
+    <div class="callout">
+      <div class="callout-label">自动扩缩配方</div>
+      <p>标准生产配置:<strong>HPA 基于 CPU + 自定义指标</strong>调副本数;<strong>VPA 在建议模式</strong>帮你 right-size 资源请求;<strong>Cluster Autoscaler</strong> 按需增删节点。给每个容器设置资源 <code>requests</code> 和 <code>limits</code>——没有 requests,HPA 就没有计算利用率的基线,scheduler 也无法做出明智的放置决策。</p>
+    </div>
+
+    <h2>Operator 模式</h2>
+    <p><strong>Kubernetes Operator</strong> 是一个自定义控制器,把某个特定应用的运维知识编码进代码。它用 <strong>自定义资源定义(CRD)</strong> 扩展 Kubernetes API——加入像 <code>PostgresCluster</code>、<code>KafkaCluster</code> 或 <code>ElasticsearchCluster</code> 这样的新资源类型——并运行一个控制循环,监视这些资源并把集群驱向它们声明的期望状态。</p>
+
+    <h3>为什么有 Operator</h3>
+    <p>Kubernetes 原生地把无状态负载处理得很漂亮:部署、扩缩、回滚。但有状态系统——数据库、消息代理、搜索引擎——需要领域特定的运维逻辑:初始化集群、选举 leader、执行尊重 quorum 的滚动升级、做一致备份、从快照恢复。人类运维通过执行 runbook 编码这些知识;Kubernetes Operator 把它自动化。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 用 CloudNativePG Operator 声明一个 PostgreSQL 集群</span>
+<span class="kw">apiVersion</span>: postgresql.cnpg.io/v1
+<span class="kw">kind</span>: Cluster
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">orders-db</span>
+<span class="kw">spec</span>:
+  <span class="kw">instances</span>: <span class="num">3</span>           <span class="cm"># 1 主 + 2 副本</span>
+  <span class="kw">primaryUpdateStrategy</span>: <span class="str">unsupervised</span>
+  <span class="kw">storage</span>:
+    <span class="kw">size</span>: <span class="str">100Gi</span>
+    <span class="kw">storageClass</span>: <span class="str">fast-ssd</span>
+  <span class="kw">backup</span>:
+    <span class="kw">barmanObjectStore</span>:
+      <span class="kw">destinationPath</span>: <span class="str">s3://my-bucket/backups/orders-db</span>
+      <span class="kw">s3Credentials</span>:
+        <span class="kw">accessKeyId</span>:
+          <span class="kw">name</span>: <span class="str">s3-creds</span>
+          <span class="kw">key</span>: <span class="str">ACCESS_KEY_ID</span></code></pre>
+    </div>
+
+    <p>CloudNativePG Operator 看到这个 <code>Cluster</code> CR 后处理其余一切:创建主 Pod、给副本设置流式复制、为每个 Pod 配置 headless Service 实现稳定 DNS 名、为主写 vs 副本读配置独立 Service、设置到 S3 的持续 WAL 归档,以及执行在关停主之前先提升副本的滚动升级以最小化停机。所有这些运维复杂度——本需一份冗长 runbook——如今都编码为代码,由一份 YAML 声明触发。</p>
+
+    <h3>流行的 Operator</h3>
+    <ul>
+      <li><strong>Strimzi</strong>——把 Kafka 集群和主题作为 CRD;管理 broker、ZooKeeper、Kafka Connect 和 MirrorMaker 2。</li>
+      <li><strong>Prometheus Operator</strong>——<code>ServiceMonitor</code>、<code>PodMonitor</code> 和 <code>PrometheusRule</code> CRD,声明式地配置抓取目标和告警规则。</li>
+      <li><strong>cert-manager</strong>——<code>Certificate</code> 和 <code>ClusterIssuer</code> CRD,从 Let's Encrypt 或私有 CA 自动签发和续期 TLS 证书。</li>
+      <li><strong>Argo CD</strong>——GitOps operator,把集群状态协调成与 Git 仓库一致,让每次部署都是一次 git commit。</li>
+      <li><strong>KEDA</strong>(Kubernetes 事件驱动自动扩缩)——基于外部事件源扩缩 Deployment 和 Job:Kafka 消费者 lag、SQS 队列深度、HTTP 请求率——弥合 HPA 以 CPU 为中心的模型与事件驱动负载之间的鸿沟。</li>
+    </ul>
+
+    <h2>资源管理:Requests、Limits 与 QoS 类别</h2>
+    <p>每个容器都应声明 CPU 和内存的 <code>requests</code>(scheduler 使用的保证分配)和 <code>limits</code>(容器可消耗的上限)。两者关系决定 Pod 的 <strong>QoS 类别</strong>,它控制节点内存压力下的驱逐优先级。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>QoS 类别</th><th>条件</th><th>驱逐优先级</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Guaranteed</td><td>Pod 里每个容器 requests == limits</td><td>最后被驱逐;预留容量</td></tr>
+        <tr><td class="col-a">Burstable</td><td>至少一个容器设了 requests,但 requests < limits</td><td>在 BestEffort 之后驱逐;按相对 request 的内存用量排序</td></tr>
+        <tr><td class="col-b">BestEffort</td><td>完全没设 requests 或 limits</td><td>内存压力下最先被驱逐</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">最佳实践</div>
+      <p>把 CPU <code>requests</code> 设为你的稳态用量、CPU <code>limits</code> 设为 requests 的 2–4 倍以允许突发。对内存,把 <code>requests</code> 设为你的 p99 用量、对延迟敏感的服务把 <code>limits</code> = requests(即 Guaranteed 类)——超过内存 limit 的容器会被立即 OOMKilled;超过 CPU limit 的 pod 只会被限流(不被杀),所以内存 limit 后果严重得多。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>把 Kubernetes 想成一个自愈的、声明式的控制循环:你用 YAML 描述你<em>想要什么</em>,master 节点的 Controller Manager 持续把实际状态向它驱动。Pod 给你隔离;Service 给你稳定寻址;etcd 给你持久的集群记忆;Helm 给你可复用、有版本的打包。叠加 HPA + Cluster Autoscaler 实现弹性,用 Operator 处理有状态应用,用恰当的探针配置让自愈循环真正生效。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>Pod 崩溃时会发生什么?</strong>Controller Manager 检测到偏离期望副本数,指示 Scheduler 放置一个新 Pod——整个过程 Service 的 IP 保持不变。<br>
+      <strong>Deployment vs StatefulSet vs DaemonSet?</strong>Deployment 给无状态应用(可互换 Pod);StatefulSet 给数据库(稳定有序 Pod 身份、每 Pod 一个 PVC);DaemonSet 给节点本地基础设施代理(每节点一个 Pod)。<br>
+      <strong>etcd 为什么关键?</strong>它是所有集群状态的唯一真相来源;没有备份就丢失 etcd 意味着丢失整个集群配置。<br>
+      <strong>HPA vs VPA vs Cluster Autoscaler?</strong>HPA 扩缩副本数;VPA 调每 Pod 资源请求;Cluster Autoscaler 增删节点。三者一起用:HPA 用自定义指标、VPA 用建议模式、CA 来供给容量。<br>
+      <strong>liveness vs readiness probe?</strong>liveness 失败杀掉并重启容器;readiness 失败把它移出 Service 端点而不重启——预热和临时过载用 readiness。<br>
+      <strong>Operator 模式是什么?</strong>一个把运维 runbook 编码为代码的自定义控制器,用 CRD 把 Kubernetes API 扩展出领域特定资源类型,如 <code>KafkaCluster</code> 或 <code>PostgresCluster</code>。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/kafka/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Apache Kafka</div>
+      </a>
+      <a href="/tech-stacks/load-balancing/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">负载均衡</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

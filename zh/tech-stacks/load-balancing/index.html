@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解负载均衡:L4 vs L7、轮询/最少连接/IP 哈希/一致性哈希等算法、健康检查、粘性会话、SSL/TLS 终止、DNS 负载均衡与 GeoDNS、Anycast、高可用与故障转移、服务网格,以及常见坑与最佳实践。">
+<title>负载均衡 (Load Balancing) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/load-balancing/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="负载均衡 (Load Balancing)">
+<meta property="og:description" content="L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/load-balancing/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="负载均衡 (Load Balancing)">
+<meta name="twitter:description" content="负载均衡怎么工作:L4/L7、算法、健康检查、一致性哈希、Anycast、HA 故障转移。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"负载均衡 (Load Balancing)","description":"L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/load-balancing/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/load-balancing/">EN</a>
+        <a href="/zh/tech-stacks/load-balancing/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">load-balancing</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">负载均衡 (Load Balancing)</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p><strong>负载均衡器(load balancer)</strong>位于客户端和一组后端服务器之间,分发入站流量,让任何单台服务器都不会成为瓶颈。它是横向扩展的基石:加更多服务器,负载均衡器就自动分摊工作。没有它,横向扩展在运维上不可能,且单台服务器故障会拖垮整个服务。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>L4 vs L7</strong>——L4 按 TCP/UDP 头路由(快、不检查内容);L7 按 HTTP 路径/头/cookie 路由(更聪明、CPU 略高)。</li>
+        <li><strong>轮询(Round Robin)</strong>适合均匀负载;<strong>最少连接(Least Connections)</strong>适应时长可变的请求。</li>
+        <li><strong>IP 哈希</strong>无需存状态就给出会话亲和性,但移除一台服务器时会重排所有客户端。</li>
+        <li><strong>粘性会话</strong>是有状态服务器的权宜之计——真正的修法是把会话状态外置到 Redis。</li>
+        <li><strong>LB 冗余</strong>——用带 VIP 的 active-passive 或 active-active 对;LB 本身绝不能是 SPOF。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>负载均衡器用轮询、最少连接或 IP 哈希等算法把流量路由到后端服务器。L4 LB 按 TCP/UDP 元数据路由;L7 LB 检查 HTTP 内容、能做更聪明的路由决策。健康检查自动把不健康的服务器移出池。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/load-balancing-1.jpg" alt="负载均衡把流量分发到后端服务器" loading="lazy">
+        <figcaption>负载均衡把流量分发到后端服务器</figcaption>
+      </figure>
+
+    <h2>为什么要负载均衡?</h2>
+    <p>它解决三个核心问题:</p>
+    <ul>
+      <li><strong>吞吐</strong>——一组较小服务器能处理的总请求比一台大服务器多,且增量扩展更便宜。</li>
+      <li><strong>高可用</strong>——当一台服务器故障,负载均衡器通过健康检查检测到并停止向它路由流量,通常在数秒内。</li>
+      <li><strong>降低延迟</strong>——地理负载均衡器能把用户路由到最近的数据中心,缩短往返时间。</li>
+    </ul>
+
+    <h2>第四层 vs. 第七层</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">第四层(传输层)</th><th class="col-b">第七层(应用层)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>作用于</td><td class="col-a">TCP/UDP 头(IP + 端口)</td><td class="col-b">HTTP 头、URL、cookie、body</td></tr>
+        <tr><td>性能</td><td class="col-a">非常快——不检查内容</td><td class="col-b">CPU 成本略高</td></tr>
+        <tr><td>路由智能</td><td class="col-a">低——不感知应用协议</td><td class="col-b">高——能按路径、host 或头值路由</td></tr>
+        <tr><td>TLS 终止</td><td class="col-a">仅透传</td><td class="col-b">可终止 TLS、检查载荷、再加密</td></tr>
+        <tr><td>示例</td><td class="col-a">AWS NLB、HAProxy TCP 模式</td><td class="col-b">AWS ALB、Nginx、Envoy</td></tr>
+      </tbody>
+    </table>
+    <p>实践中,大多数现代架构在边缘用 L7 负载均衡器(做 HTTP 路由、TLS 终止、头操作),对内部 TCP 服务用 L4 负载均衡器——那里裸吞吐比路由智能更重要。</p>
+
+    <h2>负载均衡算法</h2>
+
+    <h3>轮询(Round Robin)</h3>
+    <p>请求按循环顺序依次分发到服务器池。当所有服务器容量相同、请求成本均匀时简单有效。<strong>加权轮询(Weighted Round Robin)</strong>扩展它:给每台服务器分配与其容量成比例的权重,权重 3 的服务器接收的请求是权重 1 的三倍。</p>
+
+    <h3>最少连接(Least Connections)</h3>
+    <p>每个新请求发给当前处理活跃连接最少的服务器。它自然适应请求时长可变的负载——处理长查询的服务器持有更少的新连接。<strong>加权最少连接</strong>在比较前先把活跃连接数除以服务器权重。</p>
+
+    <h3>IP 哈希(IP Hash)</h3>
+    <p>对客户端 IP 地址做哈希以确定性地选服务器。同一客户端总落到同一后端,提供<strong>会话亲和性</strong>而无需负载均衡器存会话状态。缺点:若移除一台服务器,它的所有客户端都被重新哈希和重分配,可能打断进行中的会话。</p>
+
+    <h3>随机(Random)</h3>
+    <p>均匀随机选一台服务器。在大请求量下统计上接近轮询,但小请求量无保证。当你想要零协调开销、且池大而同质时有用。</p>
+
+    <h2>健康检查</h2>
+    <p>负载均衡器定期探测后端以检测故障。一台服务器在连续失败可配置的次数后被标记为<strong>不健康</strong>并移出池;在连续通过可配置的次数后被重新加入。有两种口味:</p>
+    <ul>
+      <li><strong>被动健康检查</strong>——从实际流量推断健康。若服务器返回 5xx 错误,LB 标记它降级。</li>
+      <li><strong>主动健康检查</strong>——LB 按计划发送合成探测请求(TCP 握手、对 <code>/health</code> 的 HTTP GET),独立于真实流量。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">nginx</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">upstream</span> backend {
+    <span class="kw">least_conn</span>;                          <span class="cm"># 最少连接算法</span>
+    <span class="fn">server</span> <span class="str">10.0.0.1:8080</span> weight=<span class="num">3</span>;
+    <span class="fn">server</span> <span class="str">10.0.0.2:8080</span> weight=<span class="num">1</span>;
+    <span class="fn">server</span> <span class="str">10.0.0.3:8080</span> backup;         <span class="cm"># 仅在主服务器全挂时使用</span>
+}
+
+<span class="kw">server</span> {
+    <span class="kw">listen</span> <span class="num">80</span>;
+    <span class="kw">location</span> / {
+        <span class="fn">proxy_pass</span> http://backend;
+        <span class="fn">proxy_next_upstream</span> error timeout http_500;
+    }
+}</code></pre>
+    </div>
+
+    <h2>粘性会话(Sticky Sessions)</h2>
+    <p>有些应用把会话状态存在服务器上(进程内缓存、进行中的文件上传)。<strong>粘性会话</strong>(也叫会话保持)确保某客户端的请求总去同一后端。负载均衡器通常通过在客户端首次请求时设 cookie、在后续请求读它来实现。</p>
+    <p>粘性会话是双刃剑:它改善与有状态应用的兼容性,但降低负载的均匀分布并使故障处理复杂化——若粘住的服务器宕机,它的所有会话反正都丢了。首选修法是把会话状态移到共享存储(Redis、数据库),让任何服务器都能处理任何请求。</p>
+
+    <h2>负载均衡器冗余</h2>
+    <p>负载均衡器本身是潜在的单点故障。生产部署用 <strong>active-passive</strong> 或 <strong>active-active</strong> 对,常配一个在节点间浮动的<strong>虚拟 IP(VIP)</strong>。DNS 或 BGP 把 VIP 路由到活跃节点;若它故障,被动节点通过 VRRP(HAProxy + Keepalived)等协议或更新 DNS 记录在数秒内接管 VIP。</p>
+
+    <h2>一致性哈希(Consistent Hashing)</h2>
+    <p>IP 哈希和简单的取模路由有一个灾难性缺陷:增删一台服务器几乎会重排所有客户端分配。若你有 10 台服务器加 1 台,模 11 对大多数 key 产生完全不同的目标——突然 90% 的缓存 key 在新服务器映射上未命中,在后端造成 thundering herd。<strong>一致性哈希</strong>通过把服务器和请求都映射到一个环形哈希环来解决:增删一台服务器只影响它与最近邻之间范围内的 key——对 <em>n</em> 台服务器大约 <code>1/n</code> 的 key。</p>
+
+    <h3>环怎么工作</h3>
+    <p>每台服务器被哈希到 0–2³²−1 环上的一个或多个点。每个请求 key 也被哈希到环上一个点;请求路由到从该点顺时针走遇到的第一台服务器。用<strong>虚拟节点(vnode)</strong>,每台物理服务器占环上多个点(如每台 150 个 vnode),平滑掉服务器哈希聚集在环某一区域时的不均匀分布。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> hashlib, <span class="fn">bisect</span>
+
+<span class="kw">class</span> <span class="ty">ConsistentHashRing</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, nodes, vnodes=<span class="num">150</span>):
+        self.ring = {}        <span class="cm"># hash → node</span>
+        self.keys = []        <span class="cm"># 排序的哈希值</span>
+        <span class="kw">for</span> node <span class="kw">in</span> nodes:
+            <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(vnodes):
+                h = self.<span class="fn">_hash</span>(f<span class="str">"{node}-{i}"</span>)
+                self.ring[h] = node
+                self.keys.<span class="fn">append</span>(h)
+        self.keys.<span class="fn">sort</span>()
+
+    <span class="kw">def</span> <span class="fn">_hash</span>(self, key):
+        <span class="kw">return</span> <span class="fn">int</span>(hashlib.<span class="fn">md5</span>(key.<span class="fn">encode</span>()).<span class="fn">hexdigest</span>(), <span class="num">16</span>)
+
+    <span class="kw">def</span> <span class="fn">get_node</span>(self, key):
+        h = self.<span class="fn">_hash</span>(key)
+        idx = bisect.<span class="fn">bisect</span>(self.keys, h) % <span class="fn">len</span>(self.keys)
+        <span class="kw">return</span> self.ring[self.keys[idx]]   <span class="cm"># 顺时针后继</span></code></pre>
+    </div>
+
+    <p>一致性哈希被用于:分布式缓存(Memcached、Redis Cluster)、CDN 边缘服务器、数据库分片路由器,以及 Kafka 的分区分配。每当会话亲和性或缓存局部性重要、且你需要增删节点而不造成灾难性 key 重映射时,它就是答案。</p>
+
+    <h2>L4 vs L7——更深入</h2>
+    <p>高层区别众所周知,但实现细节决定每种场景该选哪个。</p>
+
+    <h3>第四层的底层</h3>
+    <p>L4 负载均衡器在 TCP/UDP 传输层工作。它看到源 IP、目的 IP、源端口、目的端口——别的什么都看不到。两种主流转发策略是:</p>
+    <ul>
+      <li><strong>NAT 模式</strong>——LB 把目的 IP 改写成所选后端的 IP、把源 IP 改写成自己的地址,这样后端回复给 LB,再由 LB 翻译回去。简单但加一跳网络。</li>
+      <li><strong>直接服务器返回(DSR)</strong>——LB 只改写目的 MAC 地址(或用隧道),让后端直接回复客户端,在返回路径上绕过 LB。响应流量(对 HTTP 通常是请求流量的 10–100 倍)从不经过 LB。这就是 Google 的 Maglev 和 Facebook 基于 IPVS 的 LB 实现每秒百万包吞吐的方式——让 LB 完全离开高流量返回路径。</li>
+    </ul>
+
+    <h3>第七层的底层</h3>
+    <p>L7 负载均衡器终止来自客户端的 TCP 连接,读取 HTTP/gRPC/WebSocket 请求,基于内容做路由决策,再与后端建立一条独立的 TCP 连接。这种双连接模型使得 L4 无法提供的特性成为可能:</p>
+    <ul>
+      <li><strong>请求级路由</strong>——<code>POST /api/orders</code> → 订单服务;<code>GET /api/products</code> → 商品服务。</li>
+      <li><strong>头操作</strong>——加 <code>X-Request-ID</code>、改写 <code>Host</code>、在发给后端前剥离内部头。</li>
+      <li><strong>TLS 终止</strong>——在 LB(或服务网格 sidecar)解密,检查明文,可选地重新加密到后端(TLS origination)。集中证书管理。</li>
+      <li><strong>认证卸载</strong>——在 LB 校验 JWT 或 API key,只把已认证请求转发给后端。</li>
+      <li><strong>限流和熔断</strong>——按客户端/API key 计数请求,在到达后端前拒绝超额。</li>
+      <li><strong>gRPC 负载均衡</strong>——L4 LB 无法在一条长连接的 HTTP/2 内均衡单个 gRPC 调用;只有理解 HTTP/2 帧的 L7 代理才能把调用分摊到后端。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">gRPC 与 HTTP/2</div>
+      <p>gRPC 在单条长连接 HTTP/2 上多路复用许多调用。L4 负载均衡器把整条连接路由到一个后端——该连接上的所有调用都落到同一台服务器,彻底破坏了负载均衡。修法是用理解 HTTP/2 的 L7 代理(Envoy、带 gRPC 代理模块的 Nginx、Linkerd)把单个 gRPC 帧分摊到后端。</p>
+    </div>
+
+    <h2>SSL/TLS 终止策略</h2>
+    <p>负载均衡架构中处理 TLS 有三种标准方式,各有不同的安全/性能取舍:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>描述</th><th>优点</th><th>缺点</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">在 LB 终止 TLS</td><td>LB 解密流量;后端收到明文 HTTP</td><td>集中证书管理;LB 能按内容检查/路由;后端更简单</td><td>内部流量不加密;LB 成了解密 oracle</td></tr>
+        <tr><td class="col-a">TLS 透传(L4)</td><td>LB 转发加密字节;后端终止 TLS</td><td>端到端加密;LB 从不见明文</td><td>无法做 L7 路由;每后端管理证书</td></tr>
+        <tr><td class="col-b">TLS 重加密</td><td>LB 终止来自客户端的 TLS,再开一条新 TLS 连接到后端</td><td>两段都加密;LB 能检查和路由</td><td>CPU 成本更高;要管两对证书</td></tr>
+      </tbody>
+    </table>
+
+    <p>大多数云架构用<strong>边缘 LB 的 TLS 终止</strong>(AWS ALB、Cloudflare)结合<strong>内部 mTLS</strong>(服务间的双向 TLS,由 Istio 或 Linkerd 等服务网格强制)。这给你边缘的 L7 路由、集中的公网证书管理,以及端到端加密,而无需手工管理后端证书。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">nginx</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># TLS 终止 + 重加密到后端</span>
+<span class="kw">server</span> {
+    <span class="kw">listen</span> <span class="num">443</span> ssl;
+    <span class="fn">ssl_certificate</span>     /etc/ssl/certs/api.example.com.crt;
+    <span class="fn">ssl_certificate_key</span> /etc/ssl/private/api.example.com.key;
+    <span class="fn">ssl_protocols</span>       TLSv1.2 TLSv1.3;
+    <span class="fn">ssl_ciphers</span>         <span class="str">ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256</span>;
+
+    <span class="kw">location</span> / {
+        <span class="fn">proxy_pass</span>              https://backend;  <span class="cm"># 重加密到后端</span>
+        <span class="fn">proxy_ssl_verify</span>        on;
+        <span class="fn">proxy_ssl_trusted_certificate</span> /etc/ssl/certs/internal-ca.crt;
+        <span class="fn">proxy_ssl_session_reuse</span> on;              <span class="cm"># 复用 TLS 会话以提性能</span>
+    }
+}</code></pre>
+    </div>
+
+    <h2>健康检查——高级配置</h2>
+    <p>基础健康检查发一个 TCP SYN 或对 <code>/health</code> 的 HTTP GET。生产中,"进程还活着"和"进程能服务生产流量"之间的间隙正是大多数故障藏身之处。高级健康检查设计弥合这个间隙。</p>
+
+    <h3>健康检查端点设计</h3>
+    <p>设计良好的 <code>/health</code> 端点应检查所有关键依赖——数据库连通性、缓存可用性、下游服务可达性——并返回带每依赖状态的结构化 JSON。这让负载均衡器能区分"服务器彻底死了"(TCP 失败)和"服务器活着但数据库挂了"(HTTP 503),据此路由。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// GET /health/readiness — 就绪返回 200 OK,否则 503</span>
+{
+  <span class="str">"status"</span>: <span class="str">"degraded"</span>,
+  <span class="str">"checks"</span>: {
+    <span class="str">"database"</span>:  { <span class="str">"status"</span>: <span class="str">"up"</span>,   <span class="str">"latency_ms"</span>: <span class="num">3</span>   },
+    <span class="str">"cache"</span>:     { <span class="str">"status"</span>: <span class="str">"up"</span>,   <span class="str">"latency_ms"</span>: <span class="num">0.5</span> },
+    <span class="str">"payment_gw"</span>:{ <span class="str">"status"</span>: <span class="str">"down"</span>, <span class="str">"latency_ms"</span>: <span class="num">5000</span> }
+  }
+}</code></pre>
+    </div>
+
+    <h3>HAProxy 健康检查配置</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">haproxy</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">backend</span> api_servers
+    <span class="fn">balance</span> leastconn
+    <span class="fn">option</span> httpchk GET /health/readiness
+    <span class="fn">http-check</span> expect status 200
+    <span class="fn">default-server</span> inter <span class="num">5s</span> fall <span class="num">3</span> rise <span class="num">2</span>   <span class="cm"># 每 5s 检查;3 次失败=down,2 次成功=up</span>
+    <span class="fn">server</span> api1 10.0.0.1:<span class="num">8080</span> check weight <span class="num">10</span>
+    <span class="fn">server</span> api2 10.0.0.2:<span class="num">8080</span> check weight <span class="num">10</span>
+    <span class="fn">server</span> api3 10.0.0.3:<span class="num">8080</span> check weight <span class="num">5</span>   <span class="cm"># 小实例——权重减半</span>
+    <span class="fn">server</span> api4 10.0.0.4:<span class="num">8080</span> check backup      <span class="cm"># 仅在所有主服务器全挂时激活</span></code></pre>
+    </div>
+
+    <h2>DNS 负载均衡与全局流量管理</h2>
+    <p>基于 DNS 的负载均衡完全在网络层之上工作:DNS 服务器给不同客户端返回不同的 A 记录,把它们分散到服务器池或地理区域。它是全局流量管理和多区域部署的基础。</p>
+
+    <h3>DNS LB 怎么工作</h3>
+    <p>你域名的权威 DNS 服务器根据策略返回不同 IP 地址——跨 IP 的简单轮询,或基于解析器 IP 的地理路由。客户端在 TTL 期间(常 30–300 秒)缓存响应,然后重新解析。这在 DNS 层、任何 TCP 连接建立之前,创造了天然的负载分布。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">dns</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 简单 DNS 轮询:连续查询返回不同 IP</span>
+api.example.com.  30  IN  A  54.1.2.3    <span class="cm"># US-East LB VIP</span>
+api.example.com.  30  IN  A  52.4.5.6    <span class="cm"># US-West LB VIP</span>
+api.example.com.  30  IN  A  13.7.8.9    <span class="cm"># EU-West LB VIP</span>
+
+<span class="cm"># DNS TTL = 30s:客户端缓存 30s,然后重新解析到不同 IP</span>
+<span class="cm"># 低 TTL 实现快速故障转移,但增加 DNS 查询负载</span></code></pre>
+    </div>
+
+    <h3>DNS LB 的局限</h3>
+    <ul>
+      <li><strong>TTL 缓存</strong>——客户端和中间解析器在 TTL 期间缓存 DNS 响应。若一台服务器宕机,缓存了它 IP 的客户端会在最多 TTL 秒内一直尝试连接它,才拿到更新记录。设 TTL=0 有帮助但许多解析器忽略它。</li>
+      <li><strong>无连接状态</strong>——DNS 对服务器负载、连接数或响应时间一无所知。活着但过载的服务器继续接收它那份流量。</li>
+      <li><strong>默认粘性</strong>——长生命周期应用解析一次就把结果缓存在自己的连接池里。无论 TTL 如何,它们好几个小时都不会重新解析。</li>
+    </ul>
+
+    <h3>GeoDNS 与基于延迟的路由</h3>
+    <p>AWS Route 53、Cloudflare、Akamai 等服务给 DNS 加上地理智能:它们识别解析器的位置(通常代理用户位置)并返回最近的健康端点 IP。欧洲用户把 <code>api.example.com</code> 解析到法兰克福 IP;新加坡用户解析到新加坡 IP。结合把不健康端点移出轮转的健康检查,GeoDNS 除了延迟优化还提供区域级故障转移。</p>
+
+    <h2>Anycast 与全局负载均衡</h2>
+    <p><strong>Anycast</strong> 是一种路由技术:同一个 IP 地址通过 BGP 从多个地理位置同时通告。互联网的路由协议自然把包送到拓扑上最近的源——来自欧洲的流量到达欧洲 PoP,来自亚洲的到达亚洲 PoP,全都指向同一目的 IP。这就是 CDN 和 DDoS 清洗服务的工作方式:一个 IP 地址出现在数百个边缘位置。</p>
+
+    <p>Anycast 与 DNS LB 有一个重要区别:路由决策在网络层(BGP)做,不在应用层。没有 TTL 缓存问题——包在每一跳被路由到最近 PoP。而且因为 PoP 故障时 BGP 在数秒内重新收敛,故障转移比等 DNS TTL 过期更快更可靠。</p>
+
+    <div class="callout">
+      <div class="callout-label">cloudflare 示例</div>
+      <p>Cloudflare 从全球 300+ 数据中心通告同一个 IP 地址(如其 DNS 解析器的 <code>1.1.1.1</code>,或其 CDN 的 anycast 网络)。东京用户连到东京边缘节点;圣保罗用户连到圣保罗边缘节点——全都指向同一 IP。这就是规模化的 Anycast:用单个 IP 地址实现全局负载分布和容错。</p>
+    </div>
+
+    <h2>会话保持深入</h2>
+    <p>粘性会话有几种实现变体,取舍差异显著。理解它们对生产运维和面试中讨论有状态应用都重要。</p>
+
+    <h3>基于 Cookie 的亲和性</h3>
+    <p>负载均衡器在客户端首次请求时设一个 cookie(如 <code>SERVERID=api2</code>)。后续请求,LB 读 cookie 并路由到指定后端。这是最常见且最灵活的方式——它跨 IP 变化也能工作(移动客户端切网络)、不暴露后端 IP,且 cookie TTL 控制亲和性持续多久。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">haproxy</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">backend</span> web_servers
+    <span class="fn">balance</span> roundrobin
+    <span class="fn">cookie</span> SERVERID insert indirect nocache   <span class="cm"># LB 管理的粘性 cookie</span>
+    <span class="fn">server</span> web1 10.0.0.1:<span class="num">80</span> check cookie <span class="str">web1</span>
+    <span class="fn">server</span> web2 10.0.0.2:<span class="num">80</span> check cookie <span class="str">web2</span>
+    <span class="fn">server</span> web3 10.0.0.3:<span class="num">80</span> check cookie <span class="str">web3</span></code></pre>
+    </div>
+
+    <h3>IP 哈希亲和性</h3>
+    <p>对客户端 IP 哈希以确定性选后端。无 cookie 开销,但在网络间漫游的移动客户端会被重分配,而企业客户端(许多用户在一个 NAT IP 后)全落到同一后端。增删服务器会改变与 1/n 成比例的客户端的哈希结果(假设一致性哈希)或几乎所有客户端(朴素取模)。</p>
+
+    <h3>正确修法:外置会话状态</h3>
+    <p>两种方式都是对一个更深层问题的权宜之计:会话状态存在应用服务器内存里。生产级解法是把会话状态移到共享、快速的存储如 Redis 或 Memcached。任何后端都能处理任何请求,因为会话从外部存储查,而非本地内存。这实现了真正弹性的横向扩展:增删服务器而无任何客户端可见的中断。</p>
+
+    <h2>高可用与故障转移模式</h2>
+    <p>本身有单点故障的负载均衡器解决了错误的问题。生产 LB 配置用两种高可用模式之一。</p>
+
+    <h3>带 VIP 的 Active-Passive</h3>
+    <p>两个负载均衡器节点共享一个<strong>虚拟 IP(VIP)</strong>。正常运行时,只有活跃节点占据 VIP 并处理所有流量。被动节点通过心跳(VRRP、keepalived)监视活跃节点。若活跃节点在可配置窗口内未发心跳,被动节点通过 gratuitous ARP 占据 VIP 并接管。故障转移通常在 1–2 秒内完成。AWS Elastic Load Balancer、Google Cloud LB、Azure Load Balancer 在内部管理这套——你从不见 VIP 机制。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># keepalived.conf(VRRP active-passive LB 对)</span>
+vrrp_instance VI_1 {
+    state MASTER            <span class="cm"># 被动节点设为 BACKUP</span>
+    interface eth0
+    virtual_router_id <span class="num">51</span>
+    priority <span class="num">110</span>           <span class="cm"># 优先级越高越优先做 master;BACKUP = 100</span>
+    advert_int <span class="num">1</span>           <span class="cm"># VRRP 心跳每 1s</span>
+    authentication {
+        auth_type PASS
+        auth_pass <span class="str">secret123</span>
+    }
+    virtual_ipaddress {
+        <span class="num">203.0.113.10</span>        <span class="cm"># 两节点竞争的 VIP</span>
+    }
+    track_script {
+        chk_haproxy         <span class="cm"># haproxy 进程死掉则降级</span>
+    }
+}</code></pre>
+    </div>
+
+    <h3>Active-Active</h3>
+    <p>两个 LB 节点同时处理流量,通常通过两个 VIP 间的 DNS 轮询或上游 Anycast 地址。总吞吐翻倍。故障时,存活节点吸收所有流量。取舍:配置和状态同步稍复杂(若要 TCP 会话无缝挺过故障转移,连接表必须复制)。</p>
+
+    <h2>算法对比与选择指南</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>算法</th><th>最适合</th><th>弱点</th><th>复杂度</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">轮询</td><td>请求成本均匀、服务器相同</td><td>请求时长不同或服务器容量不同则不均</td><td>O(1)</td></tr>
+        <tr><td class="col-a">加权轮询</td><td>异构服务器容量</td><td>仍忽略当前负载;静态权重需手动调</td><td>O(1)</td></tr>
+        <tr><td class="col-a">最少连接</td><td>请求时长可变(long-polling、流式)</td><td>所有新连接同时发给一台空闲服务器(恢复时 thundering herd)</td><td>O(log n)</td></tr>
+        <tr><td class="col-b">IP 哈希</td><td>无 cookie 开销的会话亲和性</td><td>增删服务器时重排;NAT 客户端造成热点</td><td>O(1)</td></tr>
+        <tr><td class="col-b">一致性哈希</td><td>规模化的会话亲和性 + 缓存局部性</td><td>无 vnode 时分布略不均;实现更复杂</td><td>O(log n)</td></tr>
+        <tr><td class="col-b">随机</td><td>无状态请求的超大同质池</td><td>小池无保证;不感知服务器负载</td><td>O(1)</td></tr>
+        <tr><td style="color:var(--accent)">最短响应时间</td><td>延迟敏感 API;按实际响应速度加权</td><td>需要主动测量开销;可能放大 thundering herd</td><td>O(log n)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>现代架构中的负载均衡</h2>
+
+    <h3>服务网格(Service Mesh)</h3>
+    <p>在微服务架构中,<strong>服务网格</strong>(Istio、Linkerd、Consul Connect)把负载均衡逻辑从中心 LB 设备移到一个与每个应用 Pod 并行运行的 sidecar 代理(通常是 Envoy)。每个 sidecar 拦截所有入站和出站流量,应用负载均衡、重试、熔断和 mTLS——应用代码毫不知情。控制平面(Istio 的 istiod、Linkerd 的控制平面)把配置更新分发给所有 sidecar。</p>
+    <p>优势:在每个服务间调用都做带每请求路由决策的 L7 负载均衡,而非只在边缘。代价:每个 Pod 现在有一个消耗约 50–100 MB RAM、每跳加约 1–2 ms 延迟的 sidecar。</p>
+
+    <h3>AWS Application Load Balancer——关键特性</h3>
+    <ul>
+      <li><strong>基于内容的路由</strong>——按路径(<code>/api/*</code> → ECS 服务)、host 头、query string 或 HTTP 方法路由。</li>
+      <li><strong>目标组加权</strong>——把 10% 流量发给新服务版本做金丝雀部署。</li>
+      <li><strong>Lambda 目标</strong>——把特定路径路由到 Lambda 函数,在一个 LB 后混合容器化和 serverless 后端。</li>
+      <li><strong>WebSocket 和 HTTP/2 支持</strong>——ALB 足够连接感知,能维持长连接 WebSocket 并分发 HTTP/2 流。</li>
+      <li><strong>WAF 集成</strong>——挂上 AWS WAF,在流量到达后端前在 LB 阻断常见攻击模式。</li>
+    </ul>
+
+    <h2>常见坑与最佳实践</h2>
+    <ul>
+      <li><strong>永远别忘了 LB 是 SPOF</strong>——跑 active-passive 或 active-active 对。100 个高可用后端前的单个 LB,让整个架构的可用性不超过那个 LB。</li>
+      <li><strong>健康检查要紧的东西,不只是 TCP 端口开着</strong>——进程可能在 8080 监听,而它的数据库连接池已耗尽。检查 <code>/health/readiness</code>,不只 TCP SYN。</li>
+      <li><strong>设置连接排空(deregistration delay)</strong>——从池移除后端时,允许进行中的请求完成(通常 30–300 秒)再关闭连接。AWS ALB 叫它"deregistration delay";Nginx 用 <code>proxy_next_upstream</code> 结合优雅关闭。</li>
+      <li><strong>DNS LB 的低 TTL 不等于即时故障转移</strong>——解析器忽略 TTL 下限,浏览器缓存,OS stub 解析器缓存。即便 30 秒 TTL,也要为 DNS 变更完全传播预留 60–120 秒。</li>
+      <li><strong>监控后端队列深度,不只连接数</strong>——最少连接算法路由到连接最少的服务器,但处理慢的 30 秒 DB 查询的服务器比服务快速 50ms 请求的连接更少。对延迟敏感层,最短响应时间或队列深度指标更准确。</li>
+      <li><strong>把健康检查流量与生产流量分开</strong>——每秒对 50 个后端猛敲 <code>/health</code> 的吵闹健康检查产生 50 req/秒负载。用一个做最少工作的轻量端点,并把依赖检查结果缓存几秒。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>需要路径路由、TLS 终止或头检查的 HTTP 负载选第七层。需要裸 TCP 吞吐、非 HTTP 协议或通过直接服务器返回获极致性能选第四层。按请求同质性选算法:均匀负载用轮询,可变负载用最少连接,缓存局部性和会话亲和性用一致性哈希。始终至少跑两个 active-passive 或 active-active 配置的负载均衡器,以免引入你本要消除的那个 SPOF。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>L4 vs L7——何时选哪个?</strong>L4 用于裸 TCP 吞吐、非 HTTP 协议,或需要直接服务器返回让返回流量绕开 LB 时;L7 用于需要基于路径的路由、TLS 终止、gRPC 支持或基于头的决策时。<br>
+      <strong>负载均衡器怎么检测故障服务器?</strong>主动健康检查(按计划对 /health 的合成探测)或被动健康检查(从真实流量的 5xx 错误率推断)。主动检查检测流量前故障;被动检查检测进行中故障。<br>
+      <strong>粘性会话为什么是问题?</strong>它们降低负载分布、使扩展复杂化,并意味着该服务器宕机时所有会话数据都丢——修法是把会话状态外置到 Redis,让任何服务器处理任何请求。<br>
+      <strong>一致性哈希是什么、何时用?</strong>把服务器和请求映射到环;增删服务器只影响约 1/n 的 key,而非重排一切。用于分布式缓存、CDN、数据库分片和 Kafka 分区分配。<br>
+      <strong>Anycast 怎么工作?</strong>同一 IP 通过 BGP 从多个地理 PoP 通告;互联网路由自然把包送到拓扑最近的 PoP——无 DNS 解析、无 TTL 缓存、PoP 宕机时亚秒级故障转移。<br>
+      <strong>L4 LB 为什么不能均衡 gRPC 流量?</strong>gRPC 在单条 HTTP/2 连接上多路复用许多调用;L4 LB 把整条连接路由到一个后端。只有理解 HTTP/2 帧的 L7 代理才能把单个调用分摊到后端。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/kubernetes/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Kubernetes (k8s)</div>
+      </a>
+      <a href="/tech-stacks/caching/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">缓存 (Caching)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 Apache Kafka——分布式事件流平台:发布/订阅模型、生产者/消费者、分区与副本、acks 与 ISR、消费者组与再均衡、日志压实、KRaft、性能调优、Kafka Streams/Connect 与 Schema Registry。">
+<title>Apache Kafka | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/kafka/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/kafka/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/kafka/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/kafka/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Apache Kafka">
+<meta property="og:description" content="分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/kafka/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Apache Kafka">
+<meta name="twitter:description" content="Kafka 怎么工作:分区与副本、acks/ISR、消费者组再均衡、日志压实、KRaft。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Apache Kafka","description":"分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。","datePublished":"2023-03-31","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/kafka/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/kafka/">EN</a>
+        <a href="/zh/tech-stacks/kafka/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">kafka</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">Apache Kafka</h1>
+    <div class="article-meta">
+      <span>2023年3月31日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Kafka 是一个开源的<strong>分布式事件流平台</strong>,被数千家公司用于高性能数据管道、流式分析、数据集成和关键业务应用。它的核心是一个<strong>发布/订阅(pub/sub)</strong>系统:生产者把消息写入主题(topic),消费者从它们关心的主题读取。它远远超出了 ActiveMQ 或 RabbitMQ 这类传统消息队列。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>是日志,不是队列</strong>——消息被读取后仍然保留;每个消费者跟踪自己的 offset。</li>
+        <li><strong>分区(partition)</strong>带来横向扩展和按 key 的有序性。</li>
+        <li><strong>消费者组(consumer group)</strong>带来并行读取——每个成员一个分区。</li>
+        <li><strong>acks + ISR + 幂等</strong>把持久性一路调到 exactly-once。</li>
+        <li><strong>之所以快</strong>:顺序写、页缓存(page cache)、零拷贝(zero-copy)。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Kafka 是一个持久、分区、带副本的提交日志(commit log)。生产者把记录追加到分区,消费者按自己的节奏拉取,复制 + acks 给你可调的持久性——从 fire-and-forget 到 exactly-once。</p>
+    </div>
+
+    <h2>主要用途</h2>
+    <ul>
+      <li><strong>削峰缓冲</strong>——在高峰窗口吸收突发(外卖的午餐高峰、电商的闪购),让下游服务不被压垮。</li>
+      <li><strong>服务解耦</strong>——把数据源和消费者分开;Kafka MirrorMaker 在数据湖和可用区之间搬运数据。</li>
+      <li><strong>异步通信</strong>——把非关键工作从请求路径上卸下,改善用户侧延迟。</li>
+    </ul>
+
+    <h2>发布/订阅模型</h2>
+    <p>不同类别的消息从各种生产者流入不同的<strong>主题(topic)</strong>。与传统队列不同,消息<strong>在被消费后仍然保留</strong>——Kafka 独立于任何单个消费者管理生命周期,所以多个消费者可以在不同的 offset 读同一个主题。</p>
+
+    <h2>生产者架构</h2>
+    <p>生产者用一个 <code>ProducerRecord</code>(消息包装)调用 <code>.send()</code>。流程:</p>
+    <ul>
+      <li><strong>序列化器(serializer)</strong>把消息转成字节流(自定义序列化器,或通过 Schema Registry 用 Protobuf/Avro)。</li>
+      <li><strong>分区器(partitioner)</strong>决定目标分区,实现跨集群的分布式存储和并行处理。</li>
+      <li>记录在发送前先排进<strong>RecordAccumulator</strong>(内存)。两个旋钮控制时机:<code>BATCH_SIZE_CONFIG</code>(队列阈值)和 <code>LINGER_MS_CONFIG</code>(最大等待)。</li>
+      <li><strong>Sender</strong> 创建网络客户端并等待 <code>acks</code> 确认。</li>
+    </ul>
+
+    <h2>消费者模型</h2>
+    <p>Kafka 用<strong>拉(pull)</strong>模型——消费者按自己的节奏请求数据,比推(push)更解耦。许多独立消费者可以读同一个主题,但<strong>同一个消费者组内的消费者不能共享一个分区</strong>:整个组表现为一个逻辑订阅者,每个分区恰好被一个成员拥有。</p>
+
+    <h2>分区与副本</h2>
+    <p>并行来自把一个主题拆成分散在多台服务器上的<strong>分区</strong>。<code>DefaultPartitioner</code> 用 <code>hash(key) % num_partitions</code>;自定义实现重写 <code>partition()</code>。</p>
+    <p>每个分区是一个<strong>追加写日志</strong>,按 1 GB 分段,每 4 KB 一条稀疏索引记录以便快速查找。保留策略(<code>log.retention.hours/minutes/ms</code>,默认 7 天)根据 <code>log.cleanup.policy</code> 删除或压实旧数据。复制通过 leader/follower 方案防范单点故障。</p>
+
+    <h2>系统可靠性</h2>
+    <h3>acks</h3>
+    <p>这个生产者侧设置控制一条记录在被视为写入成功前必须被多少个 broker 接收——核心的持久性/吞吐取舍:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>设置</th><th>行为</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>acks=0</td><td>记录一发送就算成功——不等 broker 响应。最快,最不持久。</td></tr>
+        <tr><td>acks=1</td><td>一旦 <strong>leader</strong> 收到记录就算成功。</td></tr>
+        <tr><td>acks=all (-1)</td><td>只有所有同步副本(ISR)确认后才算成功。若 ISR 掉线,流式会阻塞。<code>min.insync.replicas=n</code> 保证最少的副本数。</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <div class="callout-label">可靠传输</div>
+      <p>要持久投递:<code>acks=-1</code>、<code>num_partitions &gt; 1</code>、<code>min.insync.replicas &gt; 1</code>。</p>
+    </div>
+
+    <h3>重试与投递语义</h3>
+    <p>Kafka ≥ 2.1 的 <code>RETRIES_CONFIG</code> 默认是 <code>MAX_INT</code>。重试若不加管理会有重复风险:</p>
+    <ul>
+      <li><strong>At-Least-Once(至少一次)</strong>——<code>acks=-1</code>;消息绝不丢失但可能重复。</li>
+      <li><strong>At-Most-Once(至多一次)</strong>——<code>acks=0</code>;无重复但消息可能丢失。</li>
+      <li><strong>Exactly-Once(恰好一次)</strong>——At-Least-Once + 幂等。每个生产者拿到一个唯一的 Producer Id(PID),每条消息有单调递增的序列号。Broker 跟踪每个分区最大的 <code>&lt;PID, sequence&gt;</code> 并拒绝重复(<code>enable.idempotence=true</code>)。<code>TransactionManager</code> 加上类数据库的 <code>beginTransaction()</code>/<code>commitTransaction()</code> 包住 <code>.send()</code>。</li>
+    </ul>
+
+    <h3>副本</h3>
+    <p>多个 follower 从 leader 同步。生产者只写 leader;follower 从它拉取。<strong>ISR</strong> 列出同步中的 follower;落后超过 <code>replica.lag.time.max.ms</code> 的 follower 移到 <strong>OSR</strong>。ISR + OSR = 已分配副本(AR)。leader 故障时,从 ISR 选出新 leader。每个副本跟踪自己的 <strong>LEO</strong>(Log End Offset)以衡量同步进度。</p>
+
+    <h2>高速读写</h2>
+    <ul>
+      <li><strong>集群计算</strong>——生产者和消费者都并行处理。</li>
+      <li><strong>稀疏索引</strong>——<code>.index</code> 文件加速读取。</li>
+      <li><strong>追加写日志</strong>——只做顺序写,远快于随机访问。</li>
+      <li><strong>页缓存(Page Cache)</strong>——操作系统把文件元数据/索引缓存在内存,数据在磁盘;Kafka 依赖这种分层方式而非自建缓存。</li>
+      <li><strong>零拷贝(Zero-copy)</strong>——数据从读缓冲直接传到 socket 缓冲,跳过用户/内核上下文切换。(SSL 下这个优势消失,因为 broker 必须解密再重新加密。)</li>
+    </ul>
+
+    <h2>ZooKeeper</h2>
+    <p>分布式系统的协调服务。对 Kafka,它跟踪集群节点状态和主题/消息元数据。五项主要功能:</p>
+    <ul>
+      <li><strong>Controller 选举</strong>——选第一个既在 AR 又在 ISR 的 broker(<code>/kafka/controller</code>)。</li>
+      <li><strong>集群成员</strong>——列出存活的 broker(<code>/kafka/brokers/ids</code>)。</li>
+      <li><strong>主题配置</strong>——存储完整主题细节(<code>/kafka/brokers/topics/{topic}/partitions/{id}/state</code>)。</li>
+      <li><strong>访问控制列表(ACL)</strong>。</li>
+      <li><strong>配额(Quotas)</strong>——监控每客户端的读写额度。</li>
+    </ul>
+
+    <h2>CLI 示例</h2>
+    <p>创建一个 2 分区、复制因子 3 的主题:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># test.config → bootstrap.servers=localhost:9092</span>
+kafka-topics \
+  --bootstrap-server localhost:9092 \
+  --command-config ./test.config \
+  --topic test1 \
+  --create \
+  --replication-factor <span class="num">3</span> \
+  --partitions <span class="num">2</span></code></pre>
+    </div>
+
+    <p>生产带 key 的消息,然后从头消费:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 生产者</span>
+kafka-console-producer \
+  --topic test1 \
+  --broker-list localhost:9092 \
+  --property parse.key=true \
+  --property key.separator=:
+<span class="cm"># > key:{"val":0}</span>
+
+<span class="cm"># 消费者</span>
+kafka-console-consumer \
+  --topic test1 \
+  --bootstrap-server localhost:9092 \
+  --property print.key=true \
+  --from-beginning</code></pre>
+    </div>
+
+    <h2>消费者组与再均衡</h2>
+    <p><strong>消费者组</strong>是 Kafka 并行消费的单位。组里每个消费者实例被分到一个互不相交的分区子集,整个组一起消费完整主题。给一个 5 分区的主题加上第 6 个消费者,那个消费者会闲着——没有多余分区可分。这个约束故意保持简单:它意味着每个分区在每个组里恰好有一个权威 offset,进度永远不含糊。</p>
+
+    <h3>再均衡协议</h3>
+    <p>只要组成员变化就触发再均衡(rebalance):有新消费者加入、一个现有的崩溃或超过 <code>session.timeout.ms</code>、主题加了新分区,或应用调了 <code>unsubscribe()</code>。再均衡期间,<strong>Group Coordinator</strong>(为每个消费者组选出的一个 broker)停止所有消费、撤销分区分配,然后重新分配。代价是一次暂停——有时几秒——期间不处理消息。因此尽量减少再均衡的频率和时长是一个重要的运维关注点。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 调这些来减少不必要的再均衡</span>
+<span class="fn">session.timeout.ms</span>=<span class="num">45000</span>        <span class="cm"># 静默的消费者多久后被判定为死</span>
+<span class="fn">heartbeat.interval.ms</span>=<span class="num">15000</span>     <span class="cm"># 必须 &lt; session.timeout.ms / 3</span>
+<span class="fn">max.poll.interval.ms</span>=<span class="num">300000</span>    <span class="cm"># 两次 poll() 之间的最大间隔,超过则被踢出</span>
+<span class="fn">partition.assignment.strategy</span>=<span class="str">org.apache.kafka.clients.consumer.CooperativeStickyAssignor</span></code></pre>
+    </div>
+
+    <h3>Eager vs. Cooperative 再均衡</h3>
+    <p>经典的 <strong>eager</strong> 再均衡(<code>RangeAssignor</code> 和 <code>RoundRobinAssignor</code> 用的)在任何重分配开始前撤销<em>所有</em>分区分配——一次全局 stop-the-world 暂停。Kafka 2.4+ 引入了<strong>协作式粘性再均衡协议</strong>(<code>CooperativeStickyAssignor</code>):消费者只撤销需要移动的分区,保留它继续持有的那些。这通常对不涉及重分配的消费者完全消除暂停,并让分区分配保持"粘性"以最小化不必要的状态迁移。</p>
+
+    <div class="callout">
+      <div class="callout-label">坑</div>
+      <p><code>max.poll.interval.ms</code> 是隐形杀手。如果你的 <code>poll()</code> 循环耗时超过它(比如消息处理下游有个慢的数据库写),broker 会以为消费者死了并触发再均衡。修法:要么调大超时,要么更好地把慢工作移到单独线程、让 poll 循环保持轻快。</p>
+    </div>
+
+    <h3>静态组成员</h3>
+    <p>Kafka 2.3+ 加了 <code>group.instance.id</code>,给消费者一个跨重启的持久身份。有了静态成员,一个崩溃后在 <code>session.timeout.ms</code> 内重新加入的消费者无需再均衡就能收回它原来的分区——对容器化负载(部署时 pod 频繁重启)是个重要优化。</p>
+
+    <h2>日志压实(Log Compaction)</h2>
+    <p>Kafka 的保留有两种口味。默认的 <strong>delete</strong> 策略只是删除比 <code>log.retention.hours</code> 旧(或超过大小阈值)的段。<strong>日志压实(log compaction)</strong>根本不同:它不按时间丢弃消息,而是只保留<em>每个 key 的最新消息</em>,形成一个行为像最终一致键值存储的压实日志。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 为用户画像变更日志创建一个压实主题</span>
+kafka-topics \
+  --bootstrap-server localhost:9092 \
+  --topic user-profiles \
+  --create \
+  --partitions <span class="num">12</span> \
+  --replication-factor <span class="num">3</span> \
+  --config <span class="fn">cleanup.policy</span>=<span class="str">compact</span> \
+  --config <span class="fn">min.cleanable.dirty.ratio</span>=<span class="num">0.1</span> \
+  --config <span class="fn">segment.ms</span>=<span class="num">86400000</span>    <span class="cm"># 每天滚动一个新段</span></code></pre>
+    </div>
+
+    <h3>日志清理器怎么工作</h3>
+    <p>broker 的后台<strong>日志清理器(log cleaner)</strong>线程扫描每个分区的"脏"(最近写入)部分。它们在内存建一个 offset 映射(key → 最新 offset),然后只把脏部分里每个 key 的最新记录拷进一个新的"干净"段,丢弃较旧的重复。结果:压实日志只随不同的 key 增长,而不随时间增长。</p>
+
+    <p>一条特殊的<strong>墓碑消息(tombstone)</strong>——key 非空、value 为 <code>null</code> 的记录——表示删除。压实后,连墓碑最终也会被移除(在 <code>delete.retention.ms</code> 之后),所以读压实日志的消费者看到该 key 被彻底抹掉。</p>
+
+    <div class="callout">
+      <div class="callout-label">用例</div>
+      <p>日志压实驱动 <strong>Kafka Streams 的状态存储</strong>和<strong>changelog 主题</strong>。当一个 KTable 在崩溃后重建时,应用只重放压实日志——而非完整历史——来重建当前状态。数据库 CDC 主题(Debezium)也用压实,让下游消费者能从每个主键的最新行镜像引导。</p>
+    </div>
+
+    <h2>KRaft——没有 ZooKeeper 的 Kafka</h2>
+    <p>ZooKeeper 多年作为 Kafka 的集群协调层:controller 选举、broker 成员、主题元数据。但它引入了一个独立的运维依赖、独立的扩展关注点,以及集群启动时的瓶颈。<strong>KRaft</strong>(Kafka Raft Metadata 模式),Kafka 2.8 引入、从 3.3 起生产可用,用 Kafka 自带的 Raft 共识实现完全替代了 ZooKeeper。</p>
+
+    <h3>架构转变</h3>
+    <p>在 KRaft 下,一部分 broker 被指定为 <strong>controller</strong>。它们运行一个专用的元数据分区(主题 <code>__cluster_metadata</code>),通过 Raft 协议复制。活跃的 controller 就是 Raft leader。所有集群元数据——broker 注册、主题配置、分区 leader——都活在这个单一日志里,而非散布在 ZooKeeper znode 中。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># KRaft server.properties(broker+controller 合一节点)</span>
+<span class="fn">process.roles</span>=<span class="str">broker,controller</span>
+<span class="fn">node.id</span>=<span class="num">1</span>
+<span class="fn">controller.quorum.voters</span>=<span class="str">1@kafka1:9093,2@kafka2:9093,3@kafka3:9093</span>
+<span class="fn">listeners</span>=<span class="str">PLAINTEXT://:9092,CONTROLLER://:9093</span>
+<span class="fn">inter.broker.listener.name</span>=<span class="str">PLAINTEXT</span>
+<span class="fn">controller.listener.names</span>=<span class="str">CONTROLLER</span>
+<span class="fn">log.dirs</span>=<span class="str">/var/lib/kafka/data</span></code></pre>
+    </div>
+
+    <h3>KRaft 的好处</h3>
+    <ul>
+      <li><strong>单一运维足迹</strong>——一个系统部署、监控、升级,而非两个。</li>
+      <li><strong>启动和 leader 选举更快</strong>——元数据已在 Kafka 日志里;无需 ZooKeeper epoch 握手。大集群重启从几分钟降到几秒。</li>
+      <li><strong>更高分区数</strong>——ZooKeeper 在约 20 万分区以上吃力;KRaft 瞄准百万级。元数据日志随 Kafka 自己的存储扩展,而非 ZooKeeper 内存常驻的 znode。</li>
+      <li><strong>简化安全</strong>——一套 TLS/SASL 配置,而非 Kafka 和 ZooKeeper 各一套。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">迁移路径</div>
+      <p>Kafka 3.5+ 支持<strong>迁移模式</strong>,让你不停机就把现有的基于 ZooKeeper 的集群转成 KRaft:过渡期同时运行两个协调器,等所有元数据都在 KRaft 后再下线 ZooKeeper。生产中绝不要跳过这个双写阶段。</p>
+    </div>
+
+    <h2>性能调优参数</h2>
+    <p>Kafka 的默认值是保守的。真实世界的调优瞄准三个维度:<strong>生产者吞吐</strong>、<strong>消费者延迟(lag)</strong>、<strong>持久性保证</strong>。下面这些参数是最关键的杠杆。</p>
+
+    <h3>生产者调优</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 吞吐优化的生产者</span>
+<span class="fn">acks</span>=<span class="str">all</span>                   <span class="cm"># 持久写到所有 ISR 副本</span>
+<span class="fn">enable.idempotence</span>=<span class="str">true</span>    <span class="cm"># 去重重试,生产者会话内 exactly-once</span>
+<span class="fn">linger.ms</span>=<span class="num">5</span>               <span class="cm"># 最多等 5ms 攒批;0 = 立即发送</span>
+<span class="fn">batch.size</span>=<span class="num">65536</span>          <span class="cm"># 64 KB 批;越大往返越少、延迟越高</span>
+<span class="fn">compression.type</span>=<span class="str">lz4</span>     <span class="cm"># lz4 CPU/压缩比最佳;snappy 也常见</span>
+<span class="fn">buffer.memory</span>=<span class="num">67108864</span>   <span class="cm"># 64 MB 内存缓冲;高量生产者调大</span>
+<span class="fn">max.in.flight.requests.per.connection</span>=<span class="num">5</span>  <span class="cm"># 开了幂等时 &gt;1 也没问题</span></code></pre>
+    </div>
+
+    <h3>消费者调优</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="fn">fetch.min.bytes</span>=<span class="num">1024</span>         <span class="cm"># 等到有 1 KB 可用;减少 fetch 往返</span>
+<span class="fn">fetch.max.wait.ms</span>=<span class="num">500</span>        <span class="cm"># 等待 fetch.min.bytes 满足的最大时间</span>
+<span class="fn">max.poll.records</span>=<span class="num">500</span>         <span class="cm"># 每次 poll() 的记录数;处理慢就调小</span>
+<span class="fn">auto.offset.reset</span>=<span class="str">earliest</span>  <span class="cm"># 首次运行:从最旧开始;latest = 只读尾部</span>
+<span class="fn">enable.auto.commit</span>=<span class="str">false</span>    <span class="cm"># 手动提交以实现 exactly-once 处理语义</span></code></pre>
+    </div>
+
+    <h3>Broker 与主题调优</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># broker 级</span>
+<span class="fn">num.io.threads</span>=<span class="num">8</span>             <span class="cm"># I/O 线程数;设成磁盘数</span>
+<span class="fn">num.network.threads</span>=<span class="num">3</span>       <span class="cm"># 网络请求线程</span>
+<span class="fn">socket.send.buffer.bytes</span>=<span class="num">102400</span>
+<span class="fn">socket.receive.buffer.bytes</span>=<span class="num">102400</span>
+<span class="fn">log.flush.interval.messages</span>=<span class="num">10000</span>  <span class="cm"># 每 1 万条 fsync;交给 OS 性能最佳</span>
+
+<span class="cm"># 通过 kafka-configs 做主题级覆盖</span>
+kafka-configs --bootstrap-server localhost:<span class="num">9092</span> \
+  --alter --entity-type topics --entity-name <span class="str">orders</span> \
+  --add-config <span class="fn">retention.ms</span>=<span class="num">604800000</span>,<span class="fn">min.insync.replicas</span>=<span class="num">2</span></code></pre>
+    </div>
+
+    <h2>Kafka vs. RabbitMQ vs. Apache Pulsar</h2>
+    <p>选对消息系统是你能做的最高杠杆的架构决策之一。Kafka、RabbitMQ、Pulsar 各占设计空间里不同的一点。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">Kafka</th><th class="col-b">RabbitMQ</th><th style="color:var(--accent)">Pulsar</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>消息模型</td><td class="col-a">持久日志——消费后保留;消费者可在任意 offset 重放</td><td class="col-b">队列——确认后消息被删除</td><td style="color:var(--accent)">日志 + 队列统一:主题由持久日志支撑,队列作为游标抽象</td></tr>
+        <tr><td>吞吐</td><td class="col-a">靠顺序磁盘 I/O 每集群每秒百万级消息</td><td class="col-b">每队列约 5 万–10 万 msg/s(受内存限制)</td><td style="color:var(--accent)">靠 Apache BookKeeper 存储,与 Kafka 相当</td></tr>
+        <tr><td>延迟</td><td class="col-a">调好批处理后个位数 ms;开 linger 更高</td><td class="col-b">p50 亚毫秒(无批处理开销)</td><td style="color:var(--accent)">通常 5–15 ms;地理复制更高</td></tr>
+        <tr><td>路由</td><td class="col-a">主题 + 分区 key;无基于内容的路由</td><td class="col-b">通过 exchange 丰富路由(direct、fanout、topic、headers)</td><td style="color:var(--accent)">命名空间 + 主题层级;无 exchange 路由</td></tr>
+        <tr><td>重放</td><td class="col-a">原生——在保留窗口内 seek 到任意 offset</td><td class="col-b">不支持——消费过的消息没了</td><td style="color:var(--accent)">原生——由 BookKeeper ledger 支撑</td></tr>
+        <tr><td>多租户</td><td class="col-a">命名空间(有限)</td><td class="col-b">虚拟主机</td><td style="color:var(--accent)">一等公民:租户 → 命名空间 → 主题,带配额</td></tr>
+        <tr><td>地理复制</td><td class="col-a">MirrorMaker 2(异步)</td><td class="col-b">Shovel / Federation 插件</td><td style="color:var(--accent)">内建、同步的跨数据中心复制</td></tr>
+        <tr><td>运维复杂度</td><td class="col-a">中等(KRaft 去掉 ZK 依赖)</td><td class="col-b">低——优秀的管理 UI、易上手</td><td style="color:var(--accent)">高——历史上 Kafka + ZooKeeper + BookKeeper 三件套</td></tr>
+        <tr><td>最适合</td><td class="col-a">事件流、CDC、审计日志、高吞吐管道</td><td class="col-b">任务队列、RPC 模式、复杂路由、低延迟任务</td><td style="color:var(--accent)">多租户 SaaS、原生地理复制、PB 级分层存储</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">选型指南</div>
+      <p>需要重放、高吞吐、CDC 或事件溯源时选 <strong>Kafka</strong>。需要复杂路由逻辑、任务队列或亚毫秒延迟时选 <strong>RabbitMQ</strong>。需要内建跨数据中心地理复制,或带每命名空间配额隔离的真多租户时选 <strong>Pulsar</strong>——代价是显著更高的运维复杂度。</p>
+    </div>
+
+    <h2>Kafka Streams 与 Kafka Connect</h2>
+    <p>Kafka 不只是消息代理——它是整个流处理生态的基础。两个组件把它延伸得最远:<strong>Kafka Streams</strong> 在你的 JVM 应用内做流处理,<strong>Kafka Connect</strong> 做即插即用的数据管道连接器。</p>
+
+    <h3>Kafka Streams</h3>
+    <p>Kafka Streams 是一个轻量<strong>客户端库</strong>(不是集群),用于构建流处理应用。不像 Apache Flink 或 Spark Streaming,没有单独的处理集群要管——库跑在你的应用进程里,从输入主题读、把结果写到输出主题。容错靠把状态(窗口聚合、连接表)存在磁盘上的 RocksDB,并由一个 Kafka changelog 主题支撑,用于崩溃后恢复。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">java</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="ty">StreamsBuilder</span> builder = <span class="kw">new</span> <span class="fn">StreamsBuilder</span>();
+
+<span class="cm">// 从 "orders" 主题读,按 userId 分组,在 5 分钟窗口内计数</span>
+<span class="ty">KStream</span>&lt;<span class="ty">String</span>, <span class="ty">Order</span>&gt; orders = builder.<span class="fn">stream</span>(<span class="str">"orders"</span>);
+orders
+  .<span class="fn">groupByKey</span>()
+  .<span class="fn">windowedBy</span>(<span class="ty">TimeWindows</span>.<span class="fn">ofSizeWithNoGrace</span>(<span class="ty">Duration</span>.<span class="fn">ofMinutes</span>(<span class="num">5</span>)))
+  .<span class="fn">count</span>()
+  .<span class="fn">toStream</span>()
+  .<span class="fn">to</span>(<span class="str">"orders-per-user-5min"</span>);  <span class="cm">// 把结果写回 Kafka</span>
+
+<span class="ty">KafkaStreams</span> streams = <span class="kw">new</span> <span class="fn">KafkaStreams</span>(builder.<span class="fn">build</span>(), props);
+streams.<span class="fn">start</span>();</code></pre>
+    </div>
+
+    <p>Kafka Streams 的关键概念:</p>
+    <ul>
+      <li><strong>KStream</strong>——无界的记录流;每条记录是独立事件。</li>
+      <li><strong>KTable</strong>——把流看作变更日志;每个 key 的值是它的最新更新(像物化视图)。</li>
+      <li><strong>GlobalKTable</strong>——完整复制到每个实例的 KTable(适合无需重分区的广播连接)。</li>
+      <li><strong>Stream-Table Join</strong>——用查找表的当前状态丰富每个事件;连接是本地的,因为两者按 key 同分区。</li>
+      <li><strong>窗口</strong>——tumbling(不重叠)、hopping(重叠)、session(活动驱动)、sliding 窗口,用于基于时间的聚合。</li>
+      <li><strong>Exactly-once</strong>——Kafka Streams 通过横跨 Kafka 读和写的事务支持端到端 exactly-once 语义。</li>
+    </ul>
+
+    <h3>Kafka Connect</h3>
+    <p>Kafka Connect 是一个可扩展、容错的框架,用于在 Kafka 和外部系统(数据库、对象存储、搜索引擎、SaaS API)之间搬数据,无需写自定义代码。连接器有两种:<strong>source 连接器</strong>从外部系统读、写入 Kafka(如 Debezium PostgreSQL CDC、S3 source),<strong>sink 连接器</strong>从 Kafka 读、写入外部系统(如 Elasticsearch sink、Snowflake sink、JDBC sink)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"name"</span>: <span class="str">"postgres-orders-cdc"</span>,
+  <span class="str">"config"</span>: {
+    <span class="str">"connector.class"</span>: <span class="str">"io.debezium.connector.postgresql.PostgresConnector"</span>,
+    <span class="str">"database.hostname"</span>: <span class="str">"db.prod.internal"</span>,
+    <span class="str">"database.port"</span>: <span class="str">"5432"</span>,
+    <span class="str">"database.user"</span>: <span class="str">"debezium"</span>,
+    <span class="str">"database.dbname"</span>: <span class="str">"orders"</span>,
+    <span class="str">"table.include.list"</span>: <span class="str">"public.orders,public.inventory"</span>,
+    <span class="str">"topic.prefix"</span>: <span class="str">"cdc"</span>,
+    <span class="str">"plugin.name"</span>: <span class="str">"pgoutput"</span>,
+    <span class="str">"slot.name"</span>: <span class="str">"debezium_orders"</span>,
+    <span class="str">"publication.name"</span>: <span class="str">"dbz_publication"</span>
+  }
+}</code></pre>
+    </div>
+
+    <p>Connect 作为一个 worker 集群运行,把连接器任务分摊到各 worker。若一个 worker 失败,它的任务被重新分配给存活的 worker——和消费者组再均衡完全相同的机制。这意味着 Connect 靠加 worker 横向扩展,并在节点故障时无需运维介入就能存活。</p>
+
+    <h2>Schema Registry 与 Avro</h2>
+    <p>随着 schema 演化,Kafka 主题里的裸字节会变成维护噩梦。<strong>Confluent Schema Registry</strong>(或 AWS Glue Schema Registry)存储 Avro、Protobuf 或 JSON Schema 定义,并给每个版本分配一个数字 ID。生产者通过在载荷前缀嵌入 4 字节 schema ID 来序列化消息;消费者按 ID 查 schema 来反序列化。这实现了<strong>带兼容性检查的 schema 演化</strong>:registry 拒绝与已注册版本向后或向前不兼容的新 schema 版本,防止独立部署的服务之间悄悄的数据损坏。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">avro</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"type"</span>: <span class="str">"record"</span>,
+  <span class="str">"name"</span>: <span class="str">"OrderEvent"</span>,
+  <span class="str">"namespace"</span>: <span class="str">"com.example.orders"</span>,
+  <span class="str">"fields"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"orderId"</span>,  <span class="str">"type"</span>: <span class="str">"string"</span> },
+    { <span class="str">"name"</span>: <span class="str">"userId"</span>,   <span class="str">"type"</span>: <span class="str">"string"</span> },
+    { <span class="str">"name"</span>: <span class="str">"totalCents"</span>, <span class="str">"type"</span>: <span class="str">"long"</span> },
+    { <span class="str">"name"</span>: <span class="str">"currency"</span>, <span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"default"</span>: <span class="str">"USD"</span> }
+  ]
+}</code></pre>
+    </div>
+
+    <h2>常见坑与最佳实践</h2>
+
+    <h3>分区数——选对它</h3>
+    <p>分区是 Kafka 的并行单位,创建后不能减少(只能增加)。选太少会封顶你的消费者吞吐上限;选太多浪费内存并增加再均衡时间。一个粗略起点:按你 broker 的磁盘带宽,每分区瞄准 1–3 MB/s 吞吐,并大致每个你预期峰值运行的消费者实例配 1 个分区。一个常见错误是为"保持简单"用单分区建主题——这让组里除一个外的每个消费者都闲着。</p>
+
+    <h3>Offset 管理</h3>
+    <p>用 <code>enable.auto.commit=true</code> 时,offset 会被周期性提交,而不管消费者是否真的处理了消息。在提交和下游写之间崩溃意味着消息被永久跳过。用 <code>enable.auto.commit=false</code>,只在你的处理完成且持久化后才提交 offset。要 exactly-once,把下游写和 offset 提交包进一个 Kafka 事务。</p>
+
+    <h3>消费者 lag 监控</h3>
+    <p>消费者 lag——最新生产 offset 和消费者已提交 offset 之间的差距——是 Kafka 消费者的首要运维健康指标。持续增长且不回落的 lag 表示要么消费者慢,要么生产突然飙升。用 Kafka 内建的 consumer group describe、Confluent 的 Kafka Consumer Lag Exporter,或 LinkedIn 的 Burrow 监控它。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 查看一个消费者组所有分区的 lag</span>
+kafka-consumer-groups \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+
+<span class="cm"># 示例输出</span>
+<span class="cm"># GROUP                   TOPIC  PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG</span>
+<span class="cm"># order-processing-group  orders  0          1023440         1023441         1</span>
+<span class="cm"># order-processing-group  orders  1          998772          999201          429  ← lag 在涨!</span></code></pre>
+    </div>
+
+    <h3>避免常见反模式</h3>
+    <ul>
+      <li><strong>每种事件一个主题,而非所有东西一个主题</strong>——把无关事件类型混在一个主题里,迫使消费者反序列化并过滤它们不关心的消息,还阻碍独立的保留策略。</li>
+      <li><strong>别在 Kafka 里存大载荷</strong>——消息保持在 1 MB 以内;更大的载荷(图片、报表)存 S3,只把引用 URL 放进 Kafka。默认 <code>message.max.bytes</code> 是 1 MB 是有原因的。</li>
+      <li><strong>别把 Kafka 当数据库</strong>——虽然日志压实近似一个 KV 存储,Kafka 没有随机访问读路径。要查找,把压实日志物化进 Redis 或数据库。</li>
+      <li><strong>给毒丸消息用死信主题</strong>——一条反序列化失败的畸形消息,若你的消费者在它上面崩溃,会永远阻塞一个分区。把失败消息路由到专用 DLQ 主题并告警。</li>
+    </ul>
+
+    <h2>真实使用场景</h2>
+    <p>理解组织为何选 Kafka——而非更简单的队列——能巩固你在面试里何时推荐它。</p>
+    <ul>
+      <li><strong>LinkedIn</strong>(Kafka 起源)——用户活动跟踪:每次页面浏览、点击、投递都发布到主题,喂给实时仪表盘、推荐模型和 A/B 测试分析。重放至关重要:一个模型重训练作业能扫 30 天的原始事件。</li>
+      <li><strong>Uber</strong>——数百万司机的地理位置更新以每秒数百万事件流经 Kafka 主题。Kafka 把司机 app 与调度、地图、动态定价服务解耦。主题保留 7 天,任何落后的下游服务都能追上。</li>
+      <li><strong>Netflix</strong>——生产数据库的 CDC 流经 Debezium 进入 Kafka,再进 Elasticsearch 做搜索、进 S3 的 Iceberg 表做分析。Kafka 的保留窗口给分析管道一个 Spark 作业失败时的恢复窗口。</li>
+      <li><strong>电商结账管道</strong>——典型的系统设计例子:订单服务发布一个 <code>OrderCreated</code> 事件,独立的消费者分别处理库存扣减、支付、通知派发和推荐信号记录——全部独立扩展、故障隔离。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>把 Kafka 想成一个带副本的日志,不是队列。分区给你横向扩展和按 key 的有序;消费者组给你并行读;<code>acks</code> + ISR + 幂等让你把持久性从 fire-and-forget 一路调到 exactly-once。KRaft 把 ZooKeeper 从方程里去掉;日志压实把主题变成持久的 KV 变更日志;Kafka Streams 和 Connect 补齐一个无需外部依赖的完整流式生态。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>Kafka 怎么保证 exactly-once?</strong>幂等生产者(PID + 序列号防止重试时重复)加上把 produce + offset 提交原子地包进 <code>beginTransaction()</code>/<code>commitTransaction()</code> 的事务。<br>
+      <strong>Kafka 为什么这么快?</strong>顺序追加写 + OS 页缓存(避免双重缓冲)+ 零拷贝 sendfile 系统调用 + 批量压缩。<br>
+      <strong>什么触发消费者组再均衡?</strong>成员加入/离开、超过 session 超时(<code>session.timeout.ms</code>)、超过 max poll 间隔(<code>max.poll.interval.ms</code>),或分区数变化。用 <code>CooperativeStickyAssignor</code> 让再均衡增量化而非 stop-the-world。<br>
+      <strong>日志压实 vs 保留?</strong>保留按时间/大小删旧段;压实只保留每个 key 的最新记录——实质是一个持久的 KV 变更日志。空值墓碑表示删除。<br>
+      <strong>Kafka vs RabbitMQ?</strong>Kafka 用于高吞吐事件流、重放和 CDC;RabbitMQ 用于复杂路由、任务队列和亚毫秒延迟需求。<br>
+      <strong>KRaft 是什么、为何重要?</strong>Kafka 内建的 Raft 元数据层,替代 ZooKeeper,去掉独立依赖、支持百万级分区、把集群启动从分钟降到秒。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/" class="article-nav-card">
+        <div class="article-nav-label">← 返回</div>
+        <div class="article-nav-title">技术栈</div>
+      </a>
+      <a href="/tech-stacks/kubernetes/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">Kubernetes (k8s)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
