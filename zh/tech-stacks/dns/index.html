@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 DNS——名字如何通过递归解析器和权威服务器解析成 IP、层级结构、记录类型、缓存与 TTL、用于负载均衡的 GeoDNS 与 anycast,以及 DNS 的可靠性与安全。">
+<title>DNS — 互联网的名字系统 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/dns/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/dns/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/dns/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/dns/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DNS — 互联网的名字系统">
+<meta property="og:description" content="名字如何解析成 IP、DNS 层级、记录类型、缓存与 TTL、GeoDNS 与 anycast,以及可靠性。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/dns/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DNS — 互联网的名字系统">
+<meta name="twitter:description" content="DNS 怎么工作:解析流程、记录类型、缓存/TTL、GeoDNS 与 anycast。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DNS — 互联网的名字系统","description":"名字如何解析成 IP、DNS 层级、记录类型、缓存与 TTL、GeoDNS 与 anycast,以及可靠性。","datePublished":"2023-09-28","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/dns/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/dns/">EN</a>
+        <a href="/zh/tech-stacks/dns/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">dns</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">DNS</h1>
+    <div class="article-meta">
+      <span>2023年9月28日</span>
+      <span class="separator">·</span>
+      <span>21 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>互联网上的每一次连接都始于一个问题:"这个名字对应的 IP 地址是多少?"域名系统(DNS)回答它。DNS 是互联网那本分布式、层级化、被大量缓存的"电话簿",把 <code>updoggtech.com</code> 变成机器能连接的 IP。它看着像管道,其实也是个强大的基础设施工具——<a href="/tech-stacks/cdn/">CDN</a> 靠它把你路由到最近的边缘,流量靠它在多地区间均衡和故障转移,而它也常是一个被忽视的单点故障。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>DNS 把名字映射到 IP</strong>,经过一个层级:根(root)→ TLD(<code>.com</code>)→ 该域的权威服务器(authoritative)。</li>
+        <li><strong>递归解析器(recursive resolver)替你跑腿</strong>——你的客户端问它,它走遍层级并缓存结果。</li>
+        <li><strong>缓存 + TTL 是关键</strong>——答案在每一层按 TTL 缓存;"DNS 生效(propagation)"其实就是在等旧 TTL 过期。</li>
+        <li><strong>记录类型</strong>编码不同答案——A/AAAA(IPv4/IPv6)、CNAME(别名)、MX(邮件)、TXT、NS。</li>
+        <li><strong>DNS 是基础设施工具</strong>——GeoDNS 返回基于位置的 IP,加权/轮询记录做负载均衡和故障转移。</li>
+        <li><strong>anycast</strong> 让一个 IP 从多地提供服务,是高韧性根服务器和 CDN 的基础。</li>
+        <li><strong>它是单点故障和攻击面</strong>——DNS 宕机看起来像"一切都挂了";DNSSEC 和 DoH/DoT 加上完整性与隐私。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>DNS 通过走一个层级(根 → TLD → 权威)把主机名解析成 IP,由递归解析器干活并按 TTL 缓存结果。记录(A、CNAME、MX…)持有答案。除解析外,DNS 是个路由工具:GeoDNS 和加权/轮询记录用于引导和均衡流量,anycast 让一个 IP 从多地提供服务。因为几乎一切都依赖它,DNS 是出了名的单点故障——用多家解析商、谨慎设 TTL、上 DNSSEC/加密 DNS。</p>
+    </div>
+
+    <h2>问题:名字到地址</h2>
+    <p>人记得住 <code>github.com</code>;机器把数据包路由到 <code>140.82.x.x</code>。DNS 是两者之间的间接层——而这种间接超越了便利:因为名字→IP 的映射是(在缓存约束下)实时解析的,你可以在不改名字的前提下<em>改变</em>名字指向哪里,这正是迁移、故障转移和地理路由的基础。</p>
+
+    <h2>解析流程</h2>
+    <p>当浏览器需要 <code>updoggtech.com</code> 时,它问一个<strong>递归解析器</strong>(你的 ISP 运营的,或 1.1.1.1 / 8.8.8.8)。如果答案没缓存,解析器替你走遍层级:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">解析 updoggtech.com(缓存未命中)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>客户端 ─▶ 递归解析器
+            ├─▶ 根服务器       : "去问 .com 的 TLD 服务器 → 在这"
+            ├─▶ .com TLD 服务器: "去问 updoggtech.com 的权威服务器 → 在这"
+            ├─▶ 权威服务器      : "updoggtech.com A = 203.0.113.10"  ✓
+            └─ 缓存答案(按其 TTL),返回给客户端
+
+  客户端连接到 203.0.113.10
+  TTL 内的下一次查询 → 直接从解析器缓存返回</code></pre>
+    </div>
+
+    <p>解析器的查询是<em>迭代的</em>(每个服务器把它再往下指一步),而客户端发给解析器的那一次查询是<em>递归的</em>(解析器返回最终答案)。第一次查询触及好几个服务器;TTL 内的后续每次都是缓存命中。</p>
+
+    <h2>层级结构</h2>
+    <p>DNS 是一棵树,这正是它能扩展到数十亿个名字而无需任何单一权威的原因:</p>
+    <ul>
+      <li><strong>根服务器(root)</strong>(顶端的 <code>.</code>)——知道 TLD 服务器在哪。有 13 个根服务器<em>身份</em>,每个都通过 anycast 大规模复制。</li>
+      <li><strong>TLD 服务器</strong>——管理顶级域(<code>.com</code>、<code>.org</code>、<code>.io</code>、国家代码);它们知道每个下属域的权威服务器是谁。</li>
+      <li><strong>权威服务器(authoritative)</strong>——持有某个具体域的实际记录(常由你的 DNS 服务商运营——Route 53、Cloudflare 等)。</li>
+    </ul>
+
+    <h2>记录类型</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>记录</th><th>映射</th><th>示例用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">A / AAAA</td><td>名字 → IPv4 / IPv6</td><td>核心的主机名→地址映射</td></tr>
+        <tr><td class="col-b">CNAME</td><td>名字 → 另一个名字(别名)</td><td>www → 主域;指向 CDN 主机名</td></tr>
+        <tr><td class="col-a">MX</td><td>域 → 邮件服务器</td><td>邮件路由</td></tr>
+        <tr><td class="col-b">NS</td><td>域 → 它的权威服务器</td><td>委派</td></tr>
+        <tr><td class="col-a">TXT</td><td>任意文本</td><td>域名验证、SPF/DKIM</td></tr>
+      </tbody>
+    </table>
+    <p>一个常见坑:<strong>CNAME 不能和同名的其他记录共存</strong>,也不允许放在区域顶点(<code>example.com</code> 本身)——这就是服务商提供 "ALIAS/ANAME" 扁平化来把顶点指向 CDN 的原因。</p>
+
+    <h2>缓存与 TTL</h2>
+    <p>DNS 能扩展是因为答案在每一层都被大量缓存——操作系统、递归解析器、有时浏览器。每条记录带一个 <strong>TTL</strong>(存活时间),告诉缓存保留多久。这是最重要的运维杠杆:</p>
+
+    <div class="callout">
+      <div class="callout-label">"生效"其实就是 TTL</div>
+      <p>当你改了一条 DNS 记录、它"要几小时才生效(propagate)"时,其实没有什么在主动传播——世界各地的缓存只是还在返回<em>旧</em>答案,直到它的 TTL 过期。计划变更时的对策:<strong>提前调低 TTL</strong>(如调到 60s),让缓存快速刷新,改完再调回去。高 TTL 查询快但改动慢;低 TTL 反之。</p>
+    </div>
+
+    <h2>DNS 作为基础设施工具</h2>
+    <p>因为解析器问的是"这个名字对应什么 IP?",权威服务器可以根据是谁在问或当前状况<em>给出不同答案</em>——把 DNS 变成一个路由和负载均衡层:</p>
+    <ul>
+      <li><strong>轮询 / 加权 DNS</strong>——返回多条 A 记录(或轮换/加权)把客户端分散到多台服务器,一个粗糙但真实的负载均衡器(见<a href="/tech-stacks/load-balancing/">负载均衡</a>)。</li>
+      <li><strong>GeoDNS</strong>——根据解析方位置返回不同 IP,把用户送到最近的数据中心/边缘——<a href="/tech-stacks/cdn/">CDN</a> 路由流量的一种方式。</li>
+      <li><strong>DNS 故障转移</strong>——健康检查端点,停止返回挂掉地区的 IP,把流量引开(受 TTL 约束——这也是故障转移要用低 TTL 的原因)。</li>
+    </ul>
+
+    <h2>Anycast</h2>
+    <p><strong>anycast</strong> 是让单个 IP 地址同时从多个物理位置宣告的技术;互联网路由把每个客户端送到拓扑上最近的那个。13 个根服务器实际就靠它跑在全球数百台机器上,CDN 和大型 DNS 服务商也靠它兼得低延迟和韧性——一个位置挂了,路由直接把客户端送到次近的。(对比 GeoDNS 返回不同<em>答案</em>;anycast 用<em>同一个</em> IP,让网络去挑位置。)</p>
+
+    <h2>可靠性与安全</h2>
+    <p>因为几乎一切都始于一次 DNS 查询,DNS 是个高影响的<strong>单点故障</strong>:2016 年的 Dyn 攻击搞垮主流站点,不是攻击它们本身,而是 DDoS 它们的 DNS 服务商。对策:用多家/冗余 DNS 服务商、anycast、合理的 TTL。安全上:明文 DNS 既不认证也不加密,所以 <strong>DNSSEC</strong> 给答案加密码学签名以防伪造/欺骗(缓存投毒),<strong>DoH/DoT</strong>(DNS over HTTPS/TLS)加密查询保护隐私,使中间方看不到也篡改不了你的查询。</p>
+
+    <h2>在系统设计中</h2>
+    <p>DNS 在多数设计里是第一跳:它把用户路由到 CDN 边缘或区域负载均衡器、支持蓝绿/跨区域故障转移(改个名字的指向)、并支撑服务发现(内部服务按名字互相解析,常通过平台的 DNS)。反复出现的面试要点是记住 TTL:任何你想<em>快速</em>改的东西(故障转移、切换),都需要提前设好低 TTL。</p>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>TTL 对变更太高</strong>——如果全世界缓存旧 IP 一整天,你就没法快速故障转移或迁移;提前调低 TTL。</li>
+      <li><strong>把 DNS 当无防护的单点</strong>——单一服务商、无冗余;一次 DNS 宕机看起来像全站宕机。</li>
+      <li><strong>顶点用 CNAME</strong>——不允许;用 ALIAS/ANAME 扁平化。</li>
+      <li><strong>陈旧的否定缓存</strong>——失败(NXDOMAIN)也会被缓存;一个错配可能滞留。</li>
+      <li><strong>延迟预算里忽略 DNS</strong>——一次冷查询会加往返;Web 上用 <code>dns-prefetch</code>/preconnect 帮忙。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>DNS 是从名字到 IP 的层级化、带缓存的查找——根 → TLD → 权威,前面挡着一个递归解析器——而 TTL 主宰着"查询快"与"改动快"之间的取舍。除解析外它还是一个路由层(GeoDNS、加权记录、anycast),用于负载均衡、地理路由和故障转移。把它当关键基础设施对待:冗余服务商、有意的 TTL、DNSSEC/加密 DNS。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>讲一次 DNS 查询。</strong>客户端 → 递归解析器 →(未命中)根 → TLD(.com)→ 权威服务器 → A 记录;解析器按 TTL 缓存并返回 IP。<br>
+      <strong>递归 vs 权威?</strong>递归解析器跑腿并缓存;权威服务器持有某域的真实记录。根/TLD 服务器向下委派。<br>
+      <strong>什么是 "DNS 生效(propagation)"?</strong>不是主动传播——是缓存在返回旧记录直到 TTL 过期。计划变更前先调低 TTL。<br>
+      <strong>GeoDNS vs anycast?</strong>GeoDNS 按位置返回不同 IP;anycast 用一个 IP 从多地宣告、让路由挑最近的。<br>
+      <strong>DNS 为何是可靠性隐患?</strong>一切都始于查询,所以 DNS 宕机看起来像全挂(参见 Dyn 攻击);用冗余服务商、anycast、DNSSEC。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/observability/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">可观测性</div>
+      </a>
+      <a href="/tech-stacks/api-gateway/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">API 网关与服务网格</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

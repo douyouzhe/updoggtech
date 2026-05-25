@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解可观测性——监控与可观测性的区别、三大支柱(指标、日志、追踪)、Prometheus 与 OpenTelemetry、分布式追踪、SLI/SLO/SLA 与错误预算,以及基于症状的告警。">
+<title>可观测性 — 指标、日志与追踪 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/observability/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/observability/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/observability/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/observability/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="可观测性 — 指标、日志与追踪">
+<meta property="og:description" content="监控 vs 可观测性、三大支柱、分布式追踪、OpenTelemetry、SLI/SLO/SLA 与告警。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/observability/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="可观测性 — 指标、日志与追踪">
+<meta name="twitter:description" content="可观测性三大支柱、分布式追踪与基于 SLO 的告警。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"可观测性 — 指标、日志与追踪","description":"监控 vs 可观测性、三大支柱、分布式追踪、OpenTelemetry、SLI/SLO/SLA 与告警。","datePublished":"2023-09-26","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/observability/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/observability/">EN</a>
+        <a href="/zh/tech-stacks/observability/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">observability</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">可观测性</h1>
+    <div class="article-meta">
+      <span>2023年9月26日</span>
+      <span class="separator">·</span>
+      <span>23 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>在单体里,出问题时你读日志、挂调试器。在一个由几十个服务组成的分布式系统里——本站每个设计都是这种——一个用户请求会扇出到很多机器,"为什么慢?"没有单一的地方可看。<strong>可观测性(observability)</strong>就是给系统插桩,让你能从外部回答关于它行为的问题,包括你没预料到的问题。它的基础是<strong>三大支柱</strong>:指标(metrics)、日志(logs)、追踪(traces)。这是我们 <a href="/ddia/chapter-8/">DDIA"分布式系统的麻烦"笔记</a> 的运维另一面。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>监控 vs 可观测性</strong>——监控盯着已知的故障模式(你预设的仪表盘/告警);可观测性让你事后探查<em>未知</em>的问题。</li>
+        <li><strong>三大支柱:指标、日志、追踪。</strong>指标 = 便宜可聚合的数字;日志 = 丰富的离散事件;追踪 = 一个请求跨服务的路径。</li>
+        <li><strong>指标</strong>驱动仪表盘和告警(Prometheus 拉取模型)——但当心<em>基数(cardinality)</em>:高基数标签会让存储爆炸。</li>
+        <li><strong>分布式追踪</strong>用一个透传的 trace ID 跟踪单个请求跨服务,暴露延迟去了哪。</li>
+        <li><strong>用共享的 trace ID 把三支柱关联起来</strong>——这才是真正的威力,指标 → 追踪 → 日志一路跳。</li>
+        <li><strong>SLI/SLO/错误预算</strong>定义"够可靠";告警基于用户可见的<em>症状</em>而非每个内部原因,避免告警疲劳。</li>
+        <li><strong>OpenTelemetry</strong> 是发出这三者的厂商中立标准。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>可观测性给系统插桩,让你能从它的输出理解其内部状态——在请求跨很多服务时至关重要。指标(数值时间序列)驱动仪表盘和告警;日志(离散事件)给细节;追踪用透传的 trace ID 把单个请求跨服务的旅程串起来。关联这三者才能快速排障。用 SLI/SLO 和错误预算定义可靠性,基于症状而非原因告警,并用 OpenTelemetry 统一采集。当心基数和成本。</p>
+    </div>
+
+    <h2>监控 vs 可观测性</h2>
+    <p>两者相关但不同。<strong>监控</strong>是盯着预定义信号找预定义问题——"CPU &gt; 90% 或错误率飙升时告警我"。它回答<em>已知</em>问题(known-unknowns)。<strong>可观测性</strong>是系统的一种属性:它有足够多、足够好、可查询的遥测数据,让你能问你从没预料到的<em>新</em>问题——"为什么只有这一个客户、在这个 API 版本、只在欧盟慢?"(unknown-unknowns)。监控告诉你<em>有</em>问题;可观测性帮你发现<em>为什么</em>,哪怕是新型故障。</p>
+
+    <h2>三大支柱</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>支柱</th><th>是什么</th><th>擅长 / 成本</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">指标(Metrics)</td><td>随时间的数值测量(计数器、仪表、直方图)</td><td>便宜、可聚合,适合告警和趋势;细节低</td></tr>
+        <tr><td class="col-b">日志(Logs)</td><td>带时间戳的离散事件记录</td><td>每条细节丰富;高量时昂贵</td></tr>
+        <tr><td class="col-a">追踪(Traces)</td><td>单个请求跨服务的端到端路径</td><td>显示延迟/错误在哪;常采样</td></tr>
+      </tbody>
+    </table>
+
+    <h2>指标</h2>
+    <p><strong>指标</strong>是随时间测量的数字——请求速率、错误数、延迟分位、队列深度、CPU。它们存储便宜、查询快,因为是<em>聚合</em>的,所以非常适合仪表盘和告警。常见模型是 <strong>Prometheus</strong>,它从每个服务的 <code>/metrics</code> 端点定时<em>拉取(scrape)</em>指标,存为带维度标签的时间序列;<strong>Grafana</strong> 做可视化。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">带标签的指标(Prometheus 风格)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>http_requests_total{service="api", route="/checkout", status="500"}  4271
+http_request_duration_seconds{service="api", quantile="0.99"}       0.842
+
+  告警: rate(http_requests_total{status=~"5.."}[5m]) / rate(all) &gt; 0.01</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">基数陷阱</div>
+      <p>每个唯一的标签值组合都是一条单独的时间序列。给指标加一个高基数标签(如 <code>user_id</code> 或 <code>request_id</code>)可能产生数百万条序列、撑爆存储和查询成本。让指标标签保持低基数(service、route、status)——把高基数标识放进日志/追踪,而不是指标。</p>
+    </div>
+
+    <h2>日志</h2>
+    <p><strong>日志</strong>是离散、带时间戳的事件记录——最丰富、最详细的信号。关键实践是<strong>结构化日志</strong>:把日志发成机器可解析的 key-value/JSON(带 <code>trace_id</code>、<code>user_id</code>、<code>latency_ms</code> 等字段),而非自由文本,这样才能搜索和聚合。日志通常被送往像 <a href="/tech-stacks/elasticsearch/">Elasticsearch</a> 这样的搜索后端(ELK/Elastic 技术栈)或日志服务。它们的弱点是<strong>大规模下成本高</strong>——高量服务产生海量日志数据——所以团队会采样、设保留期、在热路径上克制地打日志。</p>
+
+    <h2>追踪</h2>
+    <p>在分布式系统里,单个请求在很多服务间跳转,指标和日志都看不出那段<em>旅程</em>。<strong>分布式追踪</strong>能:每个请求拿到一个唯一的 <strong>trace ID</strong>,它被透传到请求触及的每个服务,每个工作单元记一个 <strong>span</strong>(带时延、父 span、元数据)。拼起来,这些 span 组成一棵树,精确显示请求在哪花了时间、在哪失败。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">一条 trace = 跨服务的 span(透传 trace_id)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>trace 7f3c… │ POST /checkout                              320ms
+            ├─ api-gateway        ▇▇                        20ms
+            ├─ order-service      ▇▇▇▇▇▇                    90ms
+            │   └─ db: INSERT     ▇▇▇                       55ms  ◀ 慢!
+            └─ payment-service    ▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇          210ms  ◀ 瓶颈
+                └─ 外部 PSP        ▇▇▇▇▇▇▇▇▇▇▇▇▇            190ms</code></pre>
+    </div>
+
+    <p>这条 trace 立刻把延迟定位到 payment 服务的外部调用——任何仪表盘都指不出来。因为追踪每个请求很贵,系统通常会<strong>采样</strong>(保留一部分,或用尾部采样保留有趣/慢/出错的那些)。</p>
+
+    <h2>关联:真正的威力</h2>
+    <p>三大支柱合起来远比分开有用。把它们连起来的纽带是一个共享的 <strong>trace ID</strong>,盖在指标 exemplar、日志和 span 上。排障循环变成:一个<em>指标</em>告警显示错误率上升 → 钻进一个失败请求的<em>追踪</em>看哪个服务坏了 → 跳到那个服务、那个 trace ID 的<em>日志</em>读错误细节。指标(什么 & 何时)→ 追踪(哪里)→ 日志(为什么),全部相连。把这套关联接好,是"有用的可观测性"与"三个互不相连的数据孤岛"之间的区别。</p>
+
+    <h2>SLI、SLO、SLA 与错误预算</h2>
+    <p>可观测性需要一个"健康"的定义,SRE 词汇提供了:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>术语</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">SLI(指标)</td><td>一个衡量质量的实测信号,如延迟 &lt; 200ms 的请求占比,或成功率</td></tr>
+        <tr><td class="col-b">SLO(目标)</td><td>SLI 的目标值,如"30 天内 99.9% 的请求成功"</td></tr>
+        <tr><td class="col-a">SLA(协议)</td><td>对客户的合同承诺,带罚则(通常比 SLO 宽松)</td></tr>
+        <tr><td class="col-b">错误预算</td><td>1 − SLO:允许的不可靠度(0.1%);用它来发布,耗尽就停</td></tr>
+      </tbody>
+    </table>
+    <p><strong>错误预算</strong>是巧妙之处:它把可靠性变成一个可以花的数字。预算内,就快速发布;烧光了(最近故障太多),就冻结高风险改动、稳一稳。它让开发速度和可靠性对齐,而非对立。</p>
+
+    <h2>告警</h2>
+    <p>黄金法则:<strong>基于症状告警,而非原因。</strong>在用户真正受影响时(错误率上升、延迟 SLO 在烧)才呼叫人,而不是每个可能自愈的内部小波动(某个节点 CPU、一次瞬时重试)。基于原因的告警会造成<strong>告警疲劳</strong>——太多呼叫,真正重要的反被忽略。把告警绑到 SLO 燃尽率,让紧急程度匹配用户影响。Google 的"四个黄金信号"(延迟、流量、错误、饱和度)是一组不错的默认监控项。</p>
+
+    <h2>OpenTelemetry</h2>
+    <p>过去每种信号、每家厂商都有自己的 agent 和格式。<strong>OpenTelemetry(OTel)</strong>是如今标准的、厂商中立的框架,用于给代码插桩并以通用格式发出指标、日志、追踪,导出到你选的任何后端(Prometheus、Jaeger、某 SaaS)。它把插桩和后端解耦,所以你插桩一次就能换厂商而不必重新插桩——这正是它成为默认的原因。</p>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>基数爆炸</strong>——高基数指标标签产生数百万序列;把标识放进日志/追踪,别放指标。</li>
+      <li><strong>日志成本</strong>——大规模冗长日志很贵;采样、结构化、设保留期。</li>
+      <li><strong>仪表盘泛滥</strong>——上百个没人看的仪表盘;精选几个对应 SLO 的。</li>
+      <li><strong>告警疲劳</strong>——太多基于原因的呼叫训练人去无视告警;基于症状告警。</li>
+      <li><strong>信号不关联</strong>——指标、日志、追踪在没有共享 trace ID 的孤岛里,排障很慢。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>可观测性是你排查那些复杂到无法手动推理的分布式系统的方式。指标便宜地告诉你出了问题并看趋势;追踪显示跨服务<em>在哪</em>;日志解释<em>为什么</em>——而一个共享的 trace ID 把它们连起来。用 SLO 和错误预算定义可靠性,基于用户可见症状告警以避免疲劳,把采集标准化到 OpenTelemetry,同时提防基数和成本。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>监控 vs 可观测性?</strong>监控盯着已知故障模式(预设仪表盘/告警);可观测性靠丰富遥测让你事后探查未知问题。<br>
+      <strong>三大支柱?</strong>指标(便宜可聚合的数字 → 告警/趋势)、日志(详细的离散事件)、追踪(单个请求跨服务的路径)。用共享 trace ID 关联。<br>
+      <strong>基数陷阱是什么?</strong>高基数指标标签(user_id、request_id)产生海量时间序列、撑爆成本——改放进日志/追踪。<br>
+      <strong>SLI vs SLO vs SLA vs 错误预算?</strong>SLI = 实测信号,SLO = 内部目标,SLA = 客户合同,错误预算 = 1−SLO,你可以花的那点不可靠度。<br>
+      <strong>该基于什么告警?</strong>用户可见的症状(SLO 燃尽、错误率),而非每个内部原因——避免告警疲劳。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/ci-cd/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">CI/CD</div>
+      </a>
+      <a href="/tech-stacks/dns/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">DNS</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

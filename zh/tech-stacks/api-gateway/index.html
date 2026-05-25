@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 API 网关与服务网格——微服务中的横切关注点、南北向 vs 东西向流量、BFF 模式、sidecar 代理模型、mTLS,以及网关与网格的区别。">
+<title>API 网关与服务网格 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/api-gateway/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/api-gateway/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/api-gateway/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/api-gateway/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="API 网关与服务网格">
+<meta property="og:description" content="横切关注点、南北 vs 东西向流量、BFF、sidecar、mTLS,以及网关与网格的区别。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/api-gateway/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="API 网关与服务网格">
+<meta name="twitter:description" content="API 网关与服务网格如何处理路由、认证和服务间流量。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"API 网关与服务网格","description":"横切关注点、南北 vs 东西向流量、BFF、sidecar、mTLS,以及网关与网格的区别。","datePublished":"2023-09-30","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/api-gateway/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/api-gateway/">EN</a>
+        <a href="/zh/tech-stacks/api-gateway/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">api-gateway</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">API 网关与服务网格</h1>
+    <div class="article-meta">
+      <span>2023年9月30日</span>
+      <span class="separator">·</span>
+      <span>22 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>把单体拆成微服务,一个新问题就冒出来:每个服务现在都需要同一套枯燥但关键的机制——认证、限流、TLS、路由、重试、监控指标。在每个服务里重复实现既浪费又不一致。两个模式把它抽到基础设施里:<strong>API 网关</strong>处理从客户端<em>进入</em>系统的流量,<strong>服务网格</strong>处理服务<em>之间</em>的流量。两者合起来让你的服务代码专注于业务逻辑。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>两者都解决横切关注点</strong>——认证、限流、TLS、路由、重试、可观测性——这样单个服务不必各自重造。</li>
+        <li><strong>API 网关 = 前门</strong>——客户端的单一入口,把请求路由到后端服务,并处理认证、限流、TLS 终结和聚合。</li>
+        <li><strong>南北向 vs 东西向</strong>——网关管客户端↔系统(南北向)流量;网格管服务↔服务(东西向)流量。</li>
+        <li><strong>服务网格 = 每服务一个 sidecar 代理</strong>——透明地给内部调用加上 mTLS、重试、负载均衡和指标,由控制平面统一配置所有代理。</li>
+        <li><strong>BFF(Backend for Frontend)</strong>——为每种客户端(Web、移动)定制的网关,塑形响应。</li>
+        <li><strong>代价是多一跳 + 复杂度</strong>——网格尤其会增加延迟和运维负担;别在真正需要前就上。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>API 网关是外部客户端的单一入口:它把请求路由到服务,并集中处理认证、限流、TLS 终结和请求聚合(南北向流量)。服务网格把服务间关注点(mTLS、重试、负载均衡、追踪)下推到部署在每个服务旁边的 sidecar 代理里,由控制平面配置(东西向流量)。两者都把横切逻辑从应用代码里抽出来——代价是多一次网络跳转和运维复杂度。</p>
+    </div>
+
+    <h2>问题:横切关注点</h2>
+    <p>在微服务架构里,有一组关注点适用于<em>每个</em>服务:验证调用方是谁(认证/鉴权)、限制滥用流量、终结 TLS、路由请求、重试瞬时失败、发出指标/追踪。如果每个团队都把这些烤进自己的服务,你会得到重复劳动,以及——更糟——不一致:十个略有差异的限流器、五种认证实现、参差不齐的可观测性。解法是把这些关注点提升到一个共享层。<em>放在哪</em>取决于流量的方向。</p>
+
+    <h2>南北向 vs 东西向流量</h2>
+    <p>来自网络的一个有用心智模型:</p>
+    <ul>
+      <li><strong>南北向</strong>流量跨越你系统的边界——外部客户端打进来(以及响应出去)。<strong>API 网关</strong>坐在这里,在边缘。</li>
+      <li><strong>东西向</strong>流量在你的内部服务<em>之间</em>流动。<strong>服务网格</strong>管这个。</li>
+    </ul>
+    <p>网关是把守的前门;网格是内部的道路网。它们互补,不竞争。</p>
+
+    <h2>API 网关</h2>
+    <p><strong>API 网关</strong>是坐在你后端服务前面的单一入口。客户端只和网关说话,网关认证并把每个请求路由到正确的服务,并施加边缘策略。它的职责:</p>
+    <ul>
+      <li><strong>路由</strong>——把进入的路径/主机映射到后端服务。</li>
+      <li><strong>认证与鉴权</strong>——在边缘一次性校验 token/key(常用 <a href="/tech-stacks/oauth/">OAuth/JWT</a>),这样服务信任网关。</li>
+      <li><strong>限流与节流</strong>——保护后端免于滥用和过载。</li>
+      <li><strong>TLS 终结</strong>——在边缘处理 HTTPS。</li>
+      <li><strong>请求聚合</strong>——把对多个服务的调用合并成一个客户端响应(减少移动端的碎片往返)。</li>
+      <li><strong>协议转换</strong>——如对外暴露 REST,对内说 <a href="/tech-stacks/grpc/">gRPC</a>。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">API 网关:单一前门</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>客户端 ─▶ ┌─────────────── API 网关 ─────────────────┐
+          │ TLS 终结 · 认证 · 限流 · 路由             │
+          └───┬──────────────┬──────────────┬─────────┘
+              ▼              ▼              ▼
+         order-svc      user-svc       payment-svc
+   (服务信任网关;它们不必各自重新认证客户端)</code></pre>
+    </div>
+
+    <h3>BFF 模式</h3>
+    <p>一个 Web 应用、一个移动应用、一个合作方 API,常常想要同一批后端数据的不同形状。<strong>Backend for Frontend(BFF)</strong> 模式为每种客户端跑一个<em>独立</em>的网关,各自把聚合和响应塑形裁剪到该客户端的需要——所以移动 BFF 可以返回紧凑、省电的载荷,而 Web BFF 返回更丰富的,而不必把后端服务撑胖。</p>
+
+    <h2>服务网格</h2>
+    <p>网关管边缘,但在一个大系统内部,服务之间不停互相调用,这些调用需要同样的可靠性和安全特性。<strong>服务网格</strong>提供它们,而<em>不</em>改应用代码,用的是 <strong>sidecar</strong> 模式:在每个服务实例旁边部署一个小代理(如 Envoy),该服务的<em>所有</em>网络流量都流经它的 sidecar。这些 sidecar(<strong>数据平面</strong>)由一个<strong>控制平面</strong>(如 Istio、Linkerd)集中配置。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">服务网格:sidecar 代理 + 控制平面</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>          ┌── 控制平面(配置、策略、证书) ──┐
+          │            Istio / Linkerd          │
+          ▼                                      ▼
+   ┌─ 服务 A ──┐   mTLS、重试、负载均衡、指标  ┌─ 服务 B ──┐
+   │ app │代理 │◀═══════════════════════════▶│ 代理 │ app │
+   └─────┴─────┘   (A↔B 全部流量经 sidecar)  └─────┴─────┘
+
+   app 代码只是普通调用 "B";sidecar 干其余的</code></pre>
+    </div>
+
+    <p>因为每次调用都过 sidecar,网格透明地提供:<strong>双向 TLS(mTLS)</strong>(自动加密 + 认证服务间通信)、<strong>重试、超时、熔断</strong>、<strong>客户端负载均衡</strong>、流量切换(用于 <a href="/tech-stacks/ci-cd/">金丝雀部署</a>),以及统一的<strong>可观测性</strong>(每一跳都被追踪/度量——见<a href="/tech-stacks/observability/">可观测性</a>)。应用对此毫无察觉;它只是调用"服务 B",sidecar 处理加密、重试和路由。</p>
+
+    <h2>网关 vs 网格</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>API 网关</th><th>服务网格</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>流量</td><td class="col-a">南北向(客户端 ↔ 系统)</td><td class="col-b">东西向(服务 ↔ 服务)</td></tr>
+        <tr><td>形态</td><td class="col-a">中心化的边缘服务</td><td class="col-b">每服务一个 sidecar + 控制平面</td></tr>
+        <tr><td>主要职责</td><td class="col-a">认证、限流、路由、聚合</td><td class="col-b">mTLS、重试、负载均衡、流量切换</td></tr>
+        <tr><td>面向客户端?</td><td class="col-a">是——外部客户端</td><td class="col-b">否——仅内部</td></tr>
+        <tr><td>例子</td><td class="col-a">Kong、NGINX、AWS API Gateway</td><td class="col-b">Istio、Linkerd(Envoy 数据平面)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>取舍与何时用哪个</h2>
+    <p>两者都增加一次网络跳转和运维件,所以并不免费。一旦你有多个对客户端暴露的服务,<strong>API 网关</strong>几乎总是值得的——光是集中认证和限流就够理由(只是别让它变成一个塞满业务逻辑的臃肿单体;只放横切关注点)。<strong>服务网格</strong>更重:sidecar 给每次内部调用加延迟,控制平面是实打实的运维复杂度。它在<em>规模</em>上回报——几十个以上的服务、你想要统一的 mTLS、重试和可观测性而不去碰每个代码库时——但对少数几个服务就是过度设计,一个好网关加几个库就够了。诚实的面试答案:当跨多个服务的横切需求超过网格的运维成本时才上,而不是默认就上。</p>
+
+    <div class="callout">
+      <div class="callout-label">sidecar 的取舍</div>
+      <p>sidecar 的超能力——透明拦截所有流量——也是它的代价:每个请求现在要多穿两个代理(调用方的 sidecar → 被调方的 sidecar),增加延迟和 CPU。较新的"无 sidecar"/ambient 网格设计试图降低这个开销,但透明与多一跳之间的根本张力依然存在。</p>
+    </div>
+
+    <h2>常见坑</h2>
+    <ul>
+      <li><strong>网关变单体</strong>——把业务逻辑塞进网关又重造了你拆掉的那个单体;只放横切关注点。</li>
+      <li><strong>网关成单点故障</strong>——它在所有流量的关键路径上;让它高可用并放在<a href="/tech-stacks/load-balancing/">负载均衡器</a>后面。</li>
+      <li><strong>过早上网格</strong>——为五个服务上服务网格,增加的复杂度比它消除的还多。</li>
+      <li><strong>对延迟无感</strong>——额外的跳(网关 + 两个 sidecar)会累加;度量它们引入的尾延迟。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>API 网关和服务网格都把横切关注点从服务里抽出来——网关在南北向边缘(为外部客户端做认证、限流、路由、聚合),网格在东西向内部流量上(用 sidecar 做 mTLS、重试、负载均衡、可观测性)。早点上网关;只在服务多到让网格的统一性值回它的延迟和运维成本时,才上网格。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>API 网关 vs 服务网格?</strong>网关处理南北向(客户端→系统)流量、作为中心化边缘;网格通过 sidecar 代理处理东西向(服务→服务)流量。<br>
+      <strong>网关做什么?</strong>单一入口:路由、认证、限流、TLS 终结、请求聚合、协议转换。<br>
+      <strong>什么是 sidecar 模式?</strong>部署在每个服务旁的代理,拦截它所有流量,在不改应用代码的情况下加上 mTLS/重试/负载均衡/指标;控制平面配置所有 sidecar。<br>
+      <strong>什么是 BFF?</strong>为每种客户端(Web、移动)定制的网关,裁剪聚合和响应形状。<br>
+      <strong>什么时候不该用网格?</strong>服务少时——sidecar 的每次调用延迟和运维开销盖过收益;一个网关加库就够了。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/dns/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">DNS</div>
+      </a>
+      <a href="/tech-stacks/grpc/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">gRPC 与 Protobuf</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
