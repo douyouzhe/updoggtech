@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:视频流平台(YouTube/Netflix)——TCP vs UDP vs QUIC、Kafka 上传管道、转码与 HLS/DASH ABR、Blob+Cassandra 存储、CDN 与签名 URL 播放授权、离线推荐、播放跟踪、转码扩展与容错、直播 vs VOD、关键取舍。">
+<title>设计视频流平台 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/video-streaming/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/video-streaming/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/video-streaming/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/video-streaming/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计视频流平台">
+<meta property="og:description" content="视频流系统设计:TCP/QUIC、Kafka 上传管道、HLS/DASH ABR、CDN 签名 URL、离线推荐、直播 vs VOD。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/video-streaming/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计视频流平台">
+<meta name="twitter:description" content="设计视频流平台:转码管道、HLS/DASH ABR、CDN 签名 URL、离线推荐、直播 vs VOD。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计视频流平台", "description": "系统设计:视频流平台(YouTube/Netflix)——TCP vs UDP vs QUIC、Kafka 上传管道、转码与 HLS/DASH ABR、Blob+Cassandra 存储、CDN 与签名 URL 播放授权、离线推荐、播放跟踪、转码扩展与容错、直播 vs VOD、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/video-streaming/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/video-streaming/">EN</a>
+        <a href="/zh/system-design/video-streaming/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">video-streaming</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计视频流平台</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>像 YouTube 或 Netflix 这样的视频流平台必须处理海量存储(每天数百 TB 上传)、复杂的多格式转码、最小缓冲的全球 CDN 投递,以及让用户保持参与的 ML 驱动推荐。上传管道和播放管道实际是两个有很不同约束的独立系统——上传是吞吐优化的批处理问题;播放是延迟优化的读路径问题。把这两者间的边界做对是核心设计挑战。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>点播用 TCP 而非 UDP</strong>——重传消除丢包伪影;UDP 主导延迟胜过质量的直播。</li>
+        <li><strong>经 Kafka 的上传管道</strong>——原始视频扇出到内容过滤、分类和多分辨率转码并行,再落进 blob 存储。</li>
+        <li><strong>HLS/DASH 做 ABR</strong>——视频被切成多码率的 2–10 秒段;客户端 ABR 算法实时挑匹配可用带宽的质量层。</li>
+        <li><strong>Blob 存储(S3)+ Cassandra</strong>——二进制文件在对象存储;视频元数据(按 ID 的固定查询模式)在 Cassandra 求高写吞吐。</li>
+        <li><strong>CDN + 惰性段加载</strong>——只服务正在观看的段;大幅削减带宽和启动延迟。</li>
+        <li><strong>推荐离线</strong>——从 Kafka 缓冲的观看信号预计算;从键值存储 O(1) 查找服务。</li>
+        <li><strong>认证用 Redis cache-aside</strong>——首次未命中时加载;懒加载避免缓存从不被请求的数据。</li>
+        <li><strong>播放认证用签名 URL</strong>——CDN URL 里的限时 token 防盗链并强制访问控制而不碰视频字节。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>视频上传流经一个 Kafka 支撑的内容过滤、分类和多分辨率转码管道,再落进 blob 存储和 Cassandra 元数据。转码段用 HLS/DASH 自适应码率流从地理分布的 CDN 服务。推荐离线计算并存在键值 NoSQL。TCP 被选过 UDP 求可靠——无丢包意味无缓冲伪影。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-1.jpg" alt="视频流平台高层架构" loading="lazy">
+      <figcaption>视频流平台高层架构</figcaption>
+    </figure>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>视频流覆盖很广的面。面试中显式界定以免花 45 分钟在一个你做不完的系统上。</p>
+
+    <h3>功能</h3>
+    <ul>
+      <li>用户认证(注册和登录)。</li>
+      <li>内容创作者上传视频。</li>
+      <li>视频处理:转码成多分辨率和格式。</li>
+      <li>带自适应码率流的视频播放。</li>
+      <li>带内容发现和个性化推荐的首页。</li>
+      <li>多平台支持:web、移动、TV;多分辨率(360p–4K);多区域和语言。</li>
+      <li>观看历史和跨设备续播。</li>
+    </ul>
+
+    <h3>非功能</h3>
+    <ul>
+      <li><strong>低延迟、高可用</strong>——最小缓冲是主要用户体验指标;启动时间 2 秒内。</li>
+      <li><strong>高吞吐存储</strong>——每天 100 TB 新视频存储;PB 级总库。</li>
+      <li><strong>最终一致可接受</strong>——新上传视频在搜索里晚 30 秒出现没问题;损坏视频不行。</li>
+      <li><strong>持久性</strong>——已上传视频在确认后绝不能被静默丢失。</li>
+    </ul>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>假设一个 YouTube 量级的大平台:<strong>1000 万日活(DAU)</strong>,每个每天看 ~10 个视频;1% 是内容创作者,各每天上传 ~2 个视频。</p>
+
+    <h3>上传量</h3>
+    <ul>
+      <li>创作者:10M × 1% × 2 视频 = <strong>每天 200,000 个视频</strong>上传。</li>
+      <li>平均原始视频大小:500 MB → 200K × 500 MB = <strong>~100 TB/天</strong>原始摄取。</li>
+      <li>转码成 5 个质量层(360p/480p/720p/1080p/4K)后,存储大致三倍 → 库每天加 <strong>~300 TB/天</strong>处理后的段。</li>
+      <li>持续摄取:100 TB/天 ÷ 86,400 秒 ≈ <strong>~1.2 GB/秒</strong>要吸收的原始上传带宽。</li>
+    </ul>
+
+    <h3>播放量</h3>
+    <ul>
+      <li>10M DAU × 10 视频 × 平均 10 分钟 = <strong>10 亿分钟/天</strong>观看时间。</li>
+      <li>平均流码率 ~2 Mbps → 1B 分钟 × 2 Mbps ÷ 8 = <strong>~15 PB/天</strong>视频数据服务。</li>
+      <li>15 PB/天 ÷ 86,400 秒 ≈ <strong>~1.7 Tbps</strong>持续 CDN egress 带宽——完全符合 YouTube 真实数字。</li>
+    </ul>
+
+    <h3>存储增长</h3>
+    <ul>
+      <li>每天 300 TB,库每年增长 <strong>~110 PB</strong>。</li>
+      <li>热门内容(前 20% 视频)驱动 80% 观看——在 CDN 边缘缓存这些;冷内容从源对象存储服务。</li>
+      <li>元数据:200K 视频/天 × 365 × 每条 ~5 KB ≈ Cassandra 里 <strong>~360 GB/年</strong>——平凡可管理。</li>
+    </ul>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>两个不同的 API 面:上传 API(写多、异步处理)和播放 API(读多、延迟敏感)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 上传:发起一个可恢复上传</span>
+<span class="kw">POST</span> <span class="str">/api/videos/upload/init</span>
+     { title, description, file_size_bytes, content_type }
+     <span class="cm">→ { upload_id, upload_url }(预签名 S3 URL)</span>
+
+<span class="cm"># 上传:上传块(可恢复、幂等)</span>
+<span class="kw">PUT</span>  <span class="str">{upload_url}</span>
+     Content-Range: bytes 0-5242879/104857600
+     <span class="cm">→ 308 Resume Incomplete | 200 OK(最后一块)</span>
+
+<span class="cm"># 检查处理状态</span>
+<span class="kw">GET</span>  <span class="str">/api/videos/{video_id}/status</span>
+     <span class="cm">→ { status: "processing"|"ready"|"failed", progress_pct }</span>
+
+<span class="cm"># 播放:获取视频 manifest</span>
+<span class="kw">GET</span>  <span class="str">/api/videos/{video_id}/manifest</span>
+     <span class="cm">→ { hls_url, dash_url, thumbnail_url, duration_s, title }</span>
+
+<span class="cm"># 播放:HLS 主播放列表(从 CDN 服务)</span>
+<span class="kw">GET</span>  <span class="str">https://cdn.example.com/v/{video_id}/master.m3u8</span>
+     <span class="cm">→ 列出所有质量变体带签名 URL 的 HLS 播放列表</span>
+
+<span class="cm"># 观看历史 / 续播</span>
+<span class="kw">POST</span> <span class="str">/api/videos/{video_id}/progress</span>
+     { user_id, position_s, event: "pause"|"seek"|"complete" }
+
+<span class="cm"># 首页 feed</span>
+<span class="kw">GET</span>  <span class="str">/api/feed?user_id=123&page_token=abc</span>
+     <span class="cm">→ { videos: [...], next_page_token }</span></code></pre>
+    </div>
+
+    <p>两个值得指出的设计选择:上传用<strong>可恢复分块上传</strong>(等价于 Google 的可恢复上传协议或 AWS S3 multipart 上传),使不稳定连接的移动创作者能在上传中途恢复而不重启。播放在 manifest 里返回<strong>签名 CDN URL</strong>——视频字节直接从 CDN 边缘节点服务,从不经应用服务器。</p>
+
+    <h2>第 4 步 — 协议:TCP vs UDP vs QUIC</h2>
+    <p>YouTube 和 Netflix 采用 <strong>TCP</strong> 作传输协议主要为保证视频质量——TCP 的重传确保零丢包,消除丢失 UDP 包造成的像素化或块状伪影。安全是次要好处。取舍是相比 UDP 略高的延迟,对点播流可接受,因为 2–10 秒缓冲吸收抖动。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>协议</th><th>延迟</th><th>可靠性</th><th>用例</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">TCP</td><td>中等</td><td>保证投递、有序</td><td>点播 VOD 流——质量胜过延迟</td></tr>
+        <tr><td class="col-b">UDP</td><td>低</td><td>尽力而为、可能丢包</td><td>直播、视频通话——延迟胜过质量</td></tr>
+        <tr><td class="col-a">QUIC</td><td>低(0-RTT)</td><td>UDP 上可靠、多路复用流</td><td>新兴:YouTube 用它在有损网络降低缓冲</td></tr>
+        <tr><td class="col-b">WebRTC</td><td>极低</td><td>基于 UDP、浏览器原生</td><td>实时 1:1 或小组视频(Zoom、Meets)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Google 的 <strong>QUIC</strong> 协议值得一提:它在 UDP 上实现类 TCP 可靠性、消除跨流的 TCP 队头阻塞,并支持 0-RTT 连接恢复。YouTube 一直在迁移到 QUIC 并报告可测量的缓冲事件减少,尤其在频繁 IP 地址变化(WiFi 和蜂窝间切换)的移动网络。</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-2.jpg" alt="视频上传管道流程" loading="lazy">
+      <figcaption>视频上传管道流程</figcaption>
+    </figure>
+
+    <h2>第 5 步 — 上传管道</h2>
+    <p>上传路径是系统里最复杂的流程。原始视频文件在准备好供观众观看前经过多个转换。关键设计原则是<strong>经消息队列扇出</strong>:原始文件一落进暂存存储,一个 Kafka 事件就并行触发所有下游处理步骤,使内容过滤、分类和转码全部并发运行而非顺序。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>创作者上传原始视频(分块、可恢复)
+  → 内容入驻初始化服务
+      - 校验文件完整性(校验和)
+      - 写 PENDING 记录到 Cassandra
+      - 把原始文件移到暂存 S3 桶
+  → 发布 VideoUploaded 事件到 Kafka
+      ├── Multi-part Resolver: 把文件切成 ~5 分钟 GOP 段
+      ├── 内容过滤: 筛查非法/不当材料
+      │     └── 违规时: 标 REJECTED,通知创作者
+      ├── 分类与打标: 生成标签、分类、语言
+      │     └── ML 模型: 视觉 + 音频 + 转录信号
+      └── 转码器(并行 worker):
+            ├── 360p  H.264  ~400 Kbps
+            ├── 480p  H.264  ~800 Kbps
+            ├── 720p  H.264  ~2.5 Mbps
+            ├── 1080p H.264  ~5 Mbps
+            └── 4K   HEVC   ~15 Mbps
+                  └── 每个分辨率 → S3 里的段文件
+                        └── 内容服务写元数据到 Cassandra
+                              → Elasticsearch 索引
+                                    → 状态: READY</code></pre>
+    </div>
+
+    <p>经 <strong>Multi-part Resolver</strong> 把上传切成并行部分,大幅减少大文件的总处理时间。每个 GOP(Group of Pictures)段能在一群转码 worker 上独立并行转码。一部顺序转码要 6 小时的 2 小时电影,有足够并行 worker 能在 30 分钟内完成——对 YouTube 承诺上传后近乎即时可用至关重要。</p>
+
+    <h3>可恢复上传实现</h3>
+    <p>移动网络上,500 MB 上传几乎肯定会被打断。可恢复上传协议用来自 S3 的预签名块 URL,并在一个 Redis 位图(按块号索引)里跟踪哪些块已确认。重连时,客户端查哪些块已收到并从第一个缺失块恢复。服务端分块状态存在 Redis 带 24 小时 TTL——之后未完成上传被放弃。</p>
+
+    <h2>第 6 步 — 转码与 ABR 流</h2>
+    <p>转码是管道里最资源密集的步骤。目标是产生每个视频的多个质量表示,切成短段,为自适应码率(ABR)投递格式化。</p>
+
+    <h3>HLS vs DASH</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>协议</th><th>段格式</th><th>Manifest</th><th>支持</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">HLS (HTTP Live Streaming)</td><td>MPEG-TS 或 fMP4</td><td>.m3u8 播放列表</td><td>iOS/macOS/Safari 原生;广泛支持</td></tr>
+        <tr><td class="col-a">DASH (Dynamic Adaptive Streaming)</td><td>MP4 片段(fMP4)</td><td>MPD XML manifest</td><td>Android、Chrome、智能 TV;iOS 不原生</td></tr>
+      </tbody>
+    </table>
+
+    <p>实践中,大平台转码成 HLS 和 DASH 两者以覆盖所有客户端类型。段文件本身(fMP4 块)常能在 HLS 和 DASH 间共享,因为两者都支持碎片化 MP4——只有 manifest 文件不同。段时长通常 <strong>2–6 秒</strong>:更短的段允许更快质量切换但增加 manifest 开销和每分钟视频的 HTTP 请求数。</p>
+
+    <h3>ABR 算法</h3>
+    <p>客户端播放器实现一个 ABR(自适应码率)算法,持续监控可用带宽和缓冲占用以选下一个要取的最优质量段。两个主导方法:</p>
+    <ul>
+      <li><strong>基于吞吐的 ABR</strong>——测量最后 N 个段的下载速度;选适配观测吞吐带些余量(如观测带宽的 80%)的最高码率。简单且广泛部署(HLS 默认)。</li>
+      <li><strong>基于缓冲的 ABR(BBA)</strong>——纯基于当前缓冲级别选质量:若缓冲 &gt;30 秒,升级质量;若 &lt;10 秒,降级。突发网络条件下更稳定。</li>
+      <li><strong>模型预测控制(MPC)</strong>——Netflix 的生产算法;结合吞吐预测与缓冲占用,在未来段的视界上优化以最小化重缓冲概率同时最大化质量。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 基于缓冲的 ABR(简化)</span>
+<span class="kw">FUNCTION</span> <span class="fn">select_next_quality</span>(buffer_s, available_bitrates):
+  <span class="kw">IF</span> buffer_s &gt; <span class="num">30</span>:
+    <span class="kw">RETURN</span> <span class="fn">step_up</span>(current_quality, available_bitrates)
+  <span class="kw">ELIF</span> buffer_s &lt; <span class="num">10</span>:
+    <span class="kw">RETURN</span> <span class="fn">step_down</span>(current_quality, available_bitrates)
+  <span class="kw">ELSE</span>:
+    <span class="kw">RETURN</span> current_quality  <span class="cm">-- 稳定区,保持当前</span>
+
+<span class="cm">-- 段取循环</span>
+<span class="kw">WHILE</span> playing:
+  quality = <span class="fn">select_next_quality</span>(buffer.seconds_remaining(), bitrates)
+  segment_url = manifest.<span class="fn">segment_url</span>(next_segment_idx, quality)
+  <span class="fn">fetch_async</span>(segment_url)  <span class="cm">-- 从 CDN 边缘</span>
+  next_segment_idx += <span class="num">1</span></code></pre>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/video-streaming-3.jpg" alt="转码管道和多分辨率输出" loading="lazy">
+      <figcaption>转码管道和多分辨率输出</figcaption>
+    </figure>
+
+    <h2>第 7 步 — 数据模型与存储架构</h2>
+    <p>存储选择由访问模式驱动。视频流有一个特别鲜明的拆分:二进制视频段属于对象存储;结构化元数据属于数据库。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>数据类型</th><th>存储</th><th>理由</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>用户账户、计费</td><td class="col-a">SQL (RDBMS)</td><td>认证和金融数据的 ACID 合规</td></tr>
+        <tr><td>视频元数据</td><td class="col-b">Cassandra (NoSQL)</td><td>高写吞吐;固定查询模式(按视频 ID、按创作者)</td></tr>
+        <tr><td>视频段</td><td class="col-a">Blob 存储 (S3/GCS)</td><td>为 PB 级大二进制内容专建的对象存储</td></tr>
+        <tr><td>推荐</td><td class="col-a">键值 NoSQL (DynamoDB/Redis)</td><td>按用户 ID 快速点查;经离线批作业更新</td></tr>
+        <tr><td>搜索索引</td><td class="col-a">Elasticsearch</td><td>带 type-ahead 的全文和模糊搜索</td></tr>
+        <tr><td>观看进度</td><td class="col-b">Cassandra</td><td>高写吞吐(持续位置更新);按 (user_id, video_id) 为键</td></tr>
+        <tr><td>上传块状态</td><td class="col-a">Redis (TTL 24h)</td><td>临时、快速的位图跟踪哪些块已确认</td></tr>
+      </tbody>
+    </table>
+
+    <h3>视频元数据的 Cassandra 数据模型</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">CQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> videos (
+  video_id      <span class="ty">UUID</span> <span class="kw">PRIMARY KEY</span>,
+  creator_id    <span class="ty">UUID</span>,
+  title         <span class="ty">TEXT</span>,
+  description   <span class="ty">TEXT</span>,
+  status        <span class="ty">TEXT</span>,          <span class="cm">-- PENDING|PROCESSING|READY|FAILED</span>
+  duration_s    <span class="ty">INT</span>,
+  s3_prefix     <span class="ty">TEXT</span>,          <span class="cm">-- S3 里所有段的基础路径</span>
+  hls_manifest  <span class="ty">TEXT</span>,          <span class="cm">-- 到 master.m3u8 的 CDN URL</span>
+  dash_manifest <span class="ty">TEXT</span>,          <span class="cm">-- 到 manifest.mpd 的 CDN URL</span>
+  thumbnail_url <span class="ty">TEXT</span>,
+  tags          <span class="ty">LIST&lt;TEXT&gt;</span>,
+  created_at    <span class="ty">TIMESTAMP</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="cm">-- 观看进度: (user, video) → 最后已知位置</span>
+<span class="kw">CREATE TABLE</span> watch_progress (
+  user_id       <span class="ty">UUID</span>,
+  video_id      <span class="ty">UUID</span>,
+  position_s    <span class="ty">INT</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>   (user_id, video_id)
+);</code></pre>
+    </div>
+
+    <h2>第 8 步 — 用户认证</h2>
+    <p>认证流程用一个由 SQL 数据库支撑求 ACID 保证的标准 RESTful API 服务。一个带 Cache-Aside(懒加载)模式的 <strong>Redis 缓存</strong>坐在 SQL 数据库前:数据在首次未命中时加载进缓存、后续读从缓存服务。这里懒加载优于 write-through,因为它避免缓存从不实际被请求的数据——大多数用户账户在注册后从不被查;只有活跃会话 token 对热路径要紧。</p>
+
+    <p>会话 token 是短命 JWT(15 分钟访问 token + 7 天刷新 token)。token 刷新时,刷新 token 对照 Redis(活跃刷新 token 存那)校验,并签发一个新访问 token 而不碰 SQL 数据库。这让认证热路径完全在 Redis 里。</p>
+
+    <h2>第 9 步 — 内容投递与播放授权</h2>
+    <p>视频文件经一个全球分布的 CDN 网络服务。一个 <strong>Host Optimizer</strong> 服务基于地理邻近和当前服务器负载把每个客户端导向最近的 CDN 节点。CDN 层应用<strong>惰性段加载</strong>——只取用户当前观看的段,而非完整视频文件,减少带宽成本和启动延迟。</p>
+
+    <h3>用签名 URL 做播放授权</h3>
+    <p>视频播放的访问控制不能依赖 CDN 在每个段请求检查 token——那会饱和应用服务器。相反,解法是 <strong>CDN 签名 URL</strong>:</p>
+    <ol>
+      <li>客户端向应用服务器认证并请求一个视频 manifest。</li>
+      <li>应用服务器生成一个短命签名 token(用 CDN 共享 secret 签名)、把它嵌进 manifest 的段 URL,并返回 manifest。</li>
+      <li>客户端直接从 CDN 取段。CDN 验证签名而无任何应用服务器参与——热路径上零开销。</li>
+      <li>token ~1 小时后过期,防止盗链并强制订阅有效性。</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 服务端:为一个段生成签名 URL</span>
+<span class="kw">FUNCTION</span> <span class="fn">sign_cdn_url</span>(base_url, user_id, expires_at, secret):
+  policy = {
+    <span class="str">"url"</span>: base_url,
+    <span class="str">"user_id"</span>: user_id,
+    <span class="str">"exp"</span>: expires_at
+  }
+  signature = <span class="fn">hmac_sha256</span>(<span class="fn">json_encode</span>(policy), secret)
+  <span class="kw">RETURN</span> base_url + <span class="str">"?token="</span> + <span class="fn">base64url</span>(policy) + <span class="str">"&sig="</span> + signature
+
+<span class="cm">-- CDN 边缘:对每个段请求验证</span>
+<span class="kw">FUNCTION</span> <span class="fn">validate_cdn_request</span>(request, secret):
+  policy, sig = <span class="fn">parse_token</span>(request.query.token, request.query.sig)
+  <span class="kw">IF</span> policy.exp &lt; <span class="fn">now</span>():  <span class="kw">RETURN</span> <span class="num">401</span>
+  expected = <span class="fn">hmac_sha256</span>(<span class="fn">json_encode</span>(policy), secret)
+  <span class="kw">IF</span> sig != expected:       <span class="kw">RETURN</span> <span class="num">403</span>
+  <span class="kw">RETURN</span> <span class="num">200</span>               <span class="cm">-- 服务该段</span></code></pre>
+    </div>
+
+    <h2>第 10 步 — 首页、搜索与推荐</h2>
+    <p>首页结合两个数据源:</p>
+    <ul>
+      <li><strong>搜索服务</strong>——一个带模糊搜索和 type-ahead 的 Elasticsearch 集群用于主动查询。</li>
+      <li><strong>推荐</strong>——预计算的 ML 预测存在键值 NoSQL 数据库,按用户 ID 为键做 O(1) 查找。</li>
+    </ul>
+
+    <h3>推荐架构</h3>
+    <p>推荐从观看历史、观看时长和交互信号(点赞、分享、重看、跳过)<strong>离线</strong>计算。这些信号从播放服务喂进 Kafka 并用于批量训练推荐模型。架构有两个组件:</p>
+    <ul>
+      <li><strong>候选生成</strong>——一个双塔神经网络基于用户嵌入相似度从数百万池子检索 ~数百个候选视频。用户塔编码观看历史;视频塔编码视频特征。快速近似最近邻搜索(FAISS 或 ScaNN)检索 top 候选。</li>
+      <li><strong>排序</strong>——一个 pointwise 或 pairwise 排序模型(梯度提升树或 DNN)用更丰富特征(上下文、时段、设备类型、视频新近度)重新给候选评分以产生最终排序列表。</li>
+    </ul>
+    <p>每个用户的预计算推荐存在 DynamoDB,按 <code>user_id</code> 为键,由离线批管道每 1–6 小时刷新。这在服务时给 O(1) 查找,关键首页路径上无推理延迟。</p>
+
+    <h2>第 11 步 — 播放跟踪</h2>
+    <p>播放期间,客户端持续记录观看状态和位置。这数据流入 Kafka 并驱动多个下游消费者:</p>
+    <ul>
+      <li><strong>观看进度服务</strong>——把当前位置写到 Cassandra,使用户能从任何设备续播。写在暂停、seek 和播放期间每 10 秒发生。</li>
+      <li><strong>推荐管道</strong>——观看会话的离线处理以更新用户和视频嵌入。</li>
+      <li><strong>分析服务</strong>——实时观看计数、完成率和收入归因(广告支持内容)。</li>
+      <li><strong>CDN 反馈循环</strong>——重缓冲事件和段下载延迟被聚合以识别性能退化的 CDN 节点并触发重路由。</li>
+    </ul>
+
+    <h2>第 12 步 — 扩展、容错与直播</h2>
+
+    <h3>扩展转码管道</h3>
+    <p>转码 CPU 密集且自然可并行。在每天 100 TB 摄取,转码机群必须弹性:</p>
+    <ul>
+      <li>转码 worker 是从 Kafka topic 拉作业的无状态容器。加 worker 线性增加吞吐。</li>
+      <li>自动扩缩由 Kafka 消费者 lag 触发——若队列增长,开更多 worker;若排干,缩回。</li>
+      <li>GPU 加速转码(NVENC)对 H.264/HEVC 能比纯 CPU 快 5–10×;GPU 实例用于高优先级或高分辨率作业。</li>
+      <li>每个转码作业幂等:失败 worker 能在另一节点重试而无重复输出,因为输出按 <code>(video_id, quality, segment_index)</code> 为键且 S3 put 原子。</li>
+    </ul>
+
+    <h3>CDN 容错</h3>
+    <ul>
+      <li>Manifest 文件含多个 CDN 源条目;若段取超时客户端播放器故障转移到下一条目。</li>
+      <li>Host Optimizer 监控 CDN 节点健康并把退化节点从选择池移除。</li>
+      <li>源屏蔽(origin shield):一个分层 CDN 架构,区域屏蔽缓存坐在边缘节点和 S3 源之间,减少源负载和单区域宕机爆炸半径。</li>
+    </ul>
+
+    <h3>直播 vs VOD</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th>VOD(点播)</th><th>直播</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>协议</td><td class="col-a">TCP (HLS/DASH)</td><td class="col-b">UDP 或 QUIC(超低延迟用 WebRTC)</td></tr>
+        <tr><td>段可用性</td><td class="col-a">所有段预生成</td><td class="col-b">段实时生成;manifest 滚动</td></tr>
+        <tr><td>CDN 缓存</td><td class="col-a">高缓存命中率(同样段服务多次)</td><td class="col-b">每个段唯一且几分钟后过期</td></tr>
+        <tr><td>转码</td><td class="col-a">离线、并行、可重试</td><td class="col-b">实时、单遍、必须在段截止前完成</td></tr>
+        <tr><td>延迟目标</td><td class="col-a">2–10 秒启动 OK</td><td class="col-b">体育/活动 &lt;3 秒;标准直播 &lt;30 秒</td></tr>
+      </tbody>
+    </table>
+
+    <p>对直播,转码路径必须以严格截止实时处理每个 GOP 段。一个专用实时转码集群(区别于 VOD 机群)处理直播流,用更低延迟编码预设(更快但质量略低)以满足截止。滚动 manifest 是一个特殊 HLS/DASH 变体(低延迟 HLS),每 0.5–2 秒发布新段而非标准的 2–6 秒。</p>
+
+    <h2>关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>传输协议(VOD)</td><td class="col-a">TCP (HLS/DASH)</td><td>比 UDP 更高延迟;可接受因为 2–10s 缓冲吸收抖动</td></tr>
+        <tr><td>推荐</td><td class="col-b">离线预计算</td><td>推荐 1–6 小时陈旧;抓住大多数行为变化</td></tr>
+        <tr><td>视频元数据存储</td><td class="col-a">Cassandra</td><td>无关系 join;查询模式必须在 schema 设计时已知</td></tr>
+        <tr><td>ABR 段长</td><td class="col-a">4–6 秒</td><td>更短 = 更快质量切换但更多 HTTP 请求和 manifest 开销</td></tr>
+        <tr><td>播放认证</td><td class="col-b">CDN 签名 URL</td><td>token 过期意味很长会话上短暂重认证;应用服务器不在热路径</td></tr>
+        <tr><td>转码并行</td><td class="col-a">GOP 并行 worker</td><td>必须确保 GOP 边界对齐;相比每文件顺序略有开销</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>视频流是两个系统:上传(为吞吐、正确性和并行处理优化的复杂多阶段管道)和播放(经 CDN、ABR 和惰性段加载为延迟优化)。TCP 的无丢包保证对点播流值得那个延迟取舍。推荐属于离线——预计算一次、从键值存储快速服务、从 Kafka 缓冲的行为信号持续重训。CDN 签名 URL 是强制播放授权而不让应用服务器在热路径上的正确方式。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>点播视频为什么 TCP 而非 UDP?</strong>TCP 重传消除丢包伪影(像素化、块状);略增的延迟对缓冲的点播内容可接受,因为播放器维护 2–10 秒缓冲。UDP 对低延迟比完美质量更要紧的直播更受偏好。<br>
+      <strong>为什么把推荐存在键值存储而非即时计算?</strong>推荐模型运行昂贵;离线预计算并按用户 ID 从键值存储服务给 O(1) 查找,关键路径上无推理延迟。<br>
+      <strong>为什么视频元数据用 Cassandra?</strong>查询固定模式(按视频 ID、按创作者)、写吞吐高(状态更新、观看计数自增),且无需关系 join——Cassandra 的宽列模型理想。<br>
+      <strong>ABR 怎么工作?</strong>视频被切成多码率的 2–6 秒段。客户端 ABR 算法监控缓冲占用和测量吞吐,选能无重缓冲下载的最高质量层。<br>
+      <strong>怎么授权视频播放而不过载应用服务器?</strong>用嵌在 manifest 里的 CDN 签名 URL。CDN 在边缘验证 HMAC 签名而无任何应用服务器参与——认证在 manifest 取时发生一次,而非每个段。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/map-webapp/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计地图 Web 应用</div>
+      </a>
+      <a href="/system-design/chat-app/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计聊天应用</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
