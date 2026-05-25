@@ -143,13 +143,13 @@
 
   <div class="filter-row">
     <button class="filter-btn active">All (8)</button>
-    <button class="filter-btn">Tools &amp; Practice</button>
-    <button class="filter-btn">Agents &amp; Building</button>
-    <button class="filter-btn">Interviews</button>
+    <button class="filter-btn" data-filter="tools">Tools &amp; Practice</button>
+    <button class="filter-btn" data-filter="agents">Agents &amp; Building</button>
+    <button class="filter-btn" data-filter="interviews">Interviews</button>
   </div>
 
   <div class="posts-list">
-    <a href="/ai-coding/copilot-vs-cursor-vs-claude-code/" class="post-row">
+    <a href="/ai-coding/copilot-vs-cursor-vs-claude-code/" class="post-row" data-cat="tools">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
@@ -164,7 +164,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/prompt-engineering-for-code/" class="post-row">
+    <a href="/ai-coding/prompt-engineering-for-code/" class="post-row" data-cat="tools">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
@@ -179,7 +179,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/ai-assisted-coding-best-practices/" class="post-row">
+    <a href="/ai-coding/ai-assisted-coding-best-practices/" class="post-row" data-cat="tools">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
@@ -194,7 +194,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/how-ai-coding-agents-work/" class="post-row">
+    <a href="/ai-coding/how-ai-coding-agents-work/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
@@ -209,7 +209,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/building-with-llm-apis/" class="post-row">
+    <a href="/ai-coding/building-with-llm-apis/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
@@ -224,7 +224,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/tool-use-function-calling-mcp/" class="post-row">
+    <a href="/ai-coding/tool-use-function-calling-mcp/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
@@ -239,7 +239,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/ai-in-coding-interviews/" class="post-row">
+    <a href="/ai-coding/ai-in-coding-interviews/" class="post-row" data-cat="interviews">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
@@ -254,7 +254,7 @@
       </div>
     </a>
 
-    <a href="/ai-coding/sde-interviews-in-the-ai-era/" class="post-row">
+    <a href="/ai-coding/sde-interviews-in-the-ai-era/" class="post-row" data-cat="interviews">
       <div class="post-row-left">
         <span class="post-num">08</span>
         <div class="post-info">
@@ -286,5 +286,22 @@
     </div>
   </div>
 </footer>
+<script>
+(function () {
+  var btns = document.querySelectorAll('.filter-btn');
+  var rows = document.querySelectorAll('.post-row');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var f = btn.getAttribute('data-filter');
+      rows.forEach(function (row) {
+        var cats = (row.getAttribute('data-cat') || '').split(' ');
+        row.style.display = (!f || cats.indexOf(f) !== -1) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>

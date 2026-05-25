@@ -107,6 +107,7 @@
   .post-row:nth-child(5) { animation-delay: 0.25s; }
   .post-row:nth-child(6) { animation-delay: 0.3s; }
   .post-row:nth-child(7) { animation-delay: 0.35s; }
+  .post-row:nth-child(8) { animation-delay: 0.4s; }
 
   @media (max-width: 768px) {
     .post-row { grid-template-columns: 1fr; }
@@ -145,14 +146,14 @@
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active">All (7)</button>
-    <button class="filter-btn">Distributed Systems</button>
-    <button class="filter-btn">Storage</button>
-    <button class="filter-btn">Real-time</button>
+    <button class="filter-btn active">All (8)</button>
+    <button class="filter-btn" data-filter="distributed">Distributed Systems</button>
+    <button class="filter-btn" data-filter="storage">Storage</button>
+    <button class="filter-btn" data-filter="realtime">Real-time</button>
   </div>
 
   <div class="posts-list">
-    <a href="/system-design/ecommerce-platform/" class="post-row">
+    <a href="/system-design/ecommerce-platform/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
@@ -168,7 +169,7 @@
       </div>
     </a>
 
-    <a href="/system-design/map-webapp/" class="post-row">
+    <a href="/system-design/map-webapp/" class="post-row" data-cat="realtime distributed">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
@@ -184,7 +185,7 @@
       </div>
     </a>
 
-    <a href="/system-design/video-streaming/" class="post-row">
+    <a href="/system-design/video-streaming/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
@@ -200,7 +201,7 @@
       </div>
     </a>
 
-    <a href="/system-design/chat-app/" class="post-row">
+    <a href="/system-design/chat-app/" class="post-row" data-cat="realtime">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
@@ -216,7 +217,7 @@
       </div>
     </a>
 
-    <a href="/system-design/ride-share/" class="post-row">
+    <a href="/system-design/ride-share/" class="post-row" data-cat="realtime distributed">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
@@ -232,7 +233,7 @@
       </div>
     </a>
 
-    <a href="/system-design/url-shortener/" class="post-row">
+    <a href="/system-design/url-shortener/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
@@ -248,7 +249,7 @@
       </div>
     </a>
 
-    <a href="/system-design/hotel-booking/" class="post-row">
+    <a href="/system-design/hotel-booking/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
@@ -260,6 +261,22 @@
       <div class="post-row-right">
         <span class="difficulty diff-medium">Medium</span>
         <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/system-design/google-drive/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">08</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Google Drive / Dropbox</span>
+          <span class="post-excerpt">File chunking, content-addressed dedup, metadata vs block storage, sync, and conflict resolution.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 08, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
@@ -280,5 +297,22 @@
     </div>
   </div>
 </footer>
+<script>
+(function () {
+  var btns = document.querySelectorAll('.filter-btn');
+  var rows = document.querySelectorAll('.post-row');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var f = btn.getAttribute('data-filter');
+      rows.forEach(function (row) {
+        var cats = (row.getAttribute('data-cat') || '').split(' ');
+        row.style.display = (!f || cats.indexOf(f) !== -1) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>

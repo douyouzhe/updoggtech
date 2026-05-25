@@ -145,12 +145,13 @@
 
   <div class="filter-row">
     <button class="filter-btn active">All (12)</button>
-    <button class="filter-btn">Foundations</button>
-    <button class="filter-btn">Storage</button>
+    <button class="filter-btn" data-filter="foundations">Foundations</button>
+    <button class="filter-btn" data-filter="distributed">Distributed Data</button>
+    <button class="filter-btn" data-filter="derived">Derived Data</button>
   </div>
 
   <div class="posts-list">
-    <a href="/ddia/chapter-1/" class="post-row">
+    <a href="/ddia/chapter-1/" class="post-row" data-cat="foundations">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
@@ -165,7 +166,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-2/" class="post-row">
+    <a href="/ddia/chapter-2/" class="post-row" data-cat="foundations">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
@@ -180,7 +181,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-3/" class="post-row">
+    <a href="/ddia/chapter-3/" class="post-row" data-cat="foundations">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
@@ -195,7 +196,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-4/" class="post-row">
+    <a href="/ddia/chapter-4/" class="post-row" data-cat="foundations">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
@@ -210,7 +211,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-5/" class="post-row">
+    <a href="/ddia/chapter-5/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
@@ -225,7 +226,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-6/" class="post-row">
+    <a href="/ddia/chapter-6/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
@@ -240,7 +241,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-7/" class="post-row">
+    <a href="/ddia/chapter-7/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
@@ -255,7 +256,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-8/" class="post-row">
+    <a href="/ddia/chapter-8/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">08</span>
         <div class="post-info">
@@ -270,7 +271,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-9/" class="post-row">
+    <a href="/ddia/chapter-9/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">09</span>
         <div class="post-info">
@@ -285,7 +286,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-10/" class="post-row">
+    <a href="/ddia/chapter-10/" class="post-row" data-cat="derived">
       <div class="post-row-left">
         <span class="post-num">10</span>
         <div class="post-info">
@@ -300,7 +301,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-11/" class="post-row">
+    <a href="/ddia/chapter-11/" class="post-row" data-cat="derived">
       <div class="post-row-left">
         <span class="post-num">11</span>
         <div class="post-info">
@@ -315,7 +316,7 @@
       </div>
     </a>
 
-    <a href="/ddia/chapter-12/" class="post-row">
+    <a href="/ddia/chapter-12/" class="post-row" data-cat="derived">
       <div class="post-row-left">
         <span class="post-num">12</span>
         <div class="post-info">
@@ -346,5 +347,22 @@
     </div>
   </div>
 </footer>
+<script>
+(function () {
+  var btns = document.querySelectorAll('.filter-btn');
+  var rows = document.querySelectorAll('.post-row');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var f = btn.getAttribute('data-filter');
+      rows.forEach(function (row) {
+        var cats = (row.getAttribute('data-cat') || '').split(' ');
+        row.style.display = (!f || cats.indexOf(f) !== -1) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="A system design deep dive into building Google Drive / Dropbox — file chunking, content-addressed deduplication, splitting metadata from block storage, the sync algorithm, change notifications, and conflict resolution.">
+<title>Design Google Drive / Dropbox — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/google-drive/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design Google Drive / Dropbox — System Design">
+<meta property="og:description" content="File chunking, content-addressed deduplication, metadata vs block storage, the sync algorithm, change notifications, and conflict resolution.">
+<meta property="og:url" content="https://updoggtech.com/system-design/google-drive/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Design Google Drive / Dropbox — System Design">
+<meta name="twitter:description" content="How a file storage and sync service works: chunking, dedup, metadata, sync, and conflicts.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Google Drive / Dropbox","description":"File chunking, content-addressed deduplication, metadata vs block storage, the sync algorithm, change notifications, and conflict resolution.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/google-drive/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">google-drive</span>
+    </div>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design Google Drive / Dropbox</h1>
+    <div class="article-meta">
+      <span>Apr 08, 2023</span>
+      <span class="separator">·</span>
+      <span>34 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A file storage and sync service looks trivial from the outside: drop a file in a folder and it appears on every device. Underneath, it's one of the richer system design problems, because the requirements pull against each other. You must store petabytes durably (losing a user's file is unforgivable), sync changes across many devices within seconds, avoid re-uploading a 2&nbsp;GB video when one byte changes, deduplicate identical content across millions of users without leaking their data to each other, resolve conflicts when two offline devices edit the same file, and serve downloads fast worldwide. The key architectural moves are <strong>chunking files into blocks</strong>, <strong>content-addressed deduplication</strong>, and <strong>splitting the metadata plane from the block-storage plane</strong> — and almost every interesting decision flows from those three.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Split files into fixed-size chunks</strong> (e.g. 4&nbsp;MB) — enables resumable uploads, parallel transfer, partial sync (only changed chunks move), and deduplication.</li>
+        <li><strong>Content-addressed storage</strong> — a chunk's ID is the hash of its bytes, so identical chunks are stored once (block-level dedup), saving huge amounts of storage and bandwidth.</li>
+        <li><strong>Separate metadata from blocks</strong> — a metadata service (file tree, versions, chunk lists) is small, transactional, and consistency-sensitive; a block service (S3-style blob store) is huge and append-only.</li>
+        <li><strong>Sync = diff + delta upload + notify</strong> — the client hashes local chunks, uploads only new ones, commits a new version to metadata, and a notification service tells other devices to pull.</li>
+        <li><strong>Never silently lose an edit</strong> — concurrent offline edits are resolved by versioning and "conflicted copy" files, not last-writer-wins.</li>
+        <li><strong>Durability is the top non-functional</strong> — replicate blocks across AZs/regions (and erasure-code cold data) for ~11 nines, like S3.</li>
+        <li><strong>Metadata is the scaling bottleneck</strong> — shard the file tree and sharing graph by user/namespace; the blob store scales almost linearly.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Chunk files into ~4&nbsp;MB blocks and address each block by the hash of its content, so identical blocks are stored once. Keep two planes: a metadata service (file tree, versions, chunk lists — needs transactions and strong-ish consistency) and a block service backed by S3 (cheap, durable, append-only). Sync by hashing local chunks, uploading only the new ones, and committing a new version; a notification service pushes "pull now" to other devices. Resolve concurrent edits with versioning and conflicted copies. Replicate blocks for durability and serve downloads via CDN.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">high-level architecture</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                         ┌──────────────────┐
+   ┌───────────┐  meta   │ Metadata Service │   ┌───────────────┐
+   │  Client   │◀───────▶│ (tree, versions, │──▶│  Metadata DB  │
+   │  watcher  │         │  chunk lists)    │   │ (sharded SQL) │
+   │  + sync   │         └──────────────────┘   └───────────────┘
+   │  engine   │         ┌──────────────────┐   ┌───────────────┐
+   └────┬──────┘ chunks  │  Block Service   │──▶│  Blob store   │──▶ CDN
+        │───────────────▶│ (upload/fetch)   │   │ (S3, chunks)  │
+        │ subscribe      └──────────────────┘   └───────────────┘
+        │                ┌──────────────────┐
+        └───────────────▶│   Notification   │  long-poll / websocket:
+                         │     Service      │  "your namespace changed"
+                         └──────────────────┘</code></pre>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Pin down scope before drawing boxes. <strong>Functional</strong> requirements: upload and download files; automatically sync a local folder across a user's devices; share files/folders with other users; keep version history; and work offline, syncing on reconnect. <strong>Non-functional</strong>: durability is paramount (never lose data — target ~11 nines), high availability, scale to hundreds of millions of users and exabytes of data, efficient use of bandwidth (don't re-send unchanged data), and low sync latency (changes propagate in seconds). It's worth explicitly scoping <em>out</em> real-time collaborative editing inside a document (that's a Google Docs / operational-transform problem); here a file is an opaque blob that one writer changes at a time.</p>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Ballpark numbers justify the architecture. Assume 500M registered users, 100M daily active, average 10&nbsp;GB stored per user.</p>
+    <ul>
+      <li><strong>Storage:</strong> 500M × 10&nbsp;GB = 5&nbsp;EB raw — before dedup and before replication. Dedup may cut this 30–50%; replication (3×) multiplies it back up. The blob store must scale to many exabytes.</li>
+      <li><strong>Write throughput:</strong> if each DAU uploads ~10 files/day at 1&nbsp;MB average, that's ~1B file ops/day ≈ ~12K writes/sec average, with peaks several times higher.</li>
+      <li><strong>Read:write:</strong> downloads and syncs dominate; expect a read-heavy ratio. Most reads are cheap metadata polls plus chunk fetches served from CDN.</li>
+      <li><strong>Metadata QPS:</strong> clients poll for changes frequently; the metadata service sees far more QPS than the block service, but each request is tiny.</li>
+    </ul>
+    <p>The headline takeaway: <strong>blocks are big and cheap-to-scale; metadata is small but high-QPS and consistency-sensitive.</strong> That asymmetry is exactly why we split them.</p>
+
+    <h2>Step 3 — API Design</h2>
+    <p>The API is chunk-aware rather than whole-file. A client first negotiates which chunks the server already has, uploads only the missing bytes, then commits a new file version referencing the chunk hashes.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API (auth token implied)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /files/upload-urls   {chunk_hashes:[...]}  <span class="cm"># which are missing?</span>
+        → {missing:[hash→presigned PUT url]}     <span class="cm"># dedup happens here</span>
+PUT  &lt;presigned-url&gt;       &lt;chunk bytes&gt;          <span class="cm"># client → blob store direct</span>
+POST /files/commit        {path, chunk_hashes:[...], base_version}
+        → {version}                              <span class="cm"># new file version</span>
+GET  /files/changes?cursor=X                     <span class="cm"># delta since last sync</span>
+        → {changes:[...], next_cursor}
+GET  /files/download?path&amp;version                <span class="cm"># → chunk list + CDN urls</span>
+POST /shares              {path, user, role}      <span class="cm"># share a folder</span></code></pre>
+    </div>
+
+    <p>Note the upload flow: the client asks "which of these chunk hashes do you already have?" and only uploads the missing ones, directly to the blob store via presigned URLs (keeping bulk bytes off the application servers). The <code>commit</code> call is the only one that mutates metadata.</p>
+
+    <h2>Step 4 — Chunking: Why Split Files into Blocks</h2>
+    <p>Instead of treating a file as one opaque blob, the client splits it into fixed-size <strong>chunks</strong> (Dropbox uses 4&nbsp;MB). This one decision unlocks most of the system's efficiency:</p>
+    <ul>
+      <li><strong>Partial sync.</strong> Change one paragraph in a 2&nbsp;GB file and only the affected 4&nbsp;MB chunk(s) need to be re-uploaded — not the whole file.</li>
+      <li><strong>Resumable uploads.</strong> A dropped connection resumes at the chunk boundary; you re-send one chunk, not gigabytes.</li>
+      <li><strong>Parallel transfer.</strong> Chunks upload/download concurrently, saturating bandwidth.</li>
+      <li><strong>Deduplication.</strong> Chunks are the unit of dedup (next step).</li>
+    </ul>
+    <p>Fixed-size chunking is simple but has a weakness: inserting a byte at the start of a file shifts every subsequent chunk boundary, busting dedup. <strong>Content-defined (variable-size) chunking</strong> with a rolling hash sets boundaries based on content, so an insertion only affects nearby chunks — better dedup at higher CPU cost. Fixed-size is the usual interview default; mention the rolling-hash refinement.</p>
+
+    <h2>Step 5 — Block Storage and Deduplication</h2>
+    <p>Each chunk is stored in a <strong>content-addressed</strong> blob store: its identifier is the cryptographic hash of its bytes (e.g. SHA-256). Two consequences fall out immediately. First, the same content always maps to the same ID, so if a chunk already exists you simply increment a reference count instead of storing it again — <strong>block-level deduplication</strong>. Second, you can verify integrity by re-hashing on read. Dedup is enormous in practice: shared documents, common app files, and re-saved versions mean a large fraction of chunks are duplicates.</p>
+
+    <div class="callout">
+      <div class="callout-label">security gotcha</div>
+      <p><strong>Cross-user (global) dedup leaks information.</strong> If dedup spans all users, an attacker can probe whether a known file already exists (their upload returns instantly = someone else has it), revealing that another user stores that exact content. Many services therefore scope dedup per-user or per-namespace, or add a secret salt, trading some storage savings for privacy. Always raise this trade-off.</p>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dedup scope</th><th>Storage savings</th><th>Risk</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Global (all users)</td><td>Maximum</td><td>Existence/confirmation attacks across users</td></tr>
+        <tr><td class="col-b">Per-namespace</td><td>High within shared folders</td><td>Low — bounded to collaborators</td></tr>
+        <tr><td class="col-a">Per-user</td><td>Moderate (versions, dupes)</td><td>None cross-user</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Step 6 — Metadata Service and Data Model</h2>
+    <p>The metadata plane is the brain: it records the folder tree, every file's version history, and the ordered list of chunk hashes that reconstitute each version. It's small per record but must be transactional (a commit updates several rows atomically) and reasonably strongly consistent (a client must not see a half-written file).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">metadata schema (sharded by namespace_id)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>namespaces (ns_id, owner_id, type)              <span class="cm"># a user's root or a shared folder</span>
+files      (file_id, ns_id, path, is_dir, latest_version, deleted)
+versions   (file_id, version, chunk_hashes[], size, modified_by, ts)
+chunks     (chunk_hash PK, blob_url, size, refcount)   <span class="cm"># content-addressed</span>
+devices    (device_id, user_id, last_cursor)    <span class="cm"># where each device left off</span>
+shares     (ns_id, user_id, role)               <span class="cm"># viewer / editor / owner</span></code></pre>
+    </div>
+
+    <p>A file version is just an ordered list of chunk hashes — reconstructing the file means fetching those chunks and concatenating. The <strong>namespace</strong> is the unit of sharding and sharing: a user's private root is one namespace, and each shared folder is its own namespace that can be attached to multiple users. Sharding metadata by <code>ns_id</code> keeps a user's (or shared folder's) data co-located, so listing a directory or computing a delta is a single-shard operation. A relational store (with sharding) is a fine choice because of the transactional commit; a NoSQL store works too if you handle the multi-row update carefully.</p>
+
+    <h2>Step 7 — Core Architecture: Two Planes</h2>
+    <p>Putting Steps 4–6 together, the system cleanly separates into two data planes that scale independently:</p>
+    <ul>
+      <li><strong>Metadata plane</strong> — the metadata service + sharded metadata DB. High QPS, tiny payloads, transactional, consistency-sensitive. This is where most engineering effort and most scaling pain live.</li>
+      <li><strong>Block plane</strong> — the block service + blob store (S3) + CDN. Exabyte-scale, large payloads, append-only and immutable (a chunk never changes — its hash defines it), trivially cacheable. Clients transfer bulk bytes directly to/from the blob store via presigned URLs, so application servers never proxy gigabytes.</li>
+    </ul>
+    <p>Because chunks are immutable and content-addressed, the block plane needs no complex consistency — it's a giant, durable hash map. All the ordering, versioning, and "what does this folder contain right now" logic lives in the metadata plane.</p>
+
+    <h2>Step 8 — The Sync Algorithm</h2>
+    <p>A client-side <strong>watcher</strong> observes the local folder. When a file changes, the sync engine runs roughly this loop:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">client sync engine (upload path)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">on</span> local_file_change(file):
+    chunks  = split(file, 4MB)
+    hashes  = [sha256(c) <span class="kw">for</span> c <span class="kw">in</span> chunks]
+    missing = api.upload_urls(hashes)        <span class="cm"># server: which are new?</span>
+    <span class="kw">for</span> h <span class="kw">in</span> missing:
+        put(missing[h], chunk_for(h))        <span class="cm"># upload only new chunks → blob store</span>
+    api.commit(file.path, hashes, base_version=file.known_version)</code></pre>
+    </div>
+
+    <p>The download path is the mirror image: the client calls <code>changes?cursor=</code>, learns which files have new versions, fetches the chunk hashes it's missing locally, downloads those chunks from the CDN, and reassembles the file. Crucially, the client maintains a <strong>cursor</strong> (a position in the per-namespace change log) so it only ever pulls deltas, never the whole tree.</p>
+
+    <h2>Step 9 — Notifying Other Devices</h2>
+    <p>How does a second device learn that a file changed? Polling the metadata service every few seconds works and is simple, but wastes requests and adds latency. The better design is a dedicated <strong>notification service</strong> that each online device subscribes to; when a namespace changes, it pushes a lightweight "you have changes, pull now" signal, and the device then does a normal <code>changes?cursor=</code> pull.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Mechanism</th><th>Latency</th><th>Cost / notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Periodic polling</td><td>Seconds–minutes</td><td>Simple; wasteful at idle; doesn't scale to instant sync</td></tr>
+        <tr><td class="col-b">Long polling</td><td>~1–2 s</td><td>Good middle ground; connection held until change or timeout</td></tr>
+        <tr><td class="col-a">WebSocket / push</td><td>Sub-second</td><td>Lowest latency; many idle persistent connections to manage</td></tr>
+      </tbody>
+    </table>
+
+    <p>A common hybrid: keep a lightweight long-poll/WebSocket channel only for the "ping" (no payload), and let the existing metadata API serve the actual delta. That keeps the notification tier cheap (it pushes tiny signals) while reusing the battle-tested change-pull path for data.</p>
+
+    <h2>Step 10 — Conflict Resolution</h2>
+    <p>Two devices are offline; both edit <code>report.docx</code>; both reconnect and try to commit. The metadata <code>commit</code> includes <code>base_version</code> — the version the client started from. The server accepts a commit only if <code>base_version</code> equals the current latest version (an optimistic compare-and-set). The second committer's <code>base_version</code> is now stale, so the server rejects the fast path and a conflict is declared.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">conflict via version compare-and-set</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>device A: commit(base_version = 5)  → accepted, latest = 6
+device B: commit(base_version = 5)  → REJECTED (latest is now 6)
+
+resolution: do NOT overwrite. Save B's content as a new file:
+   "report (conflicted copy — Bob's MacBook 2023-04-08).docx"
+both versions are preserved → no silent data loss; user decides.</code></pre>
+    </div>
+
+    <p>Because we treat a file as an opaque blob (no in-document merge), the safe, well-understood resolution is to keep both: the winning version stays, and the loser is written as a <strong>conflicted copy</strong> that syncs to everyone. This is exactly how Dropbox behaves, and it's the right interview answer — never silently discard a user's edit. (In-document automatic merging is the domain of CRDTs / operational transform, which is a Google Docs problem, not a file-sync one.)</p>
+
+    <h2>Step 11 — Sharing and Permissions</h2>
+    <p>Sharing is modeled with the <strong>namespace</strong>: a shared folder is a namespace that is mounted into multiple users' trees, with a row in <code>shares</code> granting each collaborator a role (viewer/editor/owner). When any member commits a change to that namespace, the notification service fans out to all members' devices. Permission checks happen in the metadata service on every read/write. The scaling concern is the <strong>sharing/permission lookup</strong>: deeply nested shared folders and large collaborator lists make "can this user access this path?" non-trivial, so permissions are usually cached and evaluated at the namespace level rather than per file.</p>
+
+    <h2>Step 12 — Downloads, Caching, and the CDN</h2>
+    <p>Downloads are bulk reads of immutable chunks — a perfect fit for a <strong>CDN</strong>. Since a chunk is content-addressed and never changes, it's infinitely cacheable: the URL (keyed by chunk hash) can be cached at edge locations worldwide with no invalidation logic. The client gets (presigned, expiring) CDN URLs from the block service and pulls chunks from the nearest edge. Hot chunks (popular shared files, app installers) are served almost entirely from cache, sparing the origin blob store. This is why separating immutable blocks from mutable metadata pays off again: only the metadata ever needs invalidation.</p>
+
+    <h2>Step 13 — Scaling, Durability, and Fault Tolerance</h2>
+    <p>Durability is the headline requirement, so the block store replicates each chunk across multiple availability zones (and often regions); colder data is moved to <strong>erasure-coded</strong> storage that achieves the same durability with far less overhead than 3× replication. Managed object stores (S3) already give ~11 nines, which is why most designs lean on one rather than rolling their own. For the metadata plane: shard by <code>ns_id</code> and replicate each shard (leader + followers) for availability; the per-namespace change log gives a clean ordering for the cursor-based sync. Application and notification tiers are stateless and horizontally scaled behind load balancers. Because chunks are immutable and verified by hash, background scrubbing can detect and repair silent corruption (bit rot) by re-replicating from a good copy.</p>
+
+    <h2>Step 14 — Key Tradeoffs</h2>
+    <ul>
+      <li><strong>Chunk size.</strong> Smaller chunks → better dedup and finer-grained partial sync, but more metadata (more hashes per file) and more request overhead. ~4&nbsp;MB is a common balance.</li>
+      <li><strong>Fixed vs content-defined chunking.</strong> Fixed is simple but insertions ruin dedup; rolling-hash boundaries fix that at higher CPU cost.</li>
+      <li><strong>Dedup scope.</strong> Global maximizes savings but enables cross-user existence attacks; per-namespace/per-user is safer. A real privacy/cost trade.</li>
+      <li><strong>Metadata consistency.</strong> Strong consistency makes sync correctness easy but costs latency and limits scale; the per-namespace sharding keeps strong consistency affordable within a namespace while the system as a whole scales out.</li>
+      <li><strong>Notification mechanism.</strong> WebSockets give sub-second sync but cost many idle connections; long-polling is a cheaper near-real-time compromise.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>The whole design rests on three moves: chunk files into blocks, address blocks by content hash (giving dedup and trivial CDN caching for free), and split the small-but-consistency-critical metadata plane from the huge-but-immutable block plane. Get those right and sync, dedup, resumability, and durability all follow naturally; the remaining hard parts are conflict handling (never lose an edit) and scaling the metadata/sharing layer.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why chunk files?</strong> Partial sync (only changed chunks move), resumable + parallel transfer, and deduplication — all impossible if a file is one opaque blob.<br>
+      <strong>Why content-addressed storage?</strong> A chunk's ID is the hash of its bytes, so identical chunks are stored once (dedup) and downloads are infinitely CDN-cacheable since chunks are immutable.<br>
+      <strong>Why split metadata from blocks?</strong> Metadata is tiny, high-QPS, transactional, consistency-sensitive; blocks are huge, immutable, append-only. Different stores, different scaling, only metadata needs invalidation.<br>
+      <strong>How do you handle two offline edits?</strong> Optimistic compare-and-set on <code>base_version</code>; the stale committer's file is saved as a "conflicted copy" — never silently overwrite.<br>
+      <strong>What's the risk of global dedup?</strong> Existence/confirmation attacks: instant upload reveals someone else stores that exact content. Scope dedup per-namespace/user to mitigate.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/hotel-booking/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design a Hotel Booking App</div>
+      </a>
+      <a href="/system-design/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">System Design</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>
