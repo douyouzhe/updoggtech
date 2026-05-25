@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,14 +170,14 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>9 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A URL shortener is a deceptively simple service: take a long URL, return a short one, and redirect the short one back to the original. The design challenge lies in generating short IDs that are unique at scale, handling collisions, keeping redirect latency near zero, and purging expired links without impacting hot-path performance.</p>
+    <p>A URL shortener is a deceptively simple service: take a long URL, return a short one, and redirect the short one back to the original. At a surface level it looks like a two-row database with a lookup. But the design challenge compounds quickly at scale: you must generate short IDs that are guaranteed unique across a distributed fleet without a global lock, keep redirect latency near zero for every link click everywhere in the world, handle a read:write ratio of 100:1 without a read bottleneck, support custom aliases without collision with the auto-generated namespace, purge expired links without impacting hot-path performance, and record click analytics while keeping the redirect path as fast as a CDN edge response. Each of these is a non-trivial system design decision, and their interactions create subtle correctness and performance traps.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -185,14 +185,16 @@
         <li><strong>6-char base-62 slug</strong> — 62⁶ &gt; 56 billion unique slugs; sufficient for years of URL volume at this scale.</li>
         <li><strong>ID generation beats hashing</strong> — Snowflake or range assignment avoids collisions at the source; MD5/SHA-1 prefix collisions require detection + retry loops.</li>
         <li><strong>Bloom filter for collision check</strong> — Redis Bloom filter: negative = definitely new (safe to write); positive = maybe exists (fall back to DB lookup). Keeps the fast path cheap.</li>
-        <li><strong>Redis caching on reads</strong> — absorbs the 10:1 read-to-write ratio; most redirects never hit the database.</li>
+        <li><strong>Redis caching on reads</strong> — absorbs the 100:1 read-to-write ratio; most redirects never hit the database.</li>
         <li><strong>301 vs. 302 is a product decision</strong> — 301 caches in browser (fewer hits, no analytics); 302 hits shortener every time (full analytics, higher load).</li>
+        <li><strong>Custom aliases need a separate namespace</strong> — user-supplied slugs must be checked against both the auto-generated namespace and the custom alias table to prevent collisions.</li>
+        <li><strong>Click analytics via async pipeline</strong> — log click events to Kafka on every redirect; analytics consumers aggregate asynchronously without adding latency to the hot redirect path.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>6-character base-62 slugs give sufficient namespace for a year's worth of URLs. Use ID generation (Snowflake or range assignment) over hashing to avoid collisions. Add a Redis Bloom filter to check for existing slugs before writing. Cache hot redirects in Redis. Purge expired URLs via TTL, scheduled scans, or lazy evaluation. Rate-limit write endpoints to prevent DDoS.</p>
+      <p>6-character base-62 slugs give sufficient namespace for a year's worth of URLs. Use ID generation (Snowflake or range assignment) over hashing to avoid collisions. Add a Redis Bloom filter to check for existing slugs before writing. Cache hot redirects in Redis. Purge expired URLs via TTL, scheduled scans, or lazy evaluation. Rate-limit write endpoints to prevent DDoS. Stream click events to Kafka for async analytics.</p>
     </div>
 
     <figure class="article-figure">
@@ -200,57 +202,222 @@
       <figcaption>High-level URL shortener architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Before designing anything, scope the problem explicitly. URL shortener is a common interview prompt because it seems trivial but reveals depth quickly. Ask the interviewer about these dimensions:</p>
 
-    <h3>Functional</h3>
+    <h3>Functional requirements</h3>
     <ul>
-      <li>Generate a short URL from a long URL input</li>
-      <li>Redirect a short URL back to the original long URL</li>
+      <li>Generate a short URL from a long URL input.</li>
+      <li>Redirect a short URL back to the original long URL.</li>
+      <li>Support custom aliases (user-supplied short codes like <code>tiny.url/my-brand</code>).</li>
+      <li>Set an expiration date/TTL on links; expired links return 404.</li>
+      <li>Track click analytics: total clicks, unique visitors, referrer, country, device type.</li>
+      <li>User accounts for managing their own links (optional, but common in product interview variants).</li>
     </ul>
 
-    <h3>Non-Functional</h3>
+    <h3>Non-functional requirements</h3>
     <ul>
-      <li><strong>Very low latency</strong> — redirects happen on every link click; every millisecond counts</li>
-      <li><strong>Very high availability</strong> — a down service breaks every shortened link across the internet</li>
+      <li><strong>Very low redirect latency</strong> — redirects happen on every link click across the internet; target &lt;50 ms p99 globally.</li>
+      <li><strong>Very high availability</strong> — a down service breaks every shortened link in existence; target 99.99%.</li>
+      <li><strong>Uniqueness guarantee</strong> — two different long URLs must never map to the same short code; one short code must always resolve to exactly one long URL.</li>
+      <li><strong>Scalability</strong> — handles 10M DAU with a 10:1 read-to-write ratio; scales to 100:1 at large scale.</li>
     </ul>
 
-    <h2>Scale Estimates</h2>
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Explicitly ask whether click analytics are required — the answer drives your redirect strategy. If yes, you likely want 302 redirects (no browser caching) and an analytics pipeline. If no, 301 + aggressive CDN caching is simpler and cheaper. State your choice and the reasoning.</p>
+    </div>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Back-of-the-envelope sizing anchors storage and infrastructure decisions. Assume a mid-size deployment with <strong>10M DAU</strong>.</p>
+
+    <h3>Traffic</h3>
     <ul>
-      <li>10 million DAU, ~2 requests per user per day</li>
-      <li>Write QPS: ~230 (peak: ~460)</li>
-      <li>Read QPS: ~2,300 (10:1 read-to-write ratio)</li>
-      <li>Storage: less than 1 TB for a 1-year TTL (at ~100 bytes per entry)</li>
-      <li>Short URL length: <strong>6 characters</strong> from a base-62 character set <code>[0-9, a-z, A-Z]</code> yields 62⁶ &gt; 56 billion unique slugs — more than enough for annual URL volume</li>
+      <li>Write rate: assume each DAU creates ~0.1 short URLs per day → 10M × 0.1 = <strong>1M writes/day ≈ 12 writes/sec</strong> average; peak ~2–3× → <strong>~30 writes/sec</strong>.</li>
+      <li>Read rate: assume each URL is clicked ~10 times/day on average → 1M × 10 = <strong>10M redirects/day ≈ 115 reads/sec</strong> average; peak 5–10× → <strong>~1,000 reads/sec</strong>.</li>
+      <li>Read:write ratio ≈ <strong>10:1</strong> at this scale; at large viral link scale (a popular link being clicked millions of times) it easily hits <strong>100:1 or higher</strong>.</li>
     </ul>
+
+    <h3>Storage</h3>
+    <ul>
+      <li>Each URL record: ~100 bytes (slug 6 B, long URL ~100 B avg, created_at 8 B, expires_at 8 B, user_id 8 B) ≈ <strong>~130 bytes/record</strong>.</li>
+      <li>1M new URLs/day × 365 days × 130 bytes ≈ <strong>~47 GB/year</strong> for URL records — trivially fits in a single SQL database, let alone a sharded one.</li>
+      <li>Analytics events: if we log every click (115 reads/sec × 86,400 s × ~200 bytes) ≈ <strong>~2 GB/day of click events</strong>; these go to a time-series store or data warehouse, not the hot URL database.</li>
+    </ul>
+
+    <h3>Slug namespace sizing</h3>
+    <ul>
+      <li>Base-62 character set: <code>[0-9, a-z, A-Z]</code> = 62 characters.</li>
+      <li>6-character slug: 62⁶ = <strong>56,800,235,584</strong> unique codes — over 56 billion.</li>
+      <li>At 1M new URLs/day, this namespace lasts <strong>over 155,000 years</strong>. Even at 1B URLs/day it lasts ~56 years. 6 characters is the canonical answer.</li>
+      <li>7 characters gives 62⁷ = 3.5 trillion — use if you genuinely expect billion-per-day scale.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>The storage math shows why URL shortener is an often-misunderstood "hard" problem: the data volume is tiny. The real challenges are uniqueness guarantees at distributed write scale, redirect latency at read scale, and correctness of the custom alias namespace — not raw storage.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Clean, minimal REST surface. The entire service is essentially two endpoints plus a management layer:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Write: create a short URL</span>
+<span class="kw">POST</span> <span class="str">/api/shorten</span>
+     Authorization: Bearer &lt;token&gt;
+     { <span class="str">"long_url"</span>: <span class="str">"https://example.com/very/long/path?q=1"</span>,
+       <span class="str">"custom_alias"</span>: <span class="str">"my-brand"</span>,   <span class="cm">// optional</span>
+       <span class="str">"expires_at"</span>: <span class="str">"2025-12-31"</span> }  <span class="cm">// optional</span>
+     → <span class="num">201</span> { <span class="str">"short_url"</span>: <span class="str">"https://tiny.url/aB3kPq"</span>,
+             <span class="str">"slug"</span>: <span class="str">"aB3kPq"</span>, <span class="str">"expires_at"</span>: <span class="str">"2025-12-31"</span> }
+
+<span class="cm"># Read: redirect</span>
+<span class="kw">GET</span> <span class="str">/{slug}</span>
+     → <span class="num">302</span> Location: https://example.com/very/long/path?q=1
+     → <span class="num">404</span> if slug not found or expired
+
+<span class="cm"># Analytics: click stats for a link</span>
+<span class="kw">GET</span> <span class="str">/api/links/{slug}/analytics</span>
+     Authorization: Bearer &lt;token&gt;  <span class="cm">// must own the link</span>
+     → { <span class="str">"total_clicks"</span>: <span class="num">14827</span>, <span class="str">"unique_visitors"</span>: <span class="num">9301</span>,
+         <span class="str">"clicks_by_country"</span>: {...}, <span class="str">"clicks_by_day"</span>: [...] }
+
+<span class="cm"># Management: delete a link</span>
+<span class="kw">DELETE</span> <span class="str">/api/links/{slug}</span>
+       Authorization: Bearer &lt;token&gt;</code></pre>
+    </div>
+
+    <p>The <code>POST /api/shorten</code> endpoint is idempotent for the same <code>(long_url, custom_alias)</code> pair — submitting the same request twice returns the existing slug rather than creating a duplicate. Rate-limit this endpoint per user token: free tier might allow 10 creates/min, paid tier 100/min. The <code>GET /{slug}</code> redirect endpoint is on the hot path; it must be as fast as possible and is never rate-limited for readers (only the write side needs protection).</p>
+
+    <h2>Step 4 — Short ID Generation: Hashing vs. ID Generation</h2>
+    <p>The core question is how to generate the 6-character slug. There are four main approaches, each with distinct tradeoffs:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Approach</th><th>Mechanism</th><th>Collision Risk</th><th>Sortable</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-b">MD5 / SHA-1 hash</td><td>Hash the long URL, take first 6 chars of base-62 encoding</td><td>High — birthday paradox bites at 56B space with short prefix</td><td>No</td></tr>
+        <tr><td class="col-a">UUID (random)</td><td>Generate random 128-bit UUID, encode first 6 chars in base-62</td><td>Low but nonzero — requires collision detection</td><td>No</td></tr>
+        <tr><td class="col-a">Snowflake ID</td><td>41-bit timestamp + 10-bit machine ID + 12-bit sequence; encode in base-62</td><td>Zero if machine IDs unique</td><td>Yes (time-ordered)</td></tr>
+        <tr><td class="col-a">Range assignment</td><td>Central controller assigns numeric ranges to worker nodes; workers use next value in range</td><td>Zero</td><td>Yes</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Why hashing is problematic</h3>
+    <p>Hashing the long URL and taking the first 6 characters seems elegant — same URL always produces the same slug (deterministic), no coordination needed. The problem is the <strong>birthday paradox</strong>: in a 56-billion-slot space, after inserting roughly √(2 × 56B) ≈ 334,000 URLs, the probability of a collision exceeds 50%. At 1M URLs/day, you hit this in under a day. Every collision requires detection (DB lookup or Bloom filter check) and a retry with a salt — now you have a retry loop on the write path with indeterminate latency.</p>
+
+    <h3>Snowflake ID generation</h3>
+    <p>Twitter's Snowflake format generates 64-bit IDs from three components packed into a single integer: a 41-bit millisecond timestamp (giving ~69 years of headroom from epoch), a 10-bit machine ID (supporting 1,024 unique generator nodes), and a 12-bit sequence counter (allowing 4,096 IDs per millisecond per machine). Converting this 64-bit integer to base-62 gives at most 11 characters — for a 6-char slug, take the lower 36 bits (base-62 encoding of numbers up to 62⁶ ≈ 56B requires ~36 bits).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time
+
+EPOCH = <span class="num">1700000000000</span>  <span class="cm"># custom epoch ms</span>
+MACHINE_ID = <span class="num">1</span>          <span class="cm"># assigned at deploy time (0–1023)</span>
+BASE62 = <span class="str">"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"</span>
+_seq = <span class="num">0</span>
+
+<span class="kw">def</span> <span class="fn">generate_snowflake</span>():
+    <span class="kw">global</span> _seq
+    ts = <span class="fn">int</span>(time.<span class="fn">time</span>() * <span class="num">1000</span>) - EPOCH
+    _seq = (_seq + <span class="num">1</span>) & <span class="num">0xFFF</span>   <span class="cm"># 12-bit rollover</span>
+    <span class="kw">return</span> (ts &lt;&lt; <span class="num">22</span>) | (MACHINE_ID &lt;&lt; <span class="num">12</span>) | _seq
+
+<span class="kw">def</span> <span class="fn">to_base62</span>(n: <span class="ty">int</span>, length=<span class="num">6</span>) -> <span class="ty">str</span>:
+    chars = []
+    <span class="kw">while</span> n > <span class="num">0</span>:
+        chars.<span class="fn">append</span>(BASE62[n % <span class="num">62</span>])
+        n //= <span class="num">62</span>
+    <span class="kw">return</span> <span class="str">""</span>.<span class="fn">join</span>(<span class="fn">reversed</span>(chars)).<span class="fn">zfill</span>(length)[-length:]
+
+<span class="kw">def</span> <span class="fn">new_slug</span>() -> <span class="ty">str</span>:
+    <span class="kw">return</span> <span class="fn">to_base62</span>(<span class="fn">generate_snowflake</span>())</code></pre>
+    </div>
+
+    <h3>Range assignment (counter-based)</h3>
+    <p>An alternative to Snowflake: a central coordinator (e.g., a ZooKeeper node or a dedicated counter service backed by a SQL <code>AUTO_INCREMENT</code>) assigns numeric ranges to worker nodes. Worker 1 gets 0–999,999; worker 2 gets 1,000,000–1,999,999, etc. Each worker converts its next counter value to base-62 and uses it as the slug. No coordination is needed within a range — the worker increments a local counter. When a range is exhausted, the worker requests a new range from the coordinator. This approach is simpler than Snowflake and collision-free but creates a single-point coordinator that must be highly available.</p>
+
+    <div class="callout">
+      <div class="callout-label">scalability note</div>
+      <p>For most interview scenarios, Snowflake is the preferred answer: it is coordination-free at the ID generation level (each node generates IDs independently given a pre-assigned machine ID), time-ordered (useful for debugging and analytics), and collision-free by construction. Range assignment is a valid alternative — prefer it if the interviewer asks about simpler setups.</p>
+    </div>
 
     <figure class="article-figure">
       <img src="/assets/img/url-shortener-2.png" alt="URL shortener system flow diagram" loading="lazy">
       <figcaption>URL shortener system flow diagram</figcaption>
     </figure>
 
-    <h2>Short ID Generation: Hashing vs. ID Generation</h2>
-    <p>The core question is how to generate the 6-character slug:</p>
+    <h2>Step 5 — Bloom Filter for Collision Detection</h2>
+    <p>Even with collision-free ID generation, you still need collision detection for the <strong>hash-based approach</strong> and for <strong>custom aliases</strong> (which are user-supplied strings that could collide with auto-generated slugs or with each other). The canonical tool is a <strong>Redis Bloom filter</strong>.</p>
 
-    <table class="compare-table">
-      <thead>
-        <tr><th>Approach</th><th>Mechanism</th><th>Problem</th></tr>
-      </thead>
-      <tbody>
-        <tr><td class="col-b">Hashing (MD5, SHA-1)</td><td>Hash the long URL, take first 6 chars</td><td>Different long URLs can produce the same 6-char prefix — collisions require detection and retry</td></tr>
-        <tr><td class="col-a">UUID</td><td>Generate random 128-bit ID, encode to base-62</td><td>Low collision probability but requires entropy; IDs are not naturally sortable</td></tr>
-        <tr><td class="col-a">Snowflake ID</td><td>41-bit timestamp + 10-bit machine ID + 12-bit sequence</td><td>No collision if machine IDs are unique; time-ordered; requires coordination for machine ID assignment</td></tr>
-        <tr><td class="col-a">Range assignment</td><td>Partition a numeric range across servers; round-robin or contiguous blocks</td><td>Requires an external controller to assign ranges; simpler than Snowflake for small clusters</td></tr>
-      </tbody>
-    </table>
+    <p>A Bloom filter is a probabilistic data structure that answers "is this element definitely not in the set?" or "is this element possibly in the set?". It never produces false negatives but may produce false positives. The operational rule:</p>
+    <ul>
+      <li><strong>Bloom filter says NO</strong> (bit not set) → slug is definitely new — safe to write, no DB lookup needed.</li>
+      <li><strong>Bloom filter says YES</strong> (bit set) → slug might exist — fall back to a DB lookup to confirm. If the DB says it exists, retry with a new slug or salt.</li>
+    </ul>
 
-    <p>Hashing requires a collision detection layer. The canonical solution is a <strong>Redis Bloom filter</strong>: before writing a new slug, check the Bloom filter. A negative result means the slug is definitely new (safe to write). A positive result means the slug might already exist — fall back to a database lookup. This keeps the fast path (new slug) extremely cheap.</p>
+    <p>This keeps the write fast path — the overwhelmingly common case (new slug) — an O(1) in-memory Redis check rather than a DB round-trip. The false-positive rate (controlled by the filter's bit array size and hash count) is typically configured to 1% or lower, meaning only 1 in 100 writes incurs an unnecessary DB lookup.</p>
 
     <div class="callout">
       <div class="callout-label">scalability note</div>
-      <p>A single Redis Bloom filter becomes a bottleneck at high scale. Distributing Bloom filter checks across multiple Redis instances reduces the bottleneck but sacrifices a single source of truth — a known tradeoff without a clean solution at extreme scale.</p>
+      <p>A single Redis Bloom filter becomes a bottleneck at high scale. Distributing Bloom filter checks across multiple Redis instances reduces the bottleneck but sacrifices a single source of truth — a known tradeoff without a clean solution at extreme scale. An alternative is to skip the Bloom filter entirely and use Snowflake IDs (which are collision-free by construction), checking only custom aliases in the DB.</p>
     </div>
 
-    <h2>Core Architecture</h2>
+    <h2>Step 6 — Data Model</h2>
+    <p>The URL store is simple but the schema details matter for correctness and query performance:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> urls (
+  slug          <span class="ty">VARCHAR</span>(<span class="num">8</span>)  <span class="kw">PRIMARY KEY</span>,    <span class="cm">-- short code (6–8 chars)</span>
+  long_url      <span class="ty">TEXT</span>        <span class="kw">NOT NULL</span>,
+  user_id       <span class="ty">BIGINT</span>,                     <span class="cm">-- NULL if anonymous</span>
+  is_custom     <span class="ty">BOOLEAN</span>     <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>, <span class="cm">-- user-supplied alias</span>
+  created_at    <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  expires_at    <span class="ty">TIMESTAMP</span>,                  <span class="cm">-- NULL = never expires</span>
+  click_count   <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>      <span class="cm">-- approximate, incremented async</span>
+);
+
+<span class="kw">CREATE INDEX</span> idx_user_id <span class="kw">ON</span> urls(user_id);   <span class="cm">-- list user's links</span>
+<span class="kw">CREATE INDEX</span> idx_expires <span class="kw">ON</span> urls(expires_at) <span class="cm">-- purge expired rows</span>
+  <span class="kw">WHERE</span> expires_at <span class="kw">IS NOT NULL</span>;
+
+<span class="cm">-- Analytics events (high-volume, written to Kafka → OLAP store)</span>
+<span class="cm">-- NOT stored in the hot SQL DB</span>
+<span class="cm">-- Schema of Kafka message:</span>
+<span class="cm">-- { slug, timestamp_ms, ip, user_agent, referrer, country, device_type }</span></code></pre>
+    </div>
+
+    <p>Key schema decisions: the <code>slug</code> is the primary key — every redirect is a primary-key lookup, which is O(log n) on a B-tree index and extremely fast. The <code>expires_at</code> partial index (filtered to non-NULL rows) keeps the purge scan cheap. The <code>click_count</code> column is an approximate counter — it is incremented asynchronously by the analytics consumer, not on the redirect hot path, so it may lag by minutes but never blocks a redirect.</p>
+
+    <h2>Step 7 — Core Architecture and Read/Write Paths</h2>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -263,18 +430,30 @@
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
       <pre><code><span class="cm">-- Write path (shorten a URL)</span>
-POST /shorten { long_url }
-  → Rate limiter (by user token)
-  → Generate slug (Snowflake / range / hash+salt)
-  → Check Redis Bloom filter for collision
-  → Write { slug → long_url, created_at, ttl } to DB
-  → Return short URL
+POST /api/shorten { long_url, custom_alias?, expires_at? }
+  → Rate limiter (token bucket per user_id or IP)
+  → If custom_alias provided:
+      check alias not already taken (DB lookup)
+      slug = custom_alias
+    Else:
+      slug = to_base62(snowflake_id())
+  → Check Redis Bloom filter (for hash approach only)
+      negative → safe to write
+      positive  → DB lookup to confirm; retry on collision
+  → Write { slug, long_url, user_id, expires_at } to primary DB
+  → Add slug to Bloom filter (if using)
+  → Add slug → long_url to Redis cache (TTL = min(expires_at, 24h))
+  → Return { short_url: "https://tiny.url/{slug}" }
 
 <span class="cm">-- Read path (redirect)</span>
 GET /{slug}
-  → Check Redis cache  (cache hit → 301/302 redirect)
-  → On miss: DB lookup → cache → redirect
-  → Log click event for analytics</code></pre>
+  → Check Redis cache
+      hit  → check expires_at → 302/404 redirect
+      miss → DB lookup by PRIMARY KEY
+               found  → cache → 302 redirect
+               not found → 404
+  → Fire-and-forget: publish click event to Kafka
+      { slug, ts, ip, user_agent, referrer, country }</code></pre>
     </div>
 
     <figure class="article-figure">
@@ -282,35 +461,155 @@ GET /{slug}
       <figcaption>Read and write path flow for URL redirect</figcaption>
     </figure>
 
-    <h2>Redirect: 301 vs. 302</h2>
-    <p>The HTTP redirect response code matters for caching behavior:</p>
+    <h3>Redis caching in depth</h3>
+    <p>With a 100:1 read-to-write ratio, caching is the single highest-leverage optimization. The cache pattern is <strong>look-aside with write-through</strong>: on a write, populate the cache immediately so the first redirect is already a cache hit; on a read miss, pull from the DB and populate. Key caching decisions:</p>
     <ul>
-      <li><strong>301 (Permanent Redirect)</strong> — browsers cache the destination; subsequent clicks skip the shortener entirely. Reduces load but loses click analytics after the first visit.</li>
-      <li><strong>302 (Temporary Redirect)</strong> — browsers do not cache; every click hits the shortener. Preserves analytics at the cost of higher server load.</li>
-    </ul>
-    <p>The right choice depends on whether click-level analytics are a product requirement.</p>
-
-    <h2>URL Expiration and Purging</h2>
-    <p>Expired URLs must be cleaned up to reclaim storage and slug namespace. Three strategies exist:</p>
-    <ul>
-      <li><strong>Redis TTL</strong> — set an expiration on the cache entry; automatic cleanup with no database overhead. Works well when the cache is the primary read path.</li>
-      <li><strong>Scheduled database scans</strong> — an offline Airflow job periodically scans for rows where <code>created_at + ttl &lt; now()</code> and deletes them. Simple but potentially slow on large tables.</li>
-      <li><strong>Lazy evaluation</strong> — check the TTL on every redirect request; return a 404 and delete if expired. Zero dedicated cleanup work, but expired rows accumulate until accessed.</li>
+      <li><strong>TTL</strong> — set to <code>min(link expires_at, 24 hours)</code>. A link expiring tomorrow should not be cached past its expiry. A non-expiring link gets 24 h TTL with eager refresh to avoid stampede on popular links.</li>
+      <li><strong>Hot links</strong> — a viral link shared by a celebrity can receive millions of clicks in minutes, saturating one Redis shard. Mitigate with <strong>local in-process cache</strong> (LRU cache in the redirect service, 1 s TTL) in front of Redis, or by replicating hot keys across multiple Redis nodes.</li>
+      <li><strong>Cache stampede</strong> — when a popular link's cache entry expires, thousands of redirect requests simultaneously miss and hammer the DB. Use a <strong>single-flight mutex</strong>: only one request rebuilds the cache entry; others wait for it. Or use probabilistic early expiry (refresh before the TTL hits zero based on the link's click velocity).</li>
+      <li><strong>Cache invalidation</strong> — when a link is deleted (via <code>DELETE /api/links/{slug}</code>), immediately evict it from cache. Never serve a deleted link from stale cache.</li>
     </ul>
 
-    <h2>Rate Limiting and Security</h2>
-    <p>The write endpoint must be protected with a rate limiter to prevent DDoS attacks that generate millions of slugs, exhausting both storage and the slug namespace. User-token-based tracking enables per-user quotas. The read endpoint is generally left unthrottled since redirects are cheap and caching absorbs most load.</p>
+    <h2>Step 8 — Redirect: 301 vs. 302</h2>
+    <p>The HTTP redirect response code is a product decision with significant system-design implications:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Code</th><th>Meaning</th><th>Browser behavior</th><th>Analytics impact</th><th>Server load</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">301</td><td>Permanent Redirect</td><td>Caches in browser; subsequent clicks skip the shortener</td><td>Only first click is recorded</td><td>Very low — browser handles repeat visits</td></tr>
+        <tr><td class="col-b">302</td><td>Temporary Redirect</td><td>Does not cache; every click hits the shortener</td><td>Every click is recorded</td><td>Higher — all clicks go through service</td></tr>
+      </tbody>
+    </table>
+
+    <p>If click analytics are a product requirement, you <strong>must use 302</strong> — a 301 means the shortener never sees repeat clicks from the same browser after the first. If analytics are not required and you want maximum performance at minimum cost, 301 + CDN caching is the right choice: CDN edge nodes cache the 301 and serve repeat redirects at edge latency without touching your origin servers.</p>
+
+    <div class="callout">
+      <div class="callout-label">hybrid approach</div>
+      <p>Some services use 302 for the first N clicks to gather analytics, then switch to 301 after a threshold. This is complex to implement correctly (the switch must be coordinated with cache invalidation) but is occasionally asked about in advanced interviews. Simpler: use 302 always but add a CDN layer that caches the redirect for a short TTL (e.g., 60 s) to reduce origin load while still capturing most clicks.</p>
+    </div>
+
+    <h2>Step 9 — Custom Aliases</h2>
+    <p>Custom aliases (<code>tiny.url/my-brand</code>) are user-supplied strings that must not collide with either auto-generated slugs or with other users' custom aliases. The namespace management rules:</p>
+    <ul>
+      <li><strong>Validation</strong> — enforce a character allow-list (a-z, A-Z, 0-9, hyphen, underscore), minimum length (3 chars), maximum length (50 chars). Reject reserved words (<code>api</code>, <code>admin</code>, <code>health</code>, etc.).</li>
+      <li><strong>Uniqueness check</strong> — before accepting a custom alias, check the <code>urls</code> table: <code>SELECT 1 FROM urls WHERE slug = :alias</code>. If it exists and is owned by another user, reject with 409 Conflict. If it exists and is owned by the same user (idempotent re-submit), return the existing record.</li>
+      <li><strong>Namespace isolation</strong> — store both custom aliases and auto-generated slugs in the same <code>urls</code> table, differentiated by the <code>is_custom</code> flag. The primary key check prevents collisions between the two namespaces automatically.</li>
+      <li><strong>Custom alias limits</strong> — free accounts might allow 5 custom aliases; paid accounts unlimited. Enforced at the API layer, not the DB.</li>
+    </ul>
+
+    <h2>Step 10 — Click Analytics Pipeline</h2>
+    <p>Click analytics must not add latency to the redirect hot path. The solution is a <strong>fire-and-forget async pipeline</strong>:</p>
+
+    <ol>
+      <li>On every redirect, the redirect service publishes a click event to <strong>Kafka</strong> asynchronously (non-blocking). The redirect itself returns immediately.</li>
+      <li>Kafka consumers (analytics workers) consume the event stream and write to a time-series store (ClickHouse, BigQuery, or Redshift) optimized for aggregation queries.</li>
+      <li>A separate aggregation job (Spark batch or Flink streaming) pre-computes per-link rollups: total clicks, unique IPs, clicks by country/device/referrer, clicks by hour/day.</li>
+      <li>The analytics API (<code>GET /api/links/{slug}/analytics</code>) reads from the pre-computed rollup store, not from raw events — O(1) lookup rather than a full scan of billions of click records.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>Redirect service
+  └── fire-and-forget → Kafka topic: <span class="str">"click-events"</span>
+        { <span class="str">"slug"</span>: <span class="str">"aB3kPq"</span>, <span class="str">"ts"</span>: <span class="num">1716556800000</span>, <span class="str">"ip"</span>: <span class="str">"1.2.3.4"</span>,
+          <span class="str">"country"</span>: <span class="str">"US"</span>, <span class="str">"device"</span>: <span class="str">"mobile"</span>, <span class="str">"referrer"</span>: <span class="str">"twitter.com"</span> }
+
+Analytics consumer (Flink streaming)
+  └── reads Kafka → counts per (slug, hour, country, device)
+  └── writes rollups to ClickHouse:
+        <span class="cm">-- clicks_hourly(slug, hour, country, device, click_count)</span>
+
+Analytics API
+  └── SELECT SUM(click_count) FROM clicks_hourly WHERE slug = <span class="str">'aB3kPq'</span>
+      → returns in &lt;<span class="num">10</span> ms (indexed rollup table)</code></pre>
+    </div>
+
+    <h2>Step 11 — URL Expiration and Purging</h2>
+    <p>Expired URLs must be cleaned up to reclaim storage and return correct 404 responses. Three strategies, each with different tradeoffs:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>How it works</th><th>Pros</th><th>Cons</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Redis TTL</td><td>Set TTL on the cache entry equal to the link's expiry; cache evicts automatically</td><td>Zero DB overhead; works for cache hits</td><td>Expired rows accumulate in DB; DB still shows record as existing</td></tr>
+        <tr><td class="col-a">Lazy evaluation</td><td>On every redirect, check <code>expires_at &lt; NOW()</code>; return 404 and optionally delete the DB row</td><td>No batch job needed; self-cleaning</td><td>Expired rows accumulate until accessed; delete on the hot path adds latency</td></tr>
+        <tr><td class="col-b">Scheduled scan</td><td>Airflow job runs nightly: <code>DELETE FROM urls WHERE expires_at &lt; NOW()</code> using the partial index</td><td>DB stays clean; predictable load</td><td>Expired links are "valid" for up to 24 h in DB; batch delete can be slow on large tables</td></tr>
+      </tbody>
+    </table>
+
+    <p>The recommended approach combines all three: <strong>Redis TTL</strong> handles the cache layer correctly for most traffic; <strong>lazy expiry check</strong> in the redirect handler catches DB hits on expired-but-cached-elsewhere links; <strong>nightly scan</strong> keeps the DB table clean and the partial index small. The lazy delete should be done asynchronously (e.g., enqueue to a deletion queue) to keep the redirect response fast.</p>
+
+    <h2>Step 12 — Scaling and Fault Tolerance</h2>
+    <p>At high scale, the URL shortener must remain available and fast despite hardware failures, traffic spikes, and regional outages.</p>
+
+    <h3>Read scaling</h3>
+    <p>The redirect service is stateless — it reads from Redis and occasionally from the DB. Scale horizontally behind a load balancer. With a hot Redis cache absorbing 95%+ of reads, the DB is under minimal load. Add <strong>read replicas</strong> for the DB to handle the remaining cache misses. Deploy the redirect service in multiple regions with a CDN or GeoDNS routing users to their nearest instance.</p>
+
+    <h3>Write scaling</h3>
+    <p>At ~30 writes/sec, a single SQL primary easily handles URL creation. If write scale becomes a concern (say, 10,000 writes/sec for a platform that also offers programmatic link creation via API), <strong>shard the DB by slug prefix</strong>: slugs starting with 0-9 go to shard A, a-m to shard B, n-z to shard C. Since each redirect is a primary-key lookup on the slug, routing to the correct shard is a simple character map — no cross-shard joins needed.</p>
+
+    <h3>Multi-region consistency</h3>
+    <p>A globally distributed URL shortener must handle the case where a link created in US-East is immediately clicked by a user in Asia-Pacific. Options:</p>
+    <ul>
+      <li><strong>Global single-region primary + regional read replicas</strong> — writes go to US-East; replicas in EU and APAC catch up within seconds. Redirect reads hit the local replica. A newly created link may take 1–2 s to appear in APAC — usually acceptable.</li>
+      <li><strong>Multi-primary with conflict detection</strong> — each region accepts writes with a Snowflake ID (machine ID encodes region). Since Snowflake IDs are globally unique by construction, no conflicts are possible. Replication propagates records across regions asynchronously.</li>
+    </ul>
+
+    <h3>Fault tolerance</h3>
+    <ul>
+      <li><strong>Redis failure</strong> — if the cache cluster is down, all redirects fall through to the DB. Design the DB capacity to handle 100% of redirect traffic for the duration of a Redis outage (minutes to hours with automatic recovery). Redis Cluster with replica shards reduces the blast radius.</li>
+      <li><strong>DB failure</strong> — automatic failover to a replica (e.g., via Amazon RDS Multi-AZ or Patroni for PostgreSQL). Brief window of read-only mode during failover is acceptable; link creation queued and retried.</li>
+      <li><strong>Kafka failure</strong> — click events are lost for the duration. Analytics accuracy degrades but redirects are unaffected (fire-and-forget means the redirect does not wait for Kafka). Kafka itself runs with replication factor ≥ 3.</li>
+    </ul>
+
+    <h2>Step 13 — Rate Limiting and Security</h2>
+    <p>The write endpoint must be protected with a rate limiter to prevent DDoS attacks that generate millions of slugs, exhausting both storage and the slug namespace. Security layers:</p>
+    <ul>
+      <li><strong>Per-user token bucket</strong> — authenticated users get a rate limit (e.g., 10 creates/min free tier, 100/min paid). Implemented in Redis with a sliding window counter: <code>INCR rate:user:{user_id}:{minute}</code> + <code>EXPIRE</code>.</li>
+      <li><strong>Per-IP rate limit</strong> — unauthenticated requests (anonymous shortening) are limited by IP to prevent unauthenticated abuse. More permissive than per-user but necessary as a backstop.</li>
+      <li><strong>URL validation and malware scanning</strong> — validate that the long URL is a valid URL (regex + DNS resolution check). Integrate with a malware/phishing URL database (Google Safe Browsing API) to reject known malicious links before creating a slug that would then propagate the phishing link.</li>
+      <li><strong>Spam link detection</strong> — rate-limit the same long URL from the same user (creating 1,000 slugs all pointing to the same phishing page is a common abuse pattern).</li>
+      <li><strong>The read endpoint is not rate-limited</strong> for anonymous users — redirects are cheap and caching absorbs most load. Rate-limit only if a specific IP is making an obviously automated volume of redirect calls (bot detection layer).</li>
+    </ul>
+
+    <h2>Step 14 — Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Slug generation</td><td class="col-a">Snowflake (ID-based)</td><td>Requires pre-assigned machine IDs; slight time-ordering reveals creation volume</td></tr>
+        <tr><td>Redirect code</td><td class="col-b">302 (temporary)</td><td>Higher server load vs. 301; required if click analytics are a product feature</td></tr>
+        <tr><td>Collision detection</td><td class="col-a">Bloom filter in Redis</td><td>False positives require DB fallback; filter itself needs to be distributed at extreme scale</td></tr>
+        <tr><td>Analytics pipeline</td><td class="col-a">Async (Kafka → OLAP)</td><td>Clicks are counted with a brief lag; redirect latency is not impacted</td></tr>
+        <tr><td>Expiry enforcement</td><td class="col-a">Lazy + nightly scan</td><td>Expired links accessible for up to the cache TTL after expiry (seconds); DB cleaned within 24 h</td></tr>
+        <tr><td>Storage</td><td class="col-b">SQL (single table)</td><td>Trivially fits the data volume; no need for the complexity of distributed NoSQL</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>URL shortener design is a study in making boring things scale: ID generation beats hashing (avoid collisions at the source), Bloom filters make collision checks cheap, Redis caching absorbs the 10:1 read amplification, and slug length arithmetic confirms 6 characters is sufficient. The subtle choices — 301 vs. 302, which purge strategy — are driven by product requirements, not technical constraints.</p>
+      <p>URL shortener design is a study in making boring things scale: Snowflake ID generation beats hashing (avoid collisions at the source), Bloom filters make collision checks cheap on the write path, Redis caching absorbs the 100:1 read amplification, and slug length arithmetic confirms 6 characters is sufficient for decades. The subtle choices — 301 vs. 302, which purge strategy, whether to use a Bloom filter at all with Snowflake IDs — are driven by product requirements, not technical constraints. Know the tradeoffs, state your assumptions, and justify each choice.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Why prefer ID generation over hashing for slug generation?</strong> Hash functions (MD5, SHA-1) can produce the same 6-character prefix for different URLs — collision detection and retry add complexity. Snowflake or range-based ID generation eliminates collisions at the source.<br>
-      <strong>How does the Bloom filter speed up collision detection?</strong> A Bloom filter negative (bit not set) guarantees the slug is new — no DB lookup needed. Only positives require a DB fallback, and positives are rare. This keeps the write fast path O(1) in memory.<br>
-      <strong>301 or 302 redirect?</strong> 301 (permanent) is browser-cached — lower server load but click analytics are lost after the first visit. 302 (temporary) hits the shortener on every click — full analytics at higher cost. Choose based on whether analytics are a product requirement.</p>
+      <p><strong>Why prefer ID generation over hashing for slug generation?</strong> Hash functions (MD5, SHA-1) can produce the same 6-character prefix for different URLs due to the birthday paradox — collision detection and retry add complexity and indeterminate latency. Snowflake or range-based ID generation eliminates collisions at the source.<br>
+      <strong>How does the Bloom filter speed up collision detection?</strong> A Bloom filter negative (bit not set) guarantees the slug is new — no DB lookup needed. Only positives (rare) require a DB fallback. This keeps the write fast path O(1) in memory.<br>
+      <strong>301 or 302 redirect?</strong> 301 (permanent) is browser-cached — lower server load but click analytics are lost after the first visit. 302 (temporary) hits the shortener on every click — full analytics at higher cost. Choose based on whether analytics are a product requirement.<br>
+      <strong>How do you handle a viral link that gets 10M clicks in one hour?</strong> Hot key in Redis — cache it across multiple shards or add an in-process LRU cache in each redirect service instance (1–5 s TTL) to absorb the spike before it hits Redis.<br>
+      <strong>How do you prevent the analytics pipeline from slowing down redirects?</strong> Fire-and-forget publish to Kafka — the redirect returns the 302 immediately and does not wait for the Kafka write to confirm. Loss of a few click events during a Kafka outage is acceptable; redirect availability is not.</p>
     </div>
 
     <div class="article-nav">
@@ -331,7 +630,7 @@ GET /{slug}
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

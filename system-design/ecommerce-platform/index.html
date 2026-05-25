@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,14 +170,14 @@
     <div class="article-meta">
       <span>Mar 31, 2023</span>
       <span class="separator">·</span>
-      <span>12 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>An e-commerce platform is one of the most demanding distributed systems to design. It combines real-time inventory management, financial transaction processing, high-traffic search and discovery, and ML-driven recommendations — all under strict consistency requirements where an oversold item or a lost order directly translates to lost revenue and user trust.</p>
+    <p>An e-commerce platform — think Amazon, Alibaba, Walmart, or Shopify — is one of the most demanding distributed systems you can be asked to design in an interview. It simultaneously combines real-time inventory management, financial transaction processing, high-traffic search and discovery, and ML-driven personalization, all under strict correctness requirements where an oversold item or a lost order translates directly into lost revenue and broken user trust. This guide walks the full interview arc: requirements, capacity estimation, API and data modeling, the high-level architecture, then a deep dive into the genuinely hard parts — checkout, inventory, payments, search, scaling, and fault tolerance.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -188,12 +188,13 @@
         <li><strong>Kafka decouples checkout</strong> — user gets instant acknowledgement; inventory deduction, payment, and notifications happen async downstream.</li>
         <li><strong>CDC → Elasticsearch</strong> — search index stays eventually consistent without coupling write latency to indexing.</li>
         <li><strong>Cassandra for archival</strong> — horizontally scalable, high write throughput for historical order records.</li>
+        <li><strong>Idempotency everywhere</strong> — payment keys, dedup on event consumers, and the Saga pattern for cross-service consistency.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>Use microservices behind an API gateway: SQL for orders and users (ACID), NoSQL for product catalogs (schema flexibility), Cassandra for historical order archival, Redis with TTL for cart holds, and Kafka to decouple the checkout pipeline from downstream processing. Elasticsearch powers search via CDC-fed indexing.</p>
+      <p>Use microservices behind an API gateway: SQL for orders and users (ACID), NoSQL for product catalogs (schema flexibility), Cassandra for historical order archival, Redis with TTL for cart holds, and Kafka to decouple the checkout pipeline from downstream processing. Elasticsearch powers search via CDC-fed indexing. Hold consistency where it matters (money, stock) and embrace eventual consistency everywhere else.</p>
     </div>
 
     <figure class="article-figure">
@@ -201,58 +202,158 @@
       <figcaption>High-level e-commerce platform architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Before drawing a single box, scope the problem out loud. Interviewers award points for narrowing an impossibly broad prompt into a concrete, defensible subset. E-commerce is huge, so state what you will and won't cover.</p>
 
-    <h3>Functional</h3>
+    <h3>Functional requirements</h3>
     <ul>
-      <li>User registration and authentication</li>
-      <li>Merchant shop and product management (CRUD)</li>
-      <li>Search, cart, and wishlist capabilities</li>
-      <li>Checkout and purchase completion</li>
-      <li>Homepage feed and order history viewing</li>
+      <li>User registration, authentication, and profile management.</li>
+      <li>Merchant onboarding: shop creation and product management (CRUD with media).</li>
+      <li>Product search, browse, cart, and wishlist.</li>
+      <li>Checkout and payment, producing a durable order.</li>
+      <li>Personalized homepage feed and order history.</li>
+      <li>Order lifecycle tracking (placed → paid → shipped → delivered).</li>
     </ul>
 
-    <h3>Non-Functional</h3>
+    <h3>Non-functional requirements</h3>
     <ul>
-      <li><strong>Low latency</strong> — product search and checkout must feel instant</li>
-      <li><strong>High availability</strong> — downtime during peak sales (Prime Day, 11/11) is unacceptable</li>
-      <li><strong>High consistency</strong> — inventory and payment state must be correct</li>
-      <li><strong>Revenue maximization</strong> — the system should never over-restrict sales or oversell inventory</li>
+      <li><strong>Low latency</strong> — search and page loads under ~200&nbsp;ms p99; checkout should feel instant.</li>
+      <li><strong>High availability</strong> — target 99.99%; downtime during peak sales (Prime Day, 11/11) is catastrophic.</li>
+      <li><strong>Strong correctness where it counts</strong> — inventory must never oversell; payments must never double-charge.</li>
+      <li><strong>Scalability</strong> — survive 10–100× traffic spikes during flash sales.</li>
+      <li><strong>Durability</strong> — an acknowledged order is never lost.</li>
     </ul>
 
-    <h2>Core Services</h2>
-    <p>The platform is decomposed into focused microservices, each owning its data store:</p>
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Explicitly name what is out of scope — recommendations ranking internals, fraud detection, the seller analytics suite — so you can spend your time on the core transactional path. Saying "I'll treat payment processing as an external provider via webhooks" is a scoping decision, not a gap.</p>
+    </div>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Back-of-the-envelope numbers justify your storage and scaling choices. Assume a large platform with <strong>100M daily active users (DAU)</strong>.</p>
+
+    <h3>Traffic</h3>
     <ul>
-      <li><strong>User Service</strong> — authentication, profile management</li>
-      <li><strong>Shop Service</strong> — merchant store creation and settings</li>
-      <li><strong>Product Service</strong> — catalog CRUD, attributes, media</li>
-      <li><strong>Search Service</strong> — Elasticsearch-powered full-text and faceted search</li>
-      <li><strong>Serviceability Service</strong> — filters products by purchase eligibility (region, availability)</li>
-      <li><strong>Inventory Service</strong> — stock tracking and reservation</li>
-      <li><strong>Pricing Service</strong> — dynamic pricing calculations and promotions</li>
-      <li><strong>Order Service</strong> — transaction processing and order lifecycle</li>
-      <li><strong>Recommendation Service</strong> — ML-driven personalized suggestions</li>
-      <li><strong>Notification Service</strong> — email, SMS, and push updates</li>
+      <li>If each DAU performs ~10 read actions (browse/search) per day: 100M × 10 = <strong>1B reads/day ≈ 11,500 reads/sec</strong> average, and with a 5× peak factor roughly <strong>~58K reads/sec</strong> at peak.</li>
+      <li>If 1% of DAU place an order daily: 1M orders/day ≈ <strong>~12 writes/sec</strong> average, but flash sales can concentrate that into minutes — design for <strong>thousands of order writes/sec</strong> in bursts.</li>
+      <li>The read:write ratio is roughly <strong>100:1</strong>, which screams "cache aggressively and use read replicas."</li>
     </ul>
 
-    <h2>Data Storage Decisions</h2>
-    <p>Storage selection is driven by each service's access patterns and consistency requirements:</p>
+    <h3>Storage</h3>
+    <ul>
+      <li>500M products × ~2&nbsp;KB metadata each ≈ <strong>1&nbsp;TB</strong> of catalog data (before media).</li>
+      <li>Product images/video live in object storage (S3) behind a CDN — easily petabytes, kept out of the primary DB.</li>
+      <li>Orders: 1M/day × 365 × ~1&nbsp;KB ≈ <strong>~365&nbsp;GB/year</strong> of hot order data, growing linearly — the reason historical orders are archived to Cassandra.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>You don't need exact numbers — you need the right <em>order of magnitude</em> and the conclusions they drive: a 100:1 read/write ratio → caching + replicas; petabyte media → object storage + CDN; linearly growing orders → an archival tier.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Expose a clean REST surface through the API gateway. A few representative endpoints:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Catalog & search</span>
+<span class="kw">GET</span>  <span class="str">/api/products?q=shoes&amp;category=men&amp;page=2</span>
+<span class="kw">GET</span>  <span class="str">/api/products/{productId}</span>
+
+<span class="cm"># Cart (soft-reserves inventory)</span>
+<span class="kw">POST</span> <span class="str">/api/cart/items</span>        { productId, qty }
+<span class="kw">DELETE</span> <span class="str">/api/cart/items/{id}</span>
+
+<span class="cm"># Checkout — idempotent via client-supplied key</span>
+<span class="kw">POST</span> <span class="str">/api/orders</span>
+     Idempotency-Key: <span class="str">"a1b2-c3d4"</span>
+     { cartId, addressId, paymentMethodId }
+
+<span class="kw">GET</span>  <span class="str">/api/orders/{orderId}</span></code></pre>
+    </div>
+
+    <p>Two details that earn credit: the checkout endpoint carries an <strong><code>Idempotency-Key</code></strong> so a retried request (flaky mobile network, double-tap) never creates a duplicate order; and search supports cursor/offset pagination because no client should ever fetch an unbounded result set.</p>
+
+    <h2>Step 4 — Core Services</h2>
+    <p>The platform is decomposed into focused microservices, each owning its data store. Services communicate over the API gateway synchronously for reads and over Kafka asynchronously for state changes — never by reaching into another service's database.</p>
+    <ul>
+      <li><strong>User Service</strong> — authentication (OAuth2/JWT), profiles, addresses.</li>
+      <li><strong>Shop Service</strong> — merchant store creation and settings.</li>
+      <li><strong>Product Service</strong> — catalog CRUD, attributes, media references.</li>
+      <li><strong>Search Service</strong> — Elasticsearch-powered full-text and faceted search.</li>
+      <li><strong>Serviceability Service</strong> — filters products by purchase eligibility (region, legality, availability).</li>
+      <li><strong>Cart Service</strong> — Redis-backed carts with TTL inventory holds.</li>
+      <li><strong>Inventory Service</strong> — authoritative stock counts and reservations.</li>
+      <li><strong>Pricing Service</strong> — dynamic pricing, promotions, coupons.</li>
+      <li><strong>Order Service</strong> — order lifecycle state machine, the transactional source of truth.</li>
+      <li><strong>Payment Service</strong> — wraps external gateways (Stripe/PayPal), handles idempotency and reconciliation.</li>
+      <li><strong>Recommendation Service</strong> — ML-driven personalized suggestions.</li>
+      <li><strong>Notification Service</strong> — email, SMS, push.</li>
+    </ul>
+
+    <h2>Step 5 — Data Storage Decisions</h2>
+    <p>Storage selection is driven by each service's access pattern and consistency needs. There is no single database that fits every workload — polyglot persistence is the point.</p>
 
     <table class="compare-table">
       <thead>
         <tr><th>Data Type</th><th>Storage</th><th>Rationale</th></tr>
       </thead>
       <tbody>
-        <tr><td>Users, orders, shops</td><td class="col-a">SQL (RDBMS)</td><td>ACID properties required for financial transactions and structured relational data</td></tr>
+        <tr><td>Users, orders, shops</td><td class="col-a">SQL (RDBMS)</td><td>ACID required for financial transactions and structured relational data</td></tr>
         <tr><td>Product catalogs</td><td class="col-a">NoSQL (Document)</td><td>Products have heterogeneous attribute sets; document stores avoid null-heavy schemas</td></tr>
-        <tr><td>Historical orders</td><td class="col-b">Cassandra</td><td>Horizontally scalable, high write throughput without read degradation; suitable for append-heavy archival</td></tr>
-        <tr><td>Cart holds</td><td class="col-a">Redis (TTL)</td><td>~10-minute TTL temporarily reserves inventory without permanently blocking stock from other buyers</td></tr>
-        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text search, fuzzy matching, and faceted filtering at scale</td></tr>
+        <tr><td>Historical orders</td><td class="col-b">Cassandra</td><td>Horizontally scalable, high write throughput; suited to append-heavy archival</td></tr>
+        <tr><td>Cart holds</td><td class="col-a">Redis (TTL)</td><td>~10-min TTL temporarily reserves stock without permanently blocking it</td></tr>
+        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text search, fuzzy matching, faceted filtering at scale</td></tr>
+        <tr><td>Media</td><td class="col-b">Object store + CDN</td><td>Petabyte-scale blobs served close to the user, kept out of the DB</td></tr>
       </tbody>
     </table>
 
-    <h2>The Checkout Pipeline</h2>
-    <p>Checkout is the most critical — and most complex — flow. The key design insight is to <strong>decouple the user-facing checkout confirmation from the downstream order processing chain</strong> using Kafka. The user gets an immediate acknowledgement; the inventory deduction, payment charge, notification dispatch, and fulfillment kick-off happen asynchronously.</p>
+    <h3>Why a document store for products</h3>
+    <p>A laptop has CPU, RAM, and screen size; a T-shirt has size and color; a book has an ISBN and page count. Modeling this in a single relational table produces either a forest of nullable columns or a clumsy entity-attribute-value schema. A document store (MongoDB, DynamoDB) lets each product carry exactly the attributes it needs, and the catalog is overwhelmingly read-heavy with no cross-row transactions — a perfect NoSQL fit.</p>
+
+    <h2>Step 6 — Data Model</h2>
+    <p>The order and inventory tables live in SQL because they demand transactions. A simplified schema:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> orders (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  user_id       <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  status        <span class="ty">VARCHAR</span>(<span class="num">20</span>),  <span class="cm">-- PENDING|PAID|SHIPPED|...</span>
+  total_cents   <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  idempotency_key <span class="ty">VARCHAR</span>(<span class="num">64</span>) <span class="kw">UNIQUE</span>,
+  created_at    <span class="ty">TIMESTAMP</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="kw">CREATE TABLE</span> inventory (
+  product_id    <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  available     <span class="ty">INT</span> <span class="kw">NOT NULL</span>,   <span class="cm">-- on-hand minus reserved</span>
+  reserved      <span class="ty">INT</span> <span class="kw">NOT NULL</span>,
+  version       <span class="ty">INT</span> <span class="kw">NOT NULL</span>    <span class="cm">-- optimistic lock</span>
+);</code></pre>
+    </div>
+
+    <p>The <code>idempotency_key UNIQUE</code> constraint is what makes a retried checkout safe at the database level: the second insert simply fails the uniqueness check, and the service returns the already-created order. The <code>version</code> column on inventory enables optimistic concurrency control, covered below.</p>
+
+    <h2>Step 7 — The Checkout Pipeline</h2>
+    <p>Checkout is the most critical — and most complex — flow. The key design insight is to <strong>decouple the user-facing confirmation from the downstream order-processing chain</strong> using Kafka. The user gets an immediate acknowledgement; inventory deduction, the payment charge, notification dispatch, and fulfillment kickoff happen asynchronously.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -265,58 +366,200 @@
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
       <pre><code>User clicks "Buy"
-  → Cart Service validates TTL hold still active
-  → Order Service writes pending order to SQL
-  → Publishes OrderCreated event to Kafka
-      ├── Inventory Service: deduct stock
-      ├── Payment Service (Stripe/PayPal): charge card
-      │     └── Webhook callback updates order status
-      ├── Notification Service: send confirmation email
+  → Cart Service validates the TTL hold is still active
+  → Order Service writes a PENDING order to SQL (idempotency key)
+  → Publishes OrderCreated to Kafka
+      ├── Inventory Service: convert hold → permanent deduction
+      ├── Payment Service (Stripe/PayPal): charge the card
+      │     └── webhook callback flips order PAID / FAILED
+      ├── Notification Service: send confirmation
       └── Recommendation Service: record purchase signal</code></pre>
     </div>
 
-    <p>External payment providers (Stripe, PayPal) integrate via webhooks that fire on payment success or failure, driving the order's status state machine.</p>
+    <h3>Cross-service consistency: the Saga pattern</h3>
+    <p>A single checkout touches the order, inventory, and payment services — three databases, no distributed transaction. The standard answer is a <strong>Saga</strong>: a sequence of local transactions, each publishing an event that triggers the next, with <strong>compensating actions</strong> on failure. If the payment is declined after stock was deducted, a <code>PaymentFailed</code> event drives the Inventory Service to release the reservation and the Order Service to mark the order <code>CANCELLED</code>. This trades atomicity for availability and eventual consistency — the right call for a system that must stay up during peaks.</p>
 
-    <h2>Search and Discovery</h2>
-    <p>Product and shop updates flow into the Elasticsearch cluster via <strong>Change Data Capture (CDC)</strong> — the primary databases emit change events that a CDC connector (e.g., Debezium) publishes to Kafka, which then feeds the search indexer. This keeps the search index eventually consistent without coupling write latency to indexing.</p>
-    <p>The Search Service handles fuzzy matching and type-ahead queries. The Serviceability Service filters results by the requesting user's region and purchase eligibility before returning results to the client.</p>
+    <div class="callout">
+      <div class="callout-label">why not 2PC?</div>
+      <p>Two-phase commit gives you atomicity but holds locks across services for the duration of the transaction, creating a coordinator bottleneck and cratering availability under load. Sagas keep each service independent and highly available at the cost of writing explicit compensation logic.</p>
+    </div>
 
-    <h2>Scaling for Peak Traffic</h2>
-    <p>Flash sales and seasonal peaks (like 11/11) can spike traffic by orders of magnitude. Two processing models handle different merchant segments:</p>
+    <h3>The order state machine</h3>
+    <p>An order is best modeled as an explicit state machine; doing so prevents illegal transitions such as shipping an unpaid order or refunding twice. Each transition is triggered by an event and is idempotent, so replaying a Kafka message never advances the state incorrectly.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">states</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>PENDING ──paid──▶ PAID ──pack──▶ PACKED ──ship──▶ SHIPPED ──▶ DELIVERED
+   │                 │
+   └─timeout/fail─▶ CANCELLED        └─return──▶ REFUNDED  (terminal)</code></pre>
+    </div>
+    <p>Persist <code>status</code> in SQL guarded by an application-level check (or a DB <code>CHECK</code>/trigger) so that only a <code>PAID</code> order can move to <code>PACKED</code>, and <code>CANCELLED</code>/<code>REFUNDED</code> are terminal. The state field plus the <code>updated_at</code> timestamp also gives support and analytics a clean audit trail of every order's journey.</p>
+
+    <h2>Step 8 — Inventory &amp; the Oversell Problem</h2>
+    <p>The hardest correctness problem in e-commerce is the cart-to-purchase gap. Deduct stock when an item is added to the cart and you block sales for users who abandon carts; deduct only at checkout and you risk overselling during high-demand bursts. The chosen middle ground is a <strong>Redis hold with a TTL (~10 minutes)</strong>: inventory is soft-reserved on cart add and permanently deducted on successful checkout, while expired holds are released automatically.</p>
+
+    <h3>Preventing concurrent oversell</h3>
+    <p>When 10,000 buyers race for 100 units, two writes must never both succeed past zero. Two mechanisms:</p>
     <ul>
-      <li><strong>Large enterprises (batch pull)</strong> — Apache Airflow schedules bulk pulls; better for high-volume, scheduled inventory updates</li>
-      <li><strong>SMEs (push model)</strong> — events are immediately distributed upon product or order changes</li>
+      <li><strong>Optimistic locking</strong> — read the row with its <code>version</code>, then <code>UPDATE ... WHERE version = :v</code>; if zero rows update, someone else won — retry. Great when contention is usually low.</li>
+      <li><strong>Atomic decrement</strong> — a Redis <code>DECR</code> (or a conditional SQL <code>UPDATE ... WHERE available &gt; 0</code>) makes the check-and-decrement a single atomic step. Best for extreme single-item contention like a flash drop.</li>
     </ul>
-    <p>The async Kafka pipeline also serves as a natural buffer during these surges, preventing the order processing back-end from being overwhelmed by sudden checkout bursts.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- atomic, safe under concurrency: only succeeds if stock remains</span>
+<span class="kw">UPDATE</span> inventory
+<span class="kw">SET</span> available = available - <span class="num">1</span>, reserved = reserved + <span class="num">1</span>
+<span class="kw">WHERE</span> product_id = <span class="num">42</span> <span class="kw">AND</span> available &gt; <span class="num">0</span>;
+<span class="cm">-- rows affected = 0  → sold out, reject the add-to-cart</span></code></pre>
+    </div>
+
+    <h2>Step 9 — Payment Processing</h2>
+    <p>Treat the card network as an external provider (Stripe, PayPal, Adyen) — you almost never want to be PCI-DSS Level 1 on your own. The Payment Service is a thin, careful wrapper around it:</p>
+    <ul>
+      <li><strong>Idempotency keys</strong> — pass a unique key per charge attempt so a retry after a timeout never double-charges; the provider deduplicates.</li>
+      <li><strong>Webhooks drive state</strong> — never assume success from the synchronous response; the authoritative <code>charge.succeeded</code> / <code>charge.failed</code> webhook flips the order's status. Verify the webhook signature.</li>
+      <li><strong>Reconciliation</strong> — a nightly job compares your orders against the provider's settlement report to catch dropped webhooks and stuck PENDING orders.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">edge case</div>
+      <p>What if the charge succeeds but the webhook is lost? The order is stuck PENDING with the customer's money taken. Reconciliation plus a "query charge status" fallback after a timeout is the safety net — this is exactly the kind of failure mode interviewers probe.</p>
+    </div>
+
+    <h2>Step 10 — Search and Discovery</h2>
+    <p>Product and shop updates flow into the Elasticsearch cluster via <strong>Change Data Capture (CDC)</strong>: the primary databases emit change events that a CDC connector (e.g., Debezium) publishes to Kafka, which feeds the search indexer. This keeps the index eventually consistent without coupling write latency to indexing — and avoids the dual-write trap.</p>
+    <p>The Search Service handles fuzzy matching, synonyms, and type-ahead. The Serviceability Service then filters results by the requesting user's region and purchase eligibility before they're returned. Ranking blends text relevance with business signals (popularity, conversion rate, margin).</p>
+
+    <div class="callout">
+      <div class="callout-label">why CDC, not dual-write?</div>
+      <p>A dual-write (app writes to both DB and Elasticsearch) diverges the moment one write fails — now your search shows products that don't exist or hides ones that do. CDC makes the database the single source of truth and the index a downstream, replayable projection of its change log.</p>
+    </div>
+
+    <h2>Step 11 — Scaling for Peak Traffic</h2>
+    <p>Flash sales and seasonal peaks (11/11, Black Friday) can spike traffic by orders of magnitude. The defenses, layer by layer:</p>
+    <ul>
+      <li><strong>CDN + edge caching</strong> — static assets and even cacheable product pages served close to the user.</li>
+      <li><strong>Multi-layer caching</strong> — Redis in front of the catalog and hot product reads; cache-aside with sensible TTLs. A 100:1 read ratio means cache hits carry most traffic.</li>
+      <li><strong>Read replicas</strong> — fan reads out across replicas; keep writes on the primary.</li>
+      <li><strong>Database sharding</strong> — partition orders by <code>user_id</code> and the catalog by <code>product_id</code> so no single node is a bottleneck.</li>
+      <li><strong>Kafka as a shock absorber</strong> — the async pipeline buffers checkout bursts so the order back-end drains at its own pace instead of toppling.</li>
+      <li><strong>Rate limiting &amp; load shedding</strong> — protect the platform from both abusive clients and genuine stampedes; queue users into a virtual waiting room for limited-stock drops.</li>
+      <li><strong>Autoscaling</strong> — stateless services scale horizontally on CPU/latency triggers.</li>
+    </ul>
+
+    <h3>Merchant processing models</h3>
+    <ul>
+      <li><strong>Large enterprises (batch pull)</strong> — Apache Airflow schedules bulk inventory/catalog pulls; better for high-volume scheduled updates.</li>
+      <li><strong>SMEs (push model)</strong> — changes are pushed immediately on product or order events for freshness.</li>
+    </ul>
+
+    <h3>Caching strategy in depth</h3>
+    <p>With a 100:1 read/write ratio, caching is the single highest-leverage optimization. The default pattern is <strong>cache-aside</strong>: the app checks Redis first, falls back to the database on a miss, and populates the cache. The hard parts are not the happy path but the failure modes:</p>
+    <ul>
+      <li><strong>Invalidation</strong> — on a product or price update, publish an event that evicts or refreshes the cached entry. A stale price shown at checkout is a real revenue and even legal risk, so price is cached with a short TTL and invalidated eagerly.</li>
+      <li><strong>Cache stampede</strong> — when a hot key expires, thousands of requests miss simultaneously and hammer the database. Mitigate with randomized TTL jitter, a single-flight mutex so only one request rebuilds the entry, or background refresh-ahead before expiry.</li>
+      <li><strong>Hot keys</strong> — a viral product can saturate one Redis shard. Replicate hot keys across shards or add a small in-process cache in front of Redis to absorb the spike.</li>
+      <li><strong>What to cache</strong> — product detail pages, category listings, and search results (short TTL); never the authoritative inventory count or order status, which must always be read strongly.</li>
+    </ul>
+
+    <h3>Sharding strategy in depth</h3>
+    <p>A single primary cannot hold 500M products or absorb peak order writes, so partition horizontally — and choosing the shard key well is the whole game:</p>
+    <ul>
+      <li><strong>Orders</strong> — shard by <code>user_id</code> so a user's full history lives on one shard and the common "my orders" read stays single-shard. Sharding by <code>order_id</code> would scatter a user's orders across nodes.</li>
+      <li><strong>Catalog</strong> — shard by a hash of <code>product_id</code> for even distribution and no hot partition.</li>
+      <li><strong>Cross-shard queries</strong> — "all orders in a region this month" must fan out to every shard and merge, which is slow; route such analytical queries to an OLAP/warehouse copy instead of the OLTP path.</li>
+      <li><strong>Resharding</strong> — use consistent hashing or a lookup/directory service so adding capacity moves minimal data. Naive modulo sharding reshuffles almost every row when the shard count changes.</li>
+    </ul>
 
     <figure class="article-figure">
       <img src="/assets/img/ecommerce-platform-2.jpg" alt="Store and product class diagram" loading="lazy">
       <figcaption>Store and product class diagram</figcaption>
     </figure>
 
-    <h2>ML and Recommendations</h2>
-    <p>User behavior signals — search queries, cart additions, wishlist saves, and purchase completions — are captured via Kafka and fed into Spark Streaming for real-time analysis. The Recommendation Service uses these signals for:</p>
+    <h2>Step 12 — Reliability &amp; Fault Tolerance</h2>
+    <p>At 99.99% availability every dependency will eventually fail; the design must degrade gracefully rather than collapse.</p>
     <ul>
-      <li>User segmentation (regression models, KNN clustering)</li>
-      <li>Personalized product recommendations on the homepage</li>
-      <li>Dynamic pricing algorithms</li>
-      <li>Demand forecasting to assist inventory planning</li>
+      <li><strong>Replication + multi-AZ</strong> — every datastore runs with replicas across availability zones; automatic failover on primary loss.</li>
+      <li><strong>Circuit breakers</strong> — when the Recommendation Service is down, the homepage falls back to a non-personalized "popular items" feed instead of erroring.</li>
+      <li><strong>Idempotent consumers</strong> — Kafka guarantees at-least-once delivery, so every consumer dedups on event ID; re-processing an <code>OrderCreated</code> must not deduct stock twice.</li>
+      <li><strong>Dead-letter queues</strong> — events that repeatedly fail are parked for inspection instead of blocking the partition.</li>
+      <li><strong>Graceful degradation</strong> — search down? serve cached category pages. Pricing down? serve last-known price. Keep the buy button alive.</li>
     </ul>
-    <p>Every database table includes <code>created_at</code> and <code>updated_at</code> timestamp columns, which serve double duty: debugging production issues and providing temporal features for ML models.</p>
 
-    <h2>Inventory Consistency Tradeoff</h2>
-    <p>The hardest consistency problem in e-commerce is the cart-to-purchase gap: if you deduct inventory when the item is added to cart, you block sales for users who abandon carts. If you deduct only at checkout, you risk overselling during high-demand bursts. The chosen middle ground is a <strong>Redis hold with TTL (~10 minutes)</strong>: inventory is soft-reserved on cart add and permanently deducted on successful checkout. Expired holds are automatically released by Redis.</p>
+    <h3>Observability</h3>
+    <p>You cannot operate at 99.99% without seeing inside the system. Lean on the three pillars:</p>
+    <ul>
+      <li><strong>Metrics</strong> — RED (Rate, Errors, Duration) per service plus business metrics (orders/min, payment success rate, cart-abandonment) in Prometheus/Grafana, with dashboards per service.</li>
+      <li><strong>Distributed tracing</strong> — a trace ID propagated across gateway → order → inventory → payment turns a "checkout is slow" report into an exact span you can point at.</li>
+      <li><strong>Structured logs &amp; alerting</strong> — centralized logs keyed by <code>orderId</code>/<code>userId</code> for grep-ability, and alerts on SLO burn (e.g., payment success rate &lt; 99%, p99 latency &gt; 300&nbsp;ms) rather than on raw resource usage.</li>
+    </ul>
+
+    <h2>Security, Fraud &amp; Abuse</h2>
+    <p>Money attracts attackers, so defenses must layer across the stack rather than sit at a single gate:</p>
+    <ul>
+      <li><strong>AuthN / AuthZ</strong> — OAuth2 with short-lived JWT access tokens plus refresh tokens; merchant and admin APIs carry separate scopes so a leaked customer token can't touch the catalog.</li>
+      <li><strong>Rate limiting</strong> — per-user and per-IP token buckets at the gateway blunt credential stuffing, scraping, and accidental client retry storms.</li>
+      <li><strong>Fraud scoring</strong> — velocity checks (many orders or many cards in a short window), device fingerprinting, and an ML risk score route suspicious orders to a hold/review queue before fulfillment.</li>
+      <li><strong>Bot defense for drops</strong> — limited-stock flash sales attract bots; combine CAPTCHAs, a virtual waiting room, and per-account purchase limits.</li>
+      <li><strong>PCI scope minimization</strong> — never store raw card data; tokenize through the payment provider so a breach can't leak card numbers.</li>
+    </ul>
+
+    <h2>Returns, Refunds &amp; Multi-Region</h2>
+    <p>The post-purchase flow is often skipped in interviews but is genuine scope. A <strong>return</strong> spawns a reverse-logistics task; on receipt of the item, a <strong>refund</strong> re-enters the Payment Service (again idempotent, again webhook-confirmed) and restocks inventory. Refunds are their own small state machine and must reconcile against the provider's settlement report just like charges.</p>
+    <p>For a global audience, a <strong>multi-region</strong> deployment cuts latency and provides disaster recovery. Catalog and search replicate read-only into every region, while orders are typically pinned to the user's home region to keep the transactional path simple, with asynchronous cross-region replication for DR. Strong global consistency is expensive and rarely worth it — most designs accept regional ownership plus eventual global replication, failing over to another region only on a regional outage.</p>
+
+    <h2>Step 13 — ML and Recommendations</h2>
+    <p>User behavior signals — search queries, cart additions, wishlist saves, and completed purchases — are captured via Kafka and fed into Spark Streaming for near-real-time analysis. The Recommendation Service uses them for:</p>
+    <ul>
+      <li>User segmentation (regression models, KNN clustering).</li>
+      <li>Personalized homepage and "customers also bought" modules.</li>
+      <li>Dynamic pricing and promotion targeting.</li>
+      <li>Demand forecasting that feeds inventory planning.</li>
+    </ul>
+    <p>Every table carries <code>created_at</code> / <code>updated_at</code> columns that pull double duty: debugging production issues and providing temporal features for these models.</p>
+
+    <h2>Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Order consistency</td><td class="col-a">Strong (SQL + ACID)</td><td>Lower write throughput than NoSQL, mitigated by sharding</td></tr>
+        <tr><td>Catalog &amp; search</td><td class="col-b">Eventual (CDC)</td><td>A new product may take seconds to appear in search</td></tr>
+        <tr><td>Cross-service txn</td><td class="col-a">Saga</td><td>Must write explicit compensation logic; no global rollback</td></tr>
+        <tr><td>Inventory hold</td><td class="col-b">Redis TTL</td><td>Tiny window where a held-then-abandoned item is briefly unavailable</td></tr>
+        <tr><td>Checkout path</td><td class="col-a">Async via Kafka</td><td>Order is "placed" before payment confirms; status updates a beat later</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>E-commerce system design is fundamentally about isolating consistency domains: use SQL + ACID for money and orders, document stores for flexible catalogs, Cassandra for archival scale, and Kafka to decouple the checkout critical path from all downstream effects. The Redis TTL cart hold is the canonical answer to the oversell vs. lost-sale tradeoff.</p>
+      <p>E-commerce system design is fundamentally about isolating consistency domains: SQL + ACID for money and orders, document stores for flexible catalogs, Cassandra for archival scale, and Kafka to decouple the checkout critical path from all downstream effects. The Redis TTL cart hold is the canonical answer to the oversell-vs-lost-sale tradeoff, and the Saga pattern is how you keep correctness without a distributed transaction.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>How do you prevent overselling during flash sales?</strong> Redis TTL hold (~10 min) soft-reserves inventory on cart add; permanent deduction only on confirmed checkout; expired holds auto-release.<br>
-      <strong>Why Kafka between checkout and payment?</strong> Decouples user-facing latency from downstream processing — user gets instant order confirmation while inventory, payment, and notifications proceed asynchronously.<br>
-      <strong>Why CDC into Elasticsearch instead of dual-writes?</strong> CDC guarantees the search index stays consistent with the primary DB without coupling write latency to indexing; dual-writes risk divergence if the index write fails.</p>
+      <p><strong>How do you prevent overselling during flash sales?</strong> Redis TTL hold (~10 min) soft-reserves on cart add; permanent deduction only on confirmed checkout via an atomic conditional decrement; expired holds auto-release.<br>
+      <strong>Why Kafka between checkout and payment?</strong> Decouples user-facing latency from downstream work — instant order confirmation while inventory, payment, and notifications proceed asynchronously, with Kafka also buffering bursts.<br>
+      <strong>How do you keep three services consistent without 2PC?</strong> The Saga pattern — local transactions chained by events, with compensating actions (release stock, cancel order) on failure.<br>
+      <strong>Why CDC into Elasticsearch instead of dual-writes?</strong> CDC keeps the index consistent with the DB as a replayable projection; dual-writes diverge if the index write fails.<br>
+      <strong>How do you avoid double-charging a customer?</strong> Idempotency keys on the charge call plus webhook-driven status and nightly reconciliation.</p>
     </div>
 
     <div class="article-nav">
@@ -337,7 +580,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

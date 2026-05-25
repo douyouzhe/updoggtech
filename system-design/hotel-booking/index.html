@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,29 +170,31 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>10 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A hotel booking platform is a two-sided marketplace with strict correctness requirements on the critical path: double-booking a room is a severe UX failure, while incorrectly blocking available inventory costs revenue. The core design challenge is maintaining accurate room availability under concurrent bookings across a global user base.</p>
+    <p>A hotel booking platform is a two-sided marketplace with strict correctness requirements on the critical path: double-booking a room is a severe user experience failure, while incorrectly blocking available inventory costs revenue. The core design challenge is maintaining accurate room availability under concurrent bookings across a global user base, across a stay that spans multiple calendar days, with a checkout flow that must survive network failures, payment timeouts, and user abandonment — all without ever selling the same night to two different guests. Beyond that correctness challenge, the platform must serve fast, filtered, geo-aware search results across hundreds of thousands of properties, manage complex cancellation and refund policies per-hotel, and provide business analytics to hotel operators in near real time.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
       <ul>
         <li><strong>SQL throughout</strong> — hotel/room catalog is bounded and structured; booking demands ACID; volume doesn't justify NoSQL complexity.</li>
         <li><strong>DB-level constraint prevents oversell</strong> — <code>CHECK (available_count &gt;= 0)</code> on the room_availability table; concurrent decrements to -1 fail at the database, not the application layer.</li>
+        <li><strong>Optimistic locking for low-contention</strong> — use a <code>version</code> column; retry on conflict; no row-level lock held between the user's search and their booking confirmation.</li>
         <li><strong>Redis TTL hold (~10 min)</strong> — soft-reserves a room during checkout; auto-releases on TTL expiry if user abandons without completing payment.</li>
         <li><strong>Kafka → Elasticsearch</strong> — hotel/room create or update events feed the search index asynchronously; fully-booked rooms are removed from results automatically.</li>
+        <li><strong>Idempotent booking API</strong> — client-supplied idempotency key prevents duplicate reservations on retried requests (double-tap, network retry).</li>
         <li><strong>S3 + CDN for media</strong> — hotel images live in object storage; CDN edge nodes serve them globally with low latency.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>Use SQL throughout for ACID correctness — hotel and room data is bounded in size, and bookings demand transaction integrity. A row-level constraint on <code>available_count</code> prevents overselling at the database level. A Redis hold with ~10-minute TTL bridges the checkout gap. Kafka feeds listing changes into Elasticsearch for search. CDN distributes hotel media globally.</p>
+      <p>Use SQL throughout for ACID correctness — hotel and room data is bounded in size, and bookings demand transaction integrity. A row-level constraint on <code>available_count</code> prevents overselling at the database level. A Redis hold with ~10-minute TTL bridges the checkout gap without permanently blocking inventory. Kafka feeds listing changes into Elasticsearch for search. CDN distributes hotel media globally. Cancellation and refund are their own idempotent state machine paths.</p>
     </div>
 
     <figure class="article-figure">
@@ -200,37 +202,68 @@
       <figcaption>High-level hotel booking app architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Before drawing boxes, scope the system. Hotel booking covers a lot of ground — narrow it to a defensible, coherent subset.</p>
 
-    <h3>Functional (Hotel Admin)</h3>
+    <h3>Functional requirements (Hotel Admin)</h3>
     <ul>
-      <li>CRUD operations for hotels and rooms</li>
-      <li>Manage bookings (view, cancel, modify)</li>
-      <li>Access business insights and reporting</li>
+      <li>CRUD operations for hotels and rooms (name, description, amenities, location, images).</li>
+      <li>Set room pricing — base rate, seasonal rates, minimum stay, discount rules.</li>
+      <li>Manage availability calendar — block specific dates, set room count per night.</li>
+      <li>View and manage bookings: confirm, cancel, modify, handle no-shows.</li>
+      <li>Access business insights: occupancy rate, revenue, booking lead time, cancellation rate.</li>
     </ul>
 
-    <h3>Functional (User)</h3>
+    <h3>Functional requirements (User)</h3>
     <ul>
-      <li>Search for hotels and available rooms by location, dates, and filters</li>
-      <li>Make reservations</li>
+      <li>Search hotels by city/location, check-in and check-out dates, guest count, filters (rating, amenities, price range).</li>
+      <li>View hotel details: photos, room types, amenities, availability calendar, reviews.</li>
+      <li>Reserve a room: select dates, guest count, add-ons; confirm with payment.</li>
+      <li>View and manage own bookings: view confirmation, modify dates, cancel.</li>
+      <li>Receive email/push notification on booking confirmation, reminder, and cancellation.</li>
     </ul>
 
-    <h3>Non-Functional</h3>
+    <h3>Non-functional requirements</h3>
     <ul>
-      <li><strong>High consistency</strong> — no double-bookings; availability counts must be correct</li>
-      <li><strong>Low latency</strong> — search and checkout must feel instant</li>
-      <li><strong>High availability</strong> — a down booking service means lost revenue</li>
-      <li><strong>Scalability</strong> — handles global user load and seasonal peaks (holidays, events)</li>
+      <li><strong>High consistency</strong> — no double-bookings; availability counts must be correct at all times.</li>
+      <li><strong>Low latency</strong> — search and hotel detail pages under 200 ms p99; checkout must feel instant.</li>
+      <li><strong>High availability</strong> — a down booking service means lost revenue; target 99.99%.</li>
+      <li><strong>Scalability</strong> — handles global user load and seasonal peaks (summer, holidays, major events).</li>
+      <li><strong>Durability</strong> — a confirmed booking is never lost.</li>
     </ul>
 
-    <h2>Hotel and Room Listing Service</h2>
-    <p>The hotel and room catalog is stored in a <strong>SQL database</strong>. The rationale is deliberately simple: the number of hotels in the world is finite and grows predictably. A relational database is the right fit — the data is structured, growth is foreseeable, and the query patterns (look up hotel by ID, list rooms by hotel) are well-suited to SQL indexes.</p>
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Explicitly scope out: loyalty programs, third-party OTA (Online Travel Agency) integration, dynamic room upgrade logic, fraud detection. These are real product features but eating the full scope in 45 minutes leaves no time for the hard parts — concurrency control and the booking state machine.</p>
+    </div>
 
-    <p>Hotel images and videos are stored in <strong>AWS S3</strong> (or equivalent object storage). The SQL database holds references (URLs) to these media assets. A <strong>CDN</strong> sits in front of S3 to serve media to a global user base with low latency — fetching a hotel image from a geographically proximate CDN edge is orders of magnitude faster than hitting the origin bucket.</p>
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Hotel booking is a read-heavy, write-careful system. Assume a large OTA (Booking.com / Expedia scale): <strong>500M hotels globally, 1M bookings/day</strong>.</p>
 
-    <p>When hotels or rooms are created or updated, the changes are published to Kafka as events. A consumer reads these events and updates the <strong>Elasticsearch search index</strong> asynchronously, keeping search results eventually consistent with the source of truth.</p>
+    <h3>Traffic</h3>
+    <ul>
+      <li>Search requests: assume 50M DAU × 5 searches/day = 250M searches/day ≈ <strong>~2,900 searches/sec</strong> average; peak (Friday afternoon, holiday season) 5× → <strong>~14,500 searches/sec</strong>.</li>
+      <li>Booking writes: 1M bookings/day ÷ 86,400 ≈ <strong>~12 bookings/sec</strong> average; peak could be 10× during flash deals → <strong>~120 bookings/sec</strong>. Manageable for SQL with proper indexing.</li>
+      <li>Read:write ratio ≈ <strong>250:1</strong> — heavy caching is essential for search; booking writes are comparatively rare but must be perfectly correct.</li>
+    </ul>
 
-    <h3>Key APIs</h3>
+    <h3>Storage</h3>
+    <ul>
+      <li>Hotels: ~500K hotels worldwide × ~5 KB per hotel record (metadata, coordinates, amenity flags) ≈ <strong>~2.5 GB</strong> — tiny, easily fits in SQL with room to spare.</li>
+      <li>Rooms: ~3M room types × ~2 KB ≈ <strong>~6 GB</strong>.</li>
+      <li>Availability table: 3M room types × 365 days × ~20 bytes per row ≈ <strong>~22 GB/year</strong> — still SQL-manageable; partition by date to keep queries fast.</li>
+      <li>Bookings: 1M/day × ~500 bytes × 365 days ≈ <strong>~180 GB/year</strong> of booking records — comfortable in a single SQL instance; shard if needed.</li>
+      <li>Media: hotel photos/videos in S3 — plan for petabytes; not in the DB.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>The data volumes confirm that SQL is the right primary store — there is no scale justification for NoSQL complexity. The hard problem is not storage but concurrent write correctness on the availability table.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Clean REST surface across the hotel admin and user-facing services:</p>
+
     <div class="code-block">
       <div class="code-block-header">
         <div class="code-block-header-left">
@@ -241,37 +274,40 @@
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code>POST   /hotels              <span class="cm">-- create hotel</span>
-PUT    /hotels/{id}         <span class="cm">-- update hotel</span>
-GET    /hotels/{id}         <span class="cm">-- get hotel details</span>
+      <pre><code><span class="cm"># Hotel admin — listing management</span>
+<span class="kw">POST</span>   <span class="str">/hotels</span>              <span class="cm">-- create hotel</span>
+<span class="kw">PUT</span>    <span class="str">/hotels/{id}</span>         <span class="cm">-- update hotel</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}</span>         <span class="cm">-- get hotel details</span>
+<span class="kw">PUT</span>    <span class="str">/hotels/{id}/rooms/{room_id}</span>   <span class="cm">-- update room</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}/rooms</span>             <span class="cm">-- list rooms for hotel</span>
+<span class="kw">PUT</span>    <span class="str">/rooms/{room_id}/availability</span>  <span class="cm">-- set available_count per date range</span>
 
-PUT    /hotels/{id}/rooms/{room_id}   <span class="cm">-- update room</span>
-GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</span></code></pre>
+<span class="cm"># User — search and discovery</span>
+<span class="kw">GET</span>    <span class="str">/hotels/search?city=Paris&amp;checkin=2025-07-01&amp;checkout=2025-07-05&amp;guests=2&amp;max_price=200</span>
+<span class="kw">GET</span>    <span class="str">/hotels/{id}/availability?checkin=...&amp;checkout=...</span>
+
+<span class="cm"># User — booking (idempotent via Idempotency-Key header)</span>
+<span class="kw">POST</span>   <span class="str">/bookings</span>
+       Idempotency-Key: <span class="str">"client-uuid-123"</span>
+       { hotel_id, room_id, checkin, checkout, guests, payment_method_id }
+       → <span class="num">201</span> { booking_id, status: <span class="str">"RESERVED"</span>, hold_expires_at }
+
+<span class="kw">GET</span>    <span class="str">/bookings/{id}</span>       <span class="cm">-- booking status and details</span>
+<span class="kw">DELETE</span> <span class="str">/bookings/{id}</span>       <span class="cm">-- cancel a booking (triggers refund)</span>
+<span class="kw">PUT</span>    <span class="str">/bookings/{id}/modify</span> <span class="cm">-- change dates (if hotel policy allows)</span></code></pre>
     </div>
 
-    <h2>Search Service</h2>
-    <p>Search is powered by an <strong>Elasticsearch</strong> cluster (Solr is a comparable alternative — both are built on Apache Lucene). The two differ in their strengths:</p>
+    <p>The <code>POST /bookings</code> endpoint carries an <strong>Idempotency-Key</strong> header. A retried request with the same key (double-tap, network timeout) returns the existing booking rather than creating a second one. This is essential because the booking flow involves a payment charge — without idempotency, a network glitch between the client and server can result in two charges to the guest's card.</p>
 
-    <table class="compare-table">
-      <thead>
-        <tr><th>Feature</th><th>Elasticsearch</th><th>Solr</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Best for</td><td class="col-a">Time-series data, real-time indexing</td><td class="col-b">Static data sets with heavy caching</td></tr>
-        <tr><td>Fuzzy search</td><td class="col-a">Excellent</td><td class="col-b">Good</td></tr>
-        <tr><td>Type-ahead</td><td class="col-a">Built-in completion suggester</td><td class="col-b">Supported via edge n-gram</td></tr>
-      </tbody>
-    </table>
+    <h2>Step 4 — Hotel and Room Listing Service</h2>
+    <p>The hotel and room catalog is stored in a <strong>SQL database</strong>. The rationale is deliberately simple: the number of hotels in the world is finite and grows predictably. A relational database is the right fit — the data is structured, growth is foreseeable, and the query patterns (look up hotel by ID, list rooms by hotel) are well-suited to SQL indexes.</p>
 
-    <p>For a hotel platform where listings update continuously (price changes, availability, new properties), Elasticsearch is the better fit. The search index is updated via Kafka events whenever listings change, removing fully-booked rooms from search results automatically.</p>
+    <p>Hotel images and videos are stored in <strong>AWS S3</strong> (or equivalent object storage). The SQL database holds references (URLs) to these media assets. A <strong>CDN</strong> sits in front of S3 to serve media to a global user base with low latency — fetching a hotel image from a geographically proximate CDN edge node is orders of magnitude faster than hitting the origin bucket in us-east-1.</p>
 
-    <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-2.jpg" alt="Hotel and room database schema" loading="lazy">
-      <figcaption>Hotel and room database schema</figcaption>
-    </figure>
+    <p>When hotels or rooms are created or updated, the changes are published to <strong>Kafka</strong> as events. A consumer reads these events and updates the <strong>Elasticsearch search index</strong> asynchronously, keeping search results eventually consistent with the source of truth. Fully-booked rooms are removed from results as their <code>available_count</code> drops to zero — this removal flows through the same CDC pipeline, not through a direct Elasticsearch write on the booking path.</p>
 
-    <h2>Booking Service and Availability Tracking</h2>
-    <p>The booking service uses a <strong>SQL database</strong> for its ACID guarantees — a double-booking is unacceptable, and ACID transactions are the clean way to prevent it. Room availability is tracked in a dedicated table:</p>
+    <h2>Step 5 — Data Model</h2>
+    <p>The core tables span the hotel catalog and the booking system. All live in SQL for ACID correctness:</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -283,35 +319,178 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="kw">CREATE TABLE</span> room_availability (
-  room_id         <span class="ty">BIGINT</span>,
+      <pre><code><span class="kw">CREATE TABLE</span> hotels (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  name          <span class="ty">VARCHAR</span>(<span class="num">255</span>) <span class="kw">NOT NULL</span>,
+  city          <span class="ty">VARCHAR</span>(<span class="num">100</span>),
+  country       <span class="ty">VARCHAR</span>(<span class="num">2</span>),     <span class="cm">-- ISO 3166-1 alpha-2</span>
+  lat           <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  lng           <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  star_rating   <span class="ty">SMALLINT</span>,
+  description   <span class="ty">TEXT</span>,
+  amenities     <span class="ty">JSONB</span>,            <span class="cm">-- pool, wifi, parking, pet-friendly...</span>
+  created_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="kw">CREATE TABLE</span> rooms (
+  id            <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  hotel_id      <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> hotels(id),
+  room_type     <span class="ty">VARCHAR</span>(<span class="num">64</span>),    <span class="cm">-- STANDARD|DELUXE|SUITE</span>
+  max_guests    <span class="ty">SMALLINT</span>,
+  base_rate_cents <span class="ty">INT</span>,
+  description   <span class="ty">TEXT</span>
+);
+
+<span class="kw">CREATE TABLE</span> room_availability (
+  room_id         <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> rooms(id),
   date            <span class="ty">DATE</span>,
-  available_count <span class="ty">INT</span> <span class="kw">CHECK</span> (available_count >= <span class="num">0</span>),
+  available_count <span class="ty">INT</span> <span class="kw">NOT NULL</span> <span class="kw">CHECK</span> (available_count >= <span class="num">0</span>),
+  price_cents     <span class="ty">INT</span> <span class="kw">NOT NULL</span>, <span class="cm">-- per-night rate for this specific date</span>
+  version         <span class="ty">INT</span> <span class="kw">NOT NULL</span> <span class="kw">DEFAULT</span> <span class="num">0</span>, <span class="cm">-- optimistic lock</span>
   <span class="kw">PRIMARY KEY</span> (room_id, date)
 );
 
-<span class="cm">-- Row-level constraint prevents available_count going negative</span>
-<span class="cm">-- A booking that would set count to -1 raises a constraint violation</span></code></pre>
+<span class="kw">CREATE TABLE</span> bookings (
+  id              <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  user_id         <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  room_id         <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  checkin_date    <span class="ty">DATE</span>   <span class="kw">NOT NULL</span>,
+  checkout_date   <span class="ty">DATE</span>   <span class="kw">NOT NULL</span>,
+  guest_count     <span class="ty">SMALLINT</span>,
+  total_cents     <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  status          <span class="ty">VARCHAR</span>(<span class="num">32</span>),  <span class="cm">-- RESERVED|BOOKED|CANCELLED|COMPLETED</span>
+  idempotency_key <span class="ty">VARCHAR</span>(<span class="num">64</span>) <span class="kw">UNIQUE</span>,
+  payment_intent_id <span class="ty">VARCHAR</span>(<span class="num">128</span>),
+  hold_expires_at <span class="ty">TIMESTAMP</span>,   <span class="cm">-- Redis TTL mirrored here for recovery</span>
+  created_at      <span class="ty">TIMESTAMP</span>,
+  updated_at      <span class="ty">TIMESTAMP</span>
+);</code></pre>
     </div>
 
-    <p>The <code>CHECK (available_count >= 0)</code> constraint is the database-level guard against overselling. When a concurrent transaction attempts to decrement below zero, it fails — enforcing correctness without application-level locking.</p>
+    <p>Key schema decisions: the <code>CHECK (available_count &gt;= 0)</code> constraint is the database-level guard against overselling. The <code>version</code> column enables optimistic concurrency control. The <code>idempotency_key UNIQUE</code> constraint prevents duplicate bookings at the DB level. The <code>price_cents</code> column on <code>room_availability</code> captures the per-night rate at booking time — the price can change after booking but the guest's confirmed rate is locked in the booking record's <code>total_cents</code>.</p>
 
-    <h2>Preventing Overselling During Checkout</h2>
-    <p>Between when a user selects a room and when they complete payment, other users might book the same room. The solution mirrors the e-commerce cart pattern: a <strong>Redis hold with a ~10-minute TTL</strong> soft-reserves the room during checkout. The flow:</p>
-    <ul>
-      <li>User selects room → Redis hold created, <code>available_count</code> decremented tentatively</li>
-      <li>User completes payment → booking record written to SQL with status <strong>Booked</strong>; hold confirmed</li>
-      <li>User abandons checkout → Redis TTL expires → <code>available_count</code> automatically restored via cache invalidation</li>
-      <li>Payment fails → booking status set to <strong>Payment Declined</strong>; count restored</li>
-    </ul>
+    <figure class="article-figure">
+      <img src="/assets/img/hotel-booking-2.jpg" alt="Hotel and room database schema" loading="lazy">
+      <figcaption>Hotel and room database schema</figcaption>
+    </figure>
 
-    <h3>Booking Status Lifecycle</h3>
+    <h2>Step 6 — Search Service</h2>
+    <p>Search is powered by an <strong>Elasticsearch</strong> cluster (Solr is a comparable alternative — both are built on Apache Lucene). For a hotel platform where listings update continuously (price changes, availability, new properties), Elasticsearch is the better fit due to its real-time indexing and built-in geo-distance queries.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Feature</th><th>Elasticsearch</th><th>Solr</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Best for</td><td class="col-a">Time-series data, real-time indexing, geo queries</td><td class="col-b">Static data sets with heavy caching</td></tr>
+        <tr><td>Fuzzy search</td><td class="col-a">Excellent (Levenshtein automata)</td><td class="col-b">Good</td></tr>
+        <tr><td>Geo-distance filter</td><td class="col-a">Native geo_point type + distance filter</td><td class="col-b">Supported via spatial module</td></tr>
+        <tr><td>Type-ahead</td><td class="col-a">Built-in completion suggester</td><td class="col-b">Supported via edge n-gram</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Search query flow</h3>
+    <p>A typical search — "hotels in Paris, 2 adults, July 1–5, max €200/night" — executes as follows:</p>
+    <ol>
+      <li><strong>Elasticsearch query</strong> — filter by city = "Paris" (or geo_distance from "Paris" centroid), min star rating, amenities. Return hotel IDs sorted by relevance score (blending text match, popularity, conversion rate).</li>
+      <li><strong>Availability filter</strong> — for each returned hotel, query the <code>room_availability</code> SQL table to verify at least one room type has <code>available_count &gt; 0</code> for every night in the requested range and <code>price_cents &lt;= 200 × 100</code>. Filter out hotels with no qualifying rooms.</li>
+      <li><strong>Price computation</strong> — for qualifying hotels, sum the per-night <code>price_cents</code> across the stay dates, apply promotions and loyalty discounts, compute the total displayed price.</li>
+      <li><strong>Return results</strong> — paginated list of hotels with thumbnail, nightly rate, total stay price, availability badge.</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">search caching</div>
+      <p>Search results for popular city+date combinations (e.g., "Paris July 4th weekend") can be cached in Redis with a short TTL (60–120 s). Availability changes invalidate the cache for affected hotel IDs. This significantly reduces Elasticsearch and SQL load for high-traffic search queries without serving stale availability data for long.</p>
+    </div>
+
+    <h2>Step 7 — Booking Service and Concurrency Control</h2>
+    <p>The booking service uses a <strong>SQL database</strong> for its ACID guarantees — a double-booking is unacceptable, and ACID transactions are the clean way to prevent it. The central challenge is multi-night availability: a 5-night stay requires <code>available_count &gt; 0</code> on five separate rows in <code>room_availability</code>, and all five decrements must succeed atomically or all fail — there is no valid partial booking.</p>
+
+    <h3>Pessimistic locking</h3>
+    <p>One approach is to lock all rows for the stay upfront using <code>SELECT ... FOR UPDATE</code>, then decrement and commit. This is safe but holds locks for the duration of the transaction — including any external calls (e.g., payment processing) that happen inside the transaction boundary. Holding DB locks while waiting for a Stripe API response (which can take 2–5 seconds) is a recipe for connection pool exhaustion under load.</p>
+
+    <h3>Optimistic locking (preferred)</h3>
+    <p>The preferred approach uses the <code>version</code> column on <code>room_availability</code> for optimistic concurrency control. No locks are held between the user's search and their booking confirmation — the transaction is only opened at the moment of the actual write:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Step 1: Read current state (no lock)</span>
+<span class="kw">SELECT</span> date, available_count, version
+<span class="kw">FROM</span> room_availability
+<span class="kw">WHERE</span> room_id = <span class="num">42</span>
+  <span class="kw">AND</span> date <span class="kw">BETWEEN</span> <span class="str">'2025-07-01'</span> <span class="kw">AND</span> <span class="str">'2025-07-04'</span>;
+<span class="cm">-- → returns 4 rows with version=7,8,7,9 and available_count=3,3,2,3</span>
+
+<span class="cm">-- Step 2: Begin transaction; attempt conditional decrement on each date</span>
+<span class="kw">BEGIN</span>;
+<span class="kw">UPDATE</span> room_availability
+  <span class="kw">SET</span> available_count = available_count - <span class="num">1</span>,
+      version = version + <span class="num">1</span>
+  <span class="kw">WHERE</span> room_id = <span class="num">42</span>
+    <span class="kw">AND</span> date = <span class="str">'2025-07-01'</span>
+    <span class="kw">AND</span> version = <span class="num">7</span>        <span class="cm">-- optimistic lock: fails if row was modified</span>
+    <span class="kw">AND</span> available_count > <span class="num">0</span>; <span class="cm">-- prevents going negative</span>
+<span class="cm">-- Repeat for all dates in stay</span>
+<span class="cm">-- If any UPDATE returns 0 rows affected → ROLLBACK (someone beat us to it)</span>
+<span class="cm">-- If all succeed → INSERT booking record → COMMIT</span></code></pre>
+    </div>
+
+    <p>If the version check fails (another concurrent booking modified one of the rows), the transaction rolls back immediately and the service retries with fresh data. Under low contention (most nights), the first attempt succeeds. Under high contention (popular hotel on peak weekend), the service may retry 1–3 times before succeeding or returning a "room no longer available" error. The <code>CHECK (available_count &gt;= 0)</code> constraint is a second line of defense at the database level — even if application logic has a bug, the DB rejects any decrement below zero.</p>
+
+    <div class="callout">
+      <div class="callout-label">why not 2PC across services?</div>
+      <p>Two-phase commit across booking and payment services would give atomic checkout — either both succeed or neither does. But 2PC holds locks across services for the full transaction duration, creating a coordinator bottleneck and cratering availability under load. The chosen approach (Redis hold + optimistic lock on booking + async payment confirmation) trades strict atomicity for high availability, with explicit compensating actions for the failure cases.</p>
+    </div>
+
+    <h2>Step 8 — Preventing Overselling During Checkout</h2>
+    <p>Between when a user selects a room and when they complete payment, other users might book the same room. The solution mirrors the e-commerce cart pattern: a <strong>Redis hold with a ~10-minute TTL</strong> soft-reserves the room during checkout. This creates a two-phase booking flow:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Phase 1: Reserve (immediate)</span>
+User selects room + dates
+  → Booking Service: BEGIN TX
+      Decrement available_count for each stay date (optimistic lock)
+      Insert booking with status=RESERVED, hold_expires_at=NOW()+10min
+    COMMIT
+  → Redis: SET hold:{booking_id} 1 EX 600   (mirrors the DB expiry)
+  → Return booking_id + checkout URL to user
+
+<span class="cm">-- Phase 2: Confirm (within 10 min)</span>
+User enters payment details + submits
+  → Payment Service: charge card (Stripe PaymentIntent)
+      → webhook: payment.succeeded
+  → Booking Service: UPDATE booking SET status=BOOKED
+  → Notification: send confirmation email + calendar invite
+
+<span class="cm">-- Timeout path (user abandons)</span>
+Redis TTL expires (10 min)
+  → Expiry listener / background job detects hold:* key deleted
+  → Booking Service: UPDATE booking SET status=CANCELLED
+      Re-increment available_count for each stay date
+  → Notification: "your hold has expired"</code></pre>
+    </div>
+
+    <p>The Redis hold TTL expiry path requires a reliable mechanism to restore the availability count when a user abandons checkout. Two approaches:</p>
     <ul>
-      <li><strong>Reserved</strong> — Redis hold active; checkout in progress</li>
-      <li><strong>Booked</strong> — payment confirmed; room locked</li>
-      <li><strong>Payment Declined</strong> — payment failed; room released</li>
-      <li><strong>User Cancelled</strong> — user cancelled confirmed booking</li>
-      <li><strong>Completed</strong> — stay has occurred</li>
+      <li><strong>Redis keyspace notifications</strong> — subscribe to <code>__keyevent@0__:expired</code> events; trigger a background job to release the hold in SQL. This is event-driven but requires the notification subscriber to be highly available.</li>
+      <li><strong>Scheduled sweeper job</strong> — runs every minute, queries <code>SELECT id FROM bookings WHERE status='RESERVED' AND hold_expires_at &lt; NOW()</code>, and releases each expired hold. Simpler and more reliable; slightly delayed cleanup (up to 1 minute).</li>
     </ul>
 
     <figure class="article-figure">
@@ -319,27 +498,190 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
       <figcaption>Booking schema and status lifecycle</figcaption>
     </figure>
 
-    <h2>Analytics and Reporting</h2>
-    <p>The Analytics Service consumes two event streams from Kafka: search actions (what users search for, which results they click) and order transactions (bookings, cancellations, revenue). These feeds power:</p>
+    <h2>Step 9 — Booking State Machine</h2>
+    <p>An explicit state machine prevents illegal transitions and makes the booking lifecycle auditable. Each state transition is driven by a business event and is idempotent — receiving the same event twice in the same state is a no-op:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">states</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>RESERVED         ← room held, checkout in progress (Redis TTL active)
+  │ payment.succeeded webhook
+  ▼
+BOOKED           ← confirmed; room locked for guest's dates
+  │ guest checks out / stay date passes
+  ▼
+COMPLETED        ← stay has occurred (terminal)
+
+  From RESERVED:
+  → HOLD_EXPIRED     (TTL expired without payment; room released)
+  → PAYMENT_DECLINED (payment failed; room released)
+  → CANCELLED_BY_USER (user cancelled before payment completed)
+
+  From BOOKED:
+  → CANCELLED_BY_USER   (cancellation within cancellation policy window)
+  → CANCELLED_BY_HOTEL  (hotel cancels due to overbooking/ops issue)
+  → NO_SHOW             (guest didn't arrive; charged no-show fee)
+
+All CANCELLED_* states trigger:
+  → re-increment available_count for each stay date
+  → initiate refund (if applicable, per hotel policy)
+  → notify guest and hotel admin</code></pre>
+    </div>
+
+    <p>The state machine is persisted in SQL as the <code>status</code> column on the <code>bookings</code> table, guarded by application-level transition checks. Each transition also emits a Kafka event, allowing downstream services (notifications, analytics, revenue reporting) to react without being directly coupled to the booking service.</p>
+
+    <h2>Step 10 — Payment Processing and Idempotency</h2>
+    <p>Payment processing for hotel bookings follows the same principles as e-commerce but with a critical timing difference: hotel payments are often <strong>authorized at booking time but captured at check-in</strong> (or at check-out for post-pay hotels). This authorization-capture split gives the hotel a guarantee of funds while giving the guest flexibility — but it adds complexity to the payment state machine.</p>
+
+    <h3>Payment flow</h3>
+    <ol>
+      <li>During checkout, create a <strong>PaymentIntent</strong> with the payment processor (Stripe) for the full stay amount. This authorizes the card without charging it — the hold appears on the guest's card statement but no money moves.</li>
+      <li>On check-in (or immediately for pre-pay hotels), <strong>capture</strong> the authorized PaymentIntent. If the card authorization has expired (typically 7 days), request a new authorization.</li>
+      <li>On cancellation, <strong>release the authorization</strong> or issue a refund if already captured, according to the hotel's cancellation policy (free cancellation until X days before check-in; partial refund; no refund).</li>
+    </ol>
+
+    <h3>Idempotency at every step</h3>
     <ul>
-      <li><strong>Price optimization</strong> — surfacing demand signals to hotel managers for dynamic pricing</li>
-      <li><strong>Business insights</strong> — occupancy rates, revenue trends, booking lead times</li>
-      <li><strong>Accounting reports</strong> — reconciliation data for hotel finance teams</li>
+      <li>The <code>POST /bookings</code> call carries a client-generated <strong>idempotency key</strong> that is stored in the <code>bookings.idempotency_key UNIQUE</code> column. A retried request with the same key returns the existing booking.</li>
+      <li>The Stripe PaymentIntent ID is stored in <code>bookings.payment_intent_id</code> — if the capture call is retried after a timeout, the same PaymentIntent is captured, never double-charged.</li>
+      <li>Webhook events from Stripe (<code>payment_intent.succeeded</code>, <code>payment_intent.payment_failed</code>) drive booking status transitions. Each webhook is deduplicated by its <code>event_id</code> before processing — Stripe delivers webhooks at-least-once.</li>
     </ul>
 
-    <h2>Why Not Cassandra for Bookings?</h2>
-    <p>Unlike e-commerce order history (high volume, append-heavy, suitable for Cassandra archival), hotel booking volume is low enough that a SQL master database can retain the full history without a dedicated archival service. The correctness benefits of ACID transactions outweigh the scalability benefits of NoSQL at this data volume.</p>
+    <div class="callout">
+      <div class="callout-label">edge case</div>
+      <p>What if the capture succeeds at the payment processor but the webhook confirming success is lost? The booking is stuck in RESERVED state with the guest's money actually captured. A nightly reconciliation job compares booking records in RESERVED state against the processor's settled transactions — if a PaymentIntent is captured in Stripe but the booking is RESERVED in our DB, promote the booking to BOOKED. This pattern (optimistic local state + reconciliation) is essential for any payment-adjacent system.</p>
+    </div>
+
+    <h2>Step 11 — Cancellation and Refunds</h2>
+    <p>Cancellation is its own state machine within the booking lifecycle. Hotel cancellation policies vary widely — from "free cancellation any time" to "no refund within 48 hours of check-in" — and the booking service must enforce these rules at cancellation time, not just at booking time.</p>
+
+    <h3>Cancellation policy enforcement</h3>
+    <ul>
+      <li>Each room type has a <code>cancellation_policy</code> attribute: <code>FREE_CANCEL_UNTIL_DAYS</code> (e.g., 3 days before check-in), <code>PARTIAL_REFUND_PERCENT</code> (e.g., 50%), <code>NO_REFUND_WINDOW_HOURS</code> (e.g., no refund within 24 h).</li>
+      <li>On cancellation request (<code>DELETE /bookings/{id}</code>), the booking service reads the hotel's policy and computes the refund amount based on days until check-in.</li>
+      <li>The refund amount is passed to the Payment Service, which issues a Stripe refund for that amount against the original PaymentIntent.</li>
+    </ul>
+
+    <h3>Availability restoration on cancellation</h3>
+    <p>When a booking is cancelled, the availability count must be restored for each night of the cancelled stay. This is the <strong>compensating action</strong> in the booking Saga:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Compensating action: restore availability on cancellation</span>
+<span class="kw">BEGIN</span>;
+<span class="kw">UPDATE</span> bookings
+  <span class="kw">SET</span> status = <span class="str">'CANCELLED_BY_USER'</span>, updated_at = <span class="fn">NOW</span>()
+  <span class="kw">WHERE</span> id = :booking_id
+    <span class="kw">AND</span> status <span class="kw">IN</span> (<span class="str">'RESERVED'</span>, <span class="str">'BOOKED'</span>);  <span class="cm">-- idempotent: no-op if already cancelled</span>
+
+<span class="kw">UPDATE</span> room_availability
+  <span class="kw">SET</span> available_count = available_count + <span class="num">1</span>
+  <span class="kw">WHERE</span> room_id = :room_id
+    <span class="kw">AND</span> date <span class="kw">BETWEEN</span> :checkin <span class="kw">AND</span> :checkout - <span class="kw">INTERVAL</span> <span class="str">'1 day'</span>;
+<span class="kw">COMMIT</span>;
+<span class="cm">-- Then: issue refund via Payment Service (async)</span>
+<span class="cm">-- Then: publish BookingCancelled event to Kafka</span></code></pre>
+    </div>
+
+    <h2>Step 12 — Availability Calendar</h2>
+    <p>The availability calendar is the data structure that drives both search filtering and the room detail view ("show me which dates are available for this room type"). The <code>room_availability</code> table with a <code>(room_id, date)</code> primary key is the authoritative source. For the user-facing calendar UI, a pre-computed cache is essential:</p>
+    <ul>
+      <li>Cache the next 90 days of availability per room in Redis as a sorted set or a compact bitset (one bit per day, 90 days = ~12 bytes). Look up is O(1).</li>
+      <li>Invalidate the cache entry for a room whenever its availability changes (booking, cancellation, hotel admin update).</li>
+      <li>The hotel detail page fetches the cached calendar — typically a full cache hit since availability changes are less frequent than views for popular hotels.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">multi-night availability check</div>
+      <p>A search for "Paris, July 1–5" must verify that at least one room type has availability on all four nights (Jul 1, 2, 3, 4). A SQL query on <code>room_availability</code> with a GROUP BY and HAVING count = 4 works correctly. For search-time performance at scale, pre-compute per-room "available from date X to date Y" ranges and index them in Elasticsearch using a date range field. This allows Elasticsearch to do the filtering without hitting the SQL DB on every search hit.</p>
+    </div>
+
+    <h2>Step 13 — Analytics and Reporting</h2>
+    <p>The Analytics Service consumes two event streams from Kafka: search actions (what users search for, which results they click) and booking transactions (bookings, cancellations, revenue). These feeds power hotel admin dashboards and platform-level reporting:</p>
+    <ul>
+      <li><strong>Occupancy rates</strong> — booked nights ÷ total available nights per room type per period.</li>
+      <li><strong>Revenue trends</strong> — daily/weekly/monthly revenue per hotel, with breakdown by room type.</li>
+      <li><strong>Booking lead time</strong> — distribution of (check-in date − booking date); tells hoteliers how far ahead guests book and informs pricing strategy.</li>
+      <li><strong>Cancellation rate</strong> — segmented by cancellation policy type; identifies which policies drive revenue retention.</li>
+      <li><strong>Search-to-book funnel</strong> — how many searches result in a hotel detail view → hold → confirmed booking; identifies drop-off points.</li>
+    </ul>
+    <p>Analytics events flow from Kafka into a data warehouse (ClickHouse or Redshift) where SQL aggregations run without touching the operational DB. Hotel admin dashboards query the warehouse; the operational booking service is never used for analytics queries.</p>
+
+    <h2>Step 14 — Scaling and Fault Tolerance</h2>
+    <p>Hotel booking is read-dominated (searches vastly outnumber bookings) but write-critical (booking writes must be correct). The scaling strategy differs for each:</p>
+
+    <h3>Search scaling</h3>
+    <ul>
+      <li>Elasticsearch is horizontally scalable — add shards for larger index, add replicas for higher read throughput.</li>
+      <li>Cache popular search queries in Redis (city + date range) with a 60–120 s TTL. Most search traffic is highly repetitive (same popular cities, same popular dates).</li>
+      <li>The availability filter (SQL lookup after Elasticsearch) is the bottleneck under heavy search load. Mitigate with read replicas and the pre-computed availability cache in Redis.</li>
+    </ul>
+
+    <h3>Booking write scaling</h3>
+    <ul>
+      <li>At ~12 bookings/sec average (120 peak), a single SQL primary handles the load comfortably. Optimistic locking keeps transactions short — no long-held row locks.</li>
+      <li>If write scale becomes a concern: shard the <code>room_availability</code> table by <code>hotel_id</code> hash. All availability writes for a hotel go to one shard; no cross-shard join needed for a booking (a guest books one hotel per booking).</li>
+      <li>The <code>bookings</code> table can be sharded by <code>user_id</code> so "my bookings" queries are single-shard. Cross-shard is only needed for hotel admin views (all bookings for my hotel) — route those to an analytics replica.</li>
+    </ul>
+
+    <h3>Fault tolerance</h3>
+    <ul>
+      <li><strong>Redis failure</strong> — if Redis is down, the booking service falls back to a DB-only flow: skip the Redis hold, use the DB-level constraint + optimistic lock as the sole guard. Slightly more DB load but functionally correct.</li>
+      <li><strong>Payment processor timeout</strong> — if Stripe's API times out during capture, retry with exponential backoff (the PaymentIntent ID ensures idempotency). Surface the booking as PENDING to the user until confirmed; the nightly reconciliation job catches any gaps.</li>
+      <li><strong>Kafka failure</strong> — bookings continue; Elasticsearch falls slightly behind (search may show sold-out rooms until Kafka recovers and the index catches up). The DB is always the source of truth — Elasticsearch is a downstream projection.</li>
+      <li><strong>DB primary failure</strong> — automatic failover to a standby replica (e.g., PostgreSQL with Patroni or Amazon RDS Multi-AZ). Brief read-only window during failover; new bookings queue and retry when the new primary is elected.</li>
+    </ul>
+
+    <h2>Step 15 — Why Not Cassandra for Bookings?</h2>
+    <p>Unlike e-commerce order history (high volume, append-heavy, suitable for Cassandra archival), hotel booking volume is low enough that a SQL primary can retain the full booking history without a dedicated archival service. The correctness benefits of ACID transactions outweigh the scalability benefits of NoSQL at this data volume. Specifically:</p>
+    <ul>
+      <li>1M bookings/day × 365 days × 500 bytes ≈ 180 GB/year — well within SQL's sweet spot.</li>
+      <li>ACID multi-row updates (decrement availability across multiple dates + insert booking record in one transaction) are not natively supported by Cassandra's lightweight transactions (LWT are per-partition and limited).</li>
+      <li>Cassandra's eventual consistency model would require complex application-level conflict resolution to prevent double-bookings — exactly the problem SQL's row-level constraints solve trivially.</li>
+    </ul>
+
+    <h2>Step 16 — Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Primary store</td><td class="col-a">SQL throughout</td><td>Lower horizontal write scale than NoSQL; mitigated by the naturally low booking write rate</td></tr>
+        <tr><td>Concurrency control</td><td class="col-a">Optimistic locking</td><td>Retry needed on conflict; under high contention for hot rooms, retry rate spikes — add exponential backoff</td></tr>
+        <tr><td>Search index</td><td class="col-b">Elasticsearch (eventual)</td><td>Newly booked rooms may appear available in search for seconds until Kafka propagates; compensate with short-TTL availability cache</td></tr>
+        <tr><td>Checkout hold</td><td class="col-a">Redis TTL (~10 min)</td><td>Room blocked for 10 min even if user abandons; mitigate with shorter TTL (5 min) and clear UI warning</td></tr>
+        <tr><td>Payment timing</td><td class="col-a">Authorize now, capture at check-in</td><td>Authorization can expire (7 days) for far-future bookings; must re-authorize if needed</td></tr>
+        <tr><td>Analytics</td><td class="col-b">Kafka → data warehouse</td><td>Analytics are eventually consistent (minutes to hours lag); acceptable for reporting use cases</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Hotel booking design is all about consistency: SQL + row-level constraints prevent double-booking at the database level; Redis TTL holds solve the checkout gap without permanently blocking inventory; Kafka feeds Elasticsearch asynchronously to keep search accurate. The "why not NoSQL" answer here is simple — booking volume doesn't justify sacrificing ACID, and hotel counts are bounded.</p>
+      <p>Hotel booking design is all about consistency: SQL + row-level constraints prevent double-booking at the database level; Redis TTL holds solve the checkout gap without permanently blocking inventory; optimistic locking keeps transactions short and highly concurrent; Kafka feeds Elasticsearch asynchronously to keep search accurate. The "why not NoSQL" answer is simple — booking volume doesn't justify sacrificing ACID, and hotel counts are bounded. The idempotency key on the booking API is the difference between a correct system and one that double-charges guests on network retries.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>How do you prevent double-booking under concurrent requests?</strong> A <code>CHECK (available_count &gt;= 0)</code> constraint on the room_availability table makes any transaction that would decrement below zero fail at the DB level — no application-level locking required.<br>
+      <p><strong>How do you prevent double-booking under concurrent requests?</strong> A <code>CHECK (available_count &gt;= 0)</code> constraint on the room_availability table makes any transaction that would decrement below zero fail at the DB level. Optimistic locking with a <code>version</code> column ensures two concurrent bookings for the same room+date can't both succeed — one will retry with fresh data.<br>
       <strong>Why not use Cassandra for bookings like e-commerce uses it for order history?</strong> Hotel booking volume is low enough for SQL to retain full history; ACID transactions cleanly prevent double-bookings; Cassandra's eventual consistency model would require complex application-level conflict resolution.<br>
-      <strong>What happens if a user abandons checkout after selecting a room?</strong> The Redis TTL (~10 min) expires automatically, releasing the soft hold and restoring the available_count — no manual cleanup or cron job needed.</p>
+      <strong>What happens if a user abandons checkout after selecting a room?</strong> The Redis TTL (~10 min) expires automatically, triggering a background job (or keyspace notification handler) that re-increments available_count for each stay date — no manual cleanup or cron job needed.<br>
+      <strong>How do you make the booking API idempotent?</strong> Require a client-generated Idempotency-Key header; store it in the bookings table as a UNIQUE column. A retried request with the same key returns the existing booking rather than creating a duplicate — preventing double-charges on network retries.<br>
+      <strong>How do you handle the payment processor timing out during booking confirmation?</strong> Store the PaymentIntent ID in the booking record before making the capture call. Retry capture with exponential backoff using the same PaymentIntent ID (Stripe deduplicates). A nightly reconciliation job catches any booking in RESERVED state whose PaymentIntent has been captured — promotes them to BOOKED.</p>
     </div>
 
     <div class="article-nav">
@@ -360,7 +702,7 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

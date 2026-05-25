@@ -152,7 +152,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -171,7 +171,7 @@
     <div class="article-meta">
       <span>Apr 02, 2023</span>
       <span class="separator">·</span>
-      <span>14 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent3)">DDIA</span>
     </div>
@@ -205,93 +205,255 @@
     </figure>
 
     <h2>Log-Structured Storage Engines</h2>
-    <p>The simplest database is an append-only log: write goes to the end of a file, read scans from the beginning. Appends are extremely fast (sequential I/O), but reads are O(n). Indexes solve the read problem at the cost of write overhead.</p>
+    <p>Kleppmann builds intuition from the ground up, starting with the simplest possible "database" — two bash functions:</p>
 
-    <h3>Hash Index</h3>
-    <p>Bitcask (the default storage engine in Riak) keeps an in-memory hash map from every key to the byte offset of its latest value in the log file. Writes append to the active segment; an in-memory pointer is updated. Reads do one disk seek to the offset. This works when the entire key set fits in RAM (common for high-write-rate, moderate-key-count workloads like URL shorteners). Compaction merges old segments, discarding overwritten values to reclaim disk space. Crash recovery restores the hash map from a snapshot.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="fn">db_set</span>() { echo "<span class="str">$1,$2</span>" >> database; }   <span class="cm"># append-only</span>
+<span class="fn">db_get</span>() { grep "^<span class="str">$1,</span>" database | <span class="fn">tail</span> -n1 | <span class="fn">cut</span> -d',' -f2; }</code></pre>
+    </div>
 
-    <h3>SSTables and LSM-Trees</h3>
-    <p><strong>Sorted String Tables (SSTables)</strong> impose a constraint: within each segment file, keys are sorted. This enables efficient merging (like merge sort), sparse in-memory indexes (one entry every few KB rather than one per key), and range queries. The <strong>Log-Structured Merge-Tree (LSM-Tree)</strong>, described by Patrick O'Neil et al. in 1996 and popularized by LevelDB, RocksDB, Cassandra, and HBase, is built on SSTables:</p>
+    <p>This "database" has O(1) writes (sequential append to a file — the fastest possible I/O) and O(n) reads (full scan to find the latest value). The append-only design is not a curiosity — it is the foundation of every log-structured storage engine. Appending to the end of a file is the most efficient disk operation: it never requires seeking backward, never creates fragmentation, and is crash-safe (a power failure during an append either writes the record or does not; it cannot corrupt previously written data). The read problem is what indexes solve.</p>
+
+    <h3>Hash Index (Bitcask)</h3>
+    <p>The hash index is the simplest index structure for an append-only log. Bitcask (the default storage engine in Riak) maintains an in-memory hash map from every key to the byte offset of its most recent value in the log file. Each write appends a new entry to the log and updates the in-memory hash map pointer. Each read performs one disk seek to the stored offset and loads the value. No scanning needed.</p>
+    <p>The critical constraint: <strong>the entire key set must fit in RAM</strong>. The values can be arbitrarily large and live on disk; only the keys and offsets need to be in memory. This constraint is acceptable for workloads with a bounded number of distinct keys but a high update rate per key — think URL shorteners (millions of URLs, each clicked and updated many times), IoT sensor readings (thousands of sensor IDs, millions of time-series values), or session stores (fixed user count, frequently refreshed sessions).</p>
+    <p>The log file grows without bound, so Bitcask segments the log into files of a maximum size. <strong>Compaction</strong> runs as a background process: it reads multiple segment files, keeps only the most recent value for each key (discarding all earlier values for the same key), and writes a new merged segment file. Old segment files are deleted once the merged file is written and the in-memory hash map is updated. Compaction runs concurrently — reads continue against the old segments while compaction writes the new one, then an atomic pointer swap transitions to the new segment.</p>
+    <p>On crash recovery, the in-memory hash map is lost. Bitcask rebuilds it by replaying the log on restart — but this is slow for large logs. The optimization is to write a <strong>hash map snapshot</strong> to disk periodically; on restart, load the snapshot and replay only the segment entries written since the last snapshot.</p>
+
+    <div class="callout">
+      <div class="callout-label">why append-only instead of in-place updates?</div>
+      <p>Three reasons. First, sequential writes are much faster than random writes on spinning disks, and still significantly faster on SSDs (which have write amplification and wear leveling characteristics that make random writes more expensive). Second, append-only makes concurrency simpler — there is no contention between writers updating the same location. Third, crash recovery is cleaner — a partially-written append is at the end of the file and can be detected and discarded; a partially-written in-place update leaves the record in an unknown state.</p>
+    </div>
+
+    <h3>SSTables and the LSM-Tree</h3>
+    <p><strong>Sorted String Tables (SSTables)</strong> add one constraint to the append-only log segment: keys within each segment file must be sorted. This single constraint unlocks three powerful capabilities:</p>
+    <ul>
+      <li><strong>Efficient merging:</strong> merging multiple segment files is exactly merge sort — read the first key from each file's sorted run, write the smallest to the output, advance. O(n) time, constant memory.</li>
+      <li><strong>Sparse in-memory index:</strong> because keys are sorted, you only need one in-memory index entry every few kilobytes. To find key "home," look up the sparse index to find that "hand" is at offset 1200 and "how" is at offset 1500 — then scan the 300 bytes in between. Much smaller memory footprint than one entry per key.</li>
+      <li><strong>Range queries:</strong> keys between "apple" and "banana" are physically adjacent in the sorted file — read the range sequentially instead of issuing separate lookups per key.</li>
+    </ul>
+    <p>The <strong>Log-Structured Merge-Tree (LSM-Tree)</strong>, described by Patrick O'Neil et al. in 1996 and popularized by LevelDB (Google), RocksDB (Meta/Facebook), Apache Cassandra, and Apache HBase, maintains SSTables through the following lifecycle:</p>
     <ol>
-      <li>Writes go to an in-memory balanced BST (<strong>memtable</strong>), e.g. a red-black tree.</li>
-      <li>When the memtable exceeds a threshold (~a few MB), it is flushed to disk as a new SSTable segment — already sorted.</li>
-      <li>Reads check the memtable first, then the most recent on-disk SSTable, then older ones in order. A <strong>Bloom filter</strong> per SSTable quickly answers "key definitely not here" to avoid unnecessary disk reads.</li>
-      <li>Background <strong>compaction</strong> merges SSTable levels. Leveled compaction (LevelDB/RocksDB) keeps total size per level bounded; size-tiered compaction (Cassandra default) groups similar-size SSTables.</li>
+      <li><strong>Writes go to the memtable</strong> — an in-memory balanced binary search tree (red-black tree or skip list) that keeps keys sorted at all times. Writes are always O(log n) in memory, extremely fast.</li>
+      <li><strong>WAL for durability</strong> — every write is first appended to a Write-Ahead Log on disk. If the process crashes before the memtable is flushed, the WAL is replayed on restart to reconstruct the memtable. The WAL is discarded once the memtable successfully flushes.</li>
+      <li><strong>Flush to SSTable</strong> — when the memtable exceeds a threshold (typically a few megabytes), it is written to disk as a new SSTable. Because the memtable is a sorted tree, the resulting SSTable is already sorted — no additional sort pass needed.</li>
+      <li><strong>Reads check in order:</strong> first the memtable (current writes), then the most recent on-disk SSTable, then progressively older SSTables. A key that was recently written will be found quickly; an old key may require checking multiple SSTables.</li>
+      <li><strong>Background compaction</strong> merges and garbage-collects SSTables, keeping disk space bounded and read performance acceptable by reducing the number of SSTables a read must check.</li>
     </ol>
-    <p>A crash before a memtable flush is recovered via a separate write-ahead log (WAL) that is discarded once the flush completes.</p>
+
+    <h3>Bloom Filters: Avoiding Unnecessary Disk Reads</h3>
+    <p>LSM-tree reads have a fundamental weakness: for a key that does not exist, the read must check the memtable and every SSTable (unless the key can be quickly eliminated). For write-heavy workloads with frequent negative lookups (e.g. checking whether a key exists before writing it), this is expensive. <strong>Bloom filters</strong> solve this.</p>
+    <p>A Bloom filter is a probabilistic data structure that uses a bit array and multiple hash functions. To add a key, compute k hash functions and set those k bits to 1. To query a key, compute the same k hash functions and check those k bits. If any bit is 0, the key is <strong>definitely not present</strong> (no false negatives). If all bits are 1, the key is <strong>probably present</strong> (false positives are possible but controlled by filter size). LSM-trees attach one Bloom filter per SSTable. When a read needs to check an SSTable, the Bloom filter is consulted first — if it says "definitely not here," the SSTable is skipped entirely, saving a disk read. In practice this dramatically reduces the read amplification for non-existent keys.</p>
+
+    <h3>Compaction Strategies: Size-Tiered vs Leveled</h3>
+    <p>Compaction is the background process that merges SSTables to reclaim disk space and reduce read amplification. Different compaction strategies make different tradeoffs:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>How It Works</th><th>Write Amplification</th><th>Space Amplification</th><th>Used By</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Size-tiered</td><td>Group similar-size SSTables; merge groups when a threshold count is reached</td><td>Lower — merges happen less frequently</td><td>Higher — during merge, old + new files coexist (up to 2× space temporarily)</td><td>Cassandra (default), HBase</td></tr>
+        <tr><td class="col-b">Leveled</td><td>SSTables organized into levels; each level has a size limit; L0 is flushed from memtable; when a level is full, SSTables are merged into the next level</td><td>Higher — data is rewritten across levels</td><td>Lower — each key exists at most once per level (except L0)</td><td>LevelDB, RocksDB, Cassandra (option)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Leveled compaction keeps total data size per level bounded, which means it uses disk space more efficiently and provides more predictable read performance (fewer levels to check). Size-tiered compaction produces fewer total writes, which is better for write-heavy workloads, but at the cost of higher space amplification during merges. RocksDB supports both strategies and allows tuning for the workload — this is why it is used in systems as different as MyRocks (MySQL on RocksDB), TiKV (distributed key-value store), and CockroachDB (distributed SQL).</p>
 
     <h2>B-Tree Storage Engines</h2>
-    <p>B-trees are the standard index structure for relational databases (PostgreSQL, MySQL/InnoDB, SQLite). Unlike LSM-trees that break data into variable-length segments, B-trees break data into fixed-size <strong>pages</strong> (traditionally 4 KB, matching disk block size). The tree is balanced: leaf pages contain values (or references to values), internal pages contain keys and pointers to child pages. A write updates the page in place, then writes a <strong>Write-Ahead Log (WAL)</strong> entry for crash recovery.</p>
+    <p>B-trees are the dominant index structure for relational databases. PostgreSQL, MySQL/InnoDB, SQLite, Oracle, and SQL Server all use B-trees as their primary index structure. Understanding why requires understanding what problems B-trees were designed to solve and what invariants they maintain.</p>
+
+    <h3>Structure and In-Place Updates</h3>
+    <p>Unlike LSM-trees that break data into variable-length segment files, B-trees break the database into fixed-size <strong>pages</strong> or blocks, traditionally 4 KB — the same size as a disk sector, which enables efficient I/O. The tree is balanced: all leaf pages are at the same depth. Leaf pages contain actual key-value pairs (or references to heap file locations for non-clustered indexes). Internal pages (internal nodes) contain keys and pointers to child pages.</p>
+    <p>When you query a B-tree, you start at the root page, find the range that contains your key, follow the pointer to the appropriate child page, and repeat until you reach a leaf. This root-to-leaf traversal is O(log n) but with a very high branching factor — a B-tree of depth 3 with 4 KB pages and 4-byte keys can reference up to 256 TB of data. In practice, a B-tree depth of 3–4 is sufficient for most production databases, meaning most reads require 3–4 page reads (or fewer, since the upper levels are almost always cached in the buffer pool).</p>
+    <p>Writes update pages in place. To update a key's value, find the leaf page containing the key and overwrite the value in that page. If a new key is inserted and the leaf page is full, the page is <strong>split</strong> into two pages, and the parent page is updated to contain the new dividing key. This split can cascade upward if the parent is also full, in the worst case splitting all the way to the root and creating a new root, increasing tree height by one. B-trees are kept balanced through this splitting mechanism.</p>
+
+    <h3>Write-Ahead Log (WAL / Redo Log)</h3>
+    <p>In-place updates are dangerous: if a crash occurs mid-update (e.g. while a page split is in progress), the database could be left in an inconsistent state — the split page exists but the parent pointer has not been updated. B-trees solve this with a <strong>Write-Ahead Log (WAL)</strong>, also called a redo log in some systems. Before modifying any page, the modification is written to an append-only WAL file on disk. If the system crashes, the WAL is replayed on restart to bring the database back to a consistent state.</p>
+    <p>The WAL is also used for replication in many systems (PostgreSQL's WAL streaming replication, MySQL's binary log). This dual-use is efficient but creates coupling between crash recovery and replication, which complicates some operational scenarios.</p>
+
+    <div class="callout">
+      <div class="callout-label">write amplification defined</div>
+      <p><strong>Write amplification</strong> is the ratio of bytes written to disk to bytes of application data written. A single key-value write that causes a 4 KB page to be written has a write amplification of (4096 / data_size). For B-trees, a small update forces writing an entire page. Compaction in LSM-trees causes data to be written multiple times across levels. High write amplification reduces write throughput and accelerates SSD wear. This is a key reason to choose LSM-trees for write-heavy workloads — sequential compaction writes are more SSD-friendly than random B-tree page updates.</p>
+    </div>
+
+    <h3>LSM-Tree vs B-Tree: The Full Comparison</h3>
 
     <table class="compare-table">
       <thead>
         <tr><th>Property</th><th class="col-a">LSM-Tree</th><th class="col-b">B-Tree</th></tr>
       </thead>
       <tbody>
-        <tr><td>Write amplification</td><td class="col-a">Lower (sequential, batched)</td><td class="col-b">Higher (random page updates + WAL)</td></tr>
-        <tr><td>Read performance</td><td class="col-a">Slower (may check multiple SSTables)</td><td class="col-b">Faster (one path from root to leaf)</td></tr>
-        <tr><td>Space amplification</td><td class="col-a">Higher during compaction</td><td class="col-b">Lower (in-place updates)</td></tr>
-        <tr><td>Compression</td><td class="col-a">Better (sequential layout)</td><td class="col-b">Worse (fragmentation)</td></tr>
-        <tr><td>Concurrency</td><td class="col-a">Simpler (immutable SSTables)</td><td class="col-b">Requires careful latch management</td></tr>
-        <tr><td>Typical use</td><td class="col-a">Cassandra, RocksDB, HBase</td><td class="col-b">PostgreSQL, MySQL, SQLite</td></tr>
+        <tr><td>Write path</td><td class="col-a">Sequential appends to memtable + WAL; periodic flush to SSTable; background compaction</td><td class="col-b">Random in-place page updates + WAL entry per write; occasional page split</td></tr>
+        <tr><td>Write amplification</td><td class="col-a">Lower for initial write; compaction rewrites data multiple times across levels</td><td class="col-b">Higher per update (entire page written); worse on SSDs for random small writes</td></tr>
+        <tr><td>Read performance</td><td class="col-a">Slower — may need to check memtable + multiple SSTables; Bloom filters mitigate for non-existent keys</td><td class="col-b">Faster — deterministic O(log n) root-to-leaf path; upper levels always cached</td></tr>
+        <tr><td>Read amplification</td><td class="col-a">Higher — multiple SSTables may need checking for one key</td><td class="col-b">Lower — one path from root to leaf for any key</td></tr>
+        <tr><td>Space amplification</td><td class="col-a">Higher during compaction (old + new data coexist); tombstones until compacted away</td><td class="col-b">Lower — in-place updates; free pages reclaimed immediately by B-tree page allocator</td></tr>
+        <tr><td>Compression ratio</td><td class="col-a">Better — sorted, sequential layout compresses well</td><td class="col-b">Worse — random page layout with fragmentation from page splits</td></tr>
+        <tr><td>Write latency</td><td class="col-a">More predictable (memtable writes) but compaction can cause latency spikes</td><td class="col-b">Can spike during page splits; generally good for mixed workloads</td></tr>
+        <tr><td>Concurrency model</td><td class="col-a">Simpler — SSTables are immutable once written; no concurrent modification</td><td class="col-b">Complex — pages can be modified concurrently; requires careful latch (short-lock) management</td></tr>
+        <tr><td>Typical use cases</td><td class="col-a">Write-heavy workloads, time-series, event logs, high-volume IoT data ingestion</td><td class="col-b">Read-heavy or mixed OLTP; queries that require strong read latency guarantees</td></tr>
+        <tr><td>Example systems</td><td class="col-a">Cassandra, RocksDB, HBase, LevelDB, ScyllaDB</td><td class="col-b">PostgreSQL, MySQL/InnoDB, SQLite, Oracle, SQL Server</td></tr>
       </tbody>
     </table>
 
-    <h2>Other Index Structures</h2>
-    <h3>Secondary Indexes</h3>
-    <p>The primary index maps a primary key to a row. A <strong>secondary index</strong> maps some other column's value to one or more row locations. Both B-trees and LSM-trees can serve secondary indexes. The key difference: primary key values are unique, secondary index values are not — each entry may point to a list of matching rows.</p>
+    <p>The comparison is not simply "LSM for writes, B-tree for reads." Real workloads are mixed, and the choice depends on write-to-read ratio, key distribution, disk type (SSD vs HDD), latency requirements, and operational complexity tolerance. Many modern systems mix both: RocksDB (LSM) is used as the storage engine under MySQL (MyRocks) to improve write throughput on SSD, while keeping MySQL's SQL interface. CockroachDB uses RocksDB internally while exposing full SQL with ACID transactions.</p>
 
-    <h3>Clustered vs Non-Clustered Indexes</h3>
-    <p>In a <strong>clustered index</strong> (InnoDB's primary key, for example), the actual row data is stored inside the index leaf page. Lookups by primary key are extremely fast — one disk access fetches both index and data. In a <strong>non-clustered (heap file) index</strong>, the index stores a pointer to the row's location in a separate heap file. A <strong>covering index</strong> is a middle ground: the index includes extra columns so that the query can be answered entirely from the index without touching the heap.</p>
+    <h2>Index Structures Beyond the Primary Key</h2>
+    <h3>Secondary Indexes</h3>
+    <p>The primary index maps a primary key to a row — by definition unique per row. A <strong>secondary index</strong> maps values of some other column (or combination of columns) to the rows that have that value. Both B-trees and LSM-trees can serve secondary indexes; the data structure is the same, but the key type differs.</p>
+    <p>The critical distinction: secondary index values are not unique. An index on <code>city_id</code> may map one city ID to millions of user rows. Each index entry points to a list (or a key range) of matching rows rather than a single row. This is implemented either by including the primary key in each secondary index entry (so the full row is fetched via a second primary key lookup) or by pointing directly to the heap file location (which becomes stale if the row moves, requiring careful maintenance).</p>
+    <p>Secondary indexes are essential for query performance — without them, any query filtering on a non-primary-key column requires a full table scan. Adding a secondary index dramatically speeds up reads at the cost of write overhead (every insert or update must also update all secondary indexes) and storage space. The tradeoff is explicit and measurable, which is why database schema design involves deliberate decisions about which secondary indexes to create.</p>
+
+    <h3>Clustered vs Non-Clustered vs Covering Indexes</h3>
+    <p>These three concepts are among the most commonly asked-about indexing details in database performance discussions and system design interviews.</p>
+    <p>In a <strong>clustered index</strong>, the actual row data is physically stored inside the index structure itself — specifically inside the leaf pages of the B-tree. InnoDB (MySQL's default storage engine) always uses the primary key as a clustered index: the primary key B-tree is the table itself. Looking up a row by primary key is a single tree traversal that delivers the full row. There can be only one clustered index per table (because the data can only be physically sorted in one way).</p>
+    <p>In a <strong>non-clustered index</strong> (also called a heap file index), the index stores a key-pointer pair: the indexed column value alongside a pointer to the row's location in a separate heap file. Lookups by the indexed column find the pointer, then perform a second I/O to the heap file to fetch the full row. This is a "double lookup" — two disk reads where a clustered index needs one. The heap file pointer can also become stale if the row moves (e.g. during a page compaction), requiring the index to be updated.</p>
+    <p>A <strong>covering index</strong> (or index-only scan) is an optimization: add extra columns to a secondary index beyond the indexed key so that a query can be answered entirely from the index without touching the heap at all. If your most frequent query is <code>SELECT name, email FROM users WHERE city_id = 42</code>, creating an index on <code>(city_id, name, email)</code> allows the query engine to satisfy the query entirely from the index. The "covered" columns are stored redundantly (they also exist in the heap), but the read is faster because the heap I/O is eliminated.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Non-clustered index: index on city_id, heap lookup to get name + email</span>
+<span class="kw">CREATE INDEX</span> idx_city <span class="kw">ON</span> users(city_id);
+<span class="cm">-- Read path: city_id B-tree → heap file lookup (2 I/Os)</span>
+
+<span class="cm">-- Covering index: index includes name + email; no heap lookup needed</span>
+<span class="kw">CREATE INDEX</span> idx_city_cover <span class="kw">ON</span> users(city_id, name, email);
+<span class="cm">-- Read path: city_id B-tree only, name+email served from index leaf (1 I/O)</span>
+
+<span class="cm">-- PostgreSQL: EXPLAIN output for index-only scan</span>
+<span class="kw">EXPLAIN SELECT</span> name, email <span class="kw">FROM</span> users <span class="kw">WHERE</span> city_id = <span class="num">42</span>;
+<span class="cm">--  Index Only Scan using idx_city_cover on users</span>
+<span class="cm">--    Index Cond: (city_id = 42)</span></code></pre>
+    </div>
+
+    <h3>Multi-Column and Fuzzy Indexes</h3>
+    <p>A <strong>multi-column index</strong> (composite index) covers multiple columns. The index is sorted first by the leading column, then by subsequent columns within each leading column group. The query <code>WHERE last_name = 'Smith' AND first_name = 'John'</code> can use a composite index on <code>(last_name, first_name)</code> very efficiently — it is a single sorted range lookup. However, the query <code>WHERE first_name = 'John'</code> alone cannot use that index efficiently (the leading column is missing) — it would require a full index scan. The column order in a composite index matters, and the right order depends on your query patterns.</p>
+    <p>Standard B-tree indexes are efficient for exact-match and range queries on structured data. They are not suitable for full-text search (which requires understanding word stemming, synonyms, typos) or approximate queries. Inverted indexes (like those used by Elasticsearch and Lucene) handle full-text search: they map each word to the list of documents containing that word, enabling efficient term-at-a-time scoring and Boolean combinations. For fuzzy matching (finding strings within a Levenshtein edit distance of k), specialized structures like BK-trees or SimHash are used. The key lesson: the right index structure depends entirely on the query type, not just on the data type.</p>
 
     <h3>In-Memory Databases</h3>
-    <p>Durability requires writing to disk eventually, but the primary bottleneck for in-memory databases is not RAM speed — it is the overhead of encoding data structures into disk-friendly formats. VoltDB, MemSQL (now SingleStore), and Redis all keep the authoritative dataset in RAM (with persistence options). Anti-caching extends the dataset beyond RAM by evicting LRU pages to disk, similar to virtual memory but managed at the database level.</p>
+    <p>All disk-based storage engines — B-tree and LSM-tree alike — incur the cost of encoding application data structures into a format that can be stored on disk and decoded back on read. In-memory databases sidestep this entirely: the authoritative dataset lives in RAM, and the full richness of in-memory data structures (hash tables, skip lists, priority queues, trees) is available without serialization overhead.</p>
+    <p>Common examples: Redis (key-value, list, set, sorted set, hash, stream — all in memory with optional persistence), Memcached (pure cache, no persistence), VoltDB (ACID-transactional relational in-memory), MemSQL/SingleStore (in-memory with disk-backed durability), and Hazelcast (distributed in-memory data grid).</p>
+    <p>Kleppmann makes an important point that is often misunderstood: the performance advantage of in-memory databases is <em>not primarily</em> because they avoid disk reads — a well-configured disk-based database's working set fits in its buffer pool and rarely touches disk anyway. The advantage is that they avoid the overhead of <em>encoding and decoding</em> data structures into disk-friendly formats. An in-memory database can store a Redis sorted set as a real skip list with real pointers; a disk-based system would need to serialize and deserialize it on every access. The resulting code is also often faster because the in-memory data structures can be more complex and efficient than their serializable equivalents.</p>
+    <p>Durability for in-memory databases comes from periodic snapshots to disk (Redis RDB), append-only operation logs (Redis AOF), synchronous replication to other nodes (VoltDB), or NVM (non-volatile memory) hardware. The "restart and reload" time is a real operational concern — a Redis instance with 100 GB of data may take minutes to reload from disk after a restart, during which it is unavailable.</p>
 
-    <h2>OLTP vs OLAP</h2>
-    <p>Online Transaction Processing (OLTP) databases serve application end-users: high volume, small random-access queries touching a few rows at a time. Online Analytical Processing (OLAP) serves data analysts: low volume, huge scans aggregating millions of rows to answer business questions. The access patterns are so different that organizations run separate systems for each.</p>
+    <h2>OLTP vs OLAP: Two Different Worlds</h2>
+    <p>Online Transaction Processing (<strong>OLTP</strong>) and Online Analytical Processing (<strong>OLAP</strong>) represent fundamentally different usage patterns that have driven different storage architectures. Understanding both — and why they are kept separate — is one of the most important concepts in data engineering.</p>
 
     <table class="compare-table">
       <thead>
         <tr><th>Property</th><th class="col-a">OLTP</th><th class="col-b">OLAP</th></tr>
       </thead>
       <tbody>
-        <tr><td>Query type</td><td class="col-a">Point lookups, small updates</td><td class="col-b">Aggregates over many rows</td></tr>
-        <tr><td>Data touched per query</td><td class="col-a">Tens of rows</td><td class="col-b">Millions to billions of rows</td></tr>
-        <tr><td>Write pattern</td><td class="col-a">Random, low-latency</td><td class="col-b">Bulk ETL / event streams</td></tr>
+        <tr><td>Primary user</td><td class="col-a">End-users, via application</td><td class="col-b">Data analysts, data scientists, business intelligence tools</td></tr>
+        <tr><td>Query pattern</td><td class="col-a">Point lookups and small updates; "what is the order status for order #12345?"</td><td class="col-b">Aggregations over millions of rows; "what was total revenue by region last quarter?"</td></tr>
+        <tr><td>Data touched per query</td><td class="col-a">Tens to hundreds of rows</td><td class="col-b">Millions to billions of rows</td></tr>
+        <tr><td>Bottleneck</td><td class="col-a">Latency — must respond in milliseconds; concurrent user load</td><td class="col-b">Throughput — must scan vast data efficiently; query complexity</td></tr>
+        <tr><td>Write pattern</td><td class="col-a">Random, low-latency individual row inserts/updates</td><td class="col-b">Bulk ETL loads, event stream ingestion — high volume, often batch</td></tr>
         <tr><td>Dataset size</td><td class="col-a">GB to TB</td><td class="col-b">TB to PB</td></tr>
-        <tr><td>Users</td><td class="col-a">End-users via application</td><td class="col-b">Analysts, data scientists</td></tr>
-        <tr><td>Examples</td><td class="col-a">MySQL, PostgreSQL</td><td class="col-b">Redshift, BigQuery, Snowflake</td></tr>
+        <tr><td>Schema</td><td class="col-a">Normalized, third normal form or higher</td><td class="col-b">Denormalized, star or snowflake schema optimized for query performance</td></tr>
+        <tr><td>Indexes</td><td class="col-a">B-trees, secondary indexes on frequently filtered columns</td><td class="col-b">Column-oriented storage; bitmap indexes; minimal row-level indexes</td></tr>
+        <tr><td>Example systems</td><td class="col-a">PostgreSQL, MySQL, Oracle, SQL Server</td><td class="col-b">Amazon Redshift, Google BigQuery, Snowflake, Clickhouse, Apache Druid</td></tr>
       </tbody>
     </table>
 
-    <h3>Data Warehouses and Star Schema</h3>
-    <p>A <strong>data warehouse</strong> is a separate read-optimized database loaded from OLTP systems via ETL (Extract, Transform, Load). The dominant schema is the <strong>star schema</strong>: a central <strong>fact table</strong> (each row is an event — a sale, a click, an order) connected to multiple <strong>dimension tables</strong> (product, customer, date, store). The name comes from the diagram: fact table in the center, dimension tables radiating out like star points. A <strong>snowflake schema</strong> further normalizes dimension tables into sub-dimensions.</p>
+    <p>The reason organizations run separate systems is that optimizing for one access pattern actively harms performance for the other. Running analytical queries on an OLTP database takes up connection pool slots, causes buffer pool thrashing (analytics scans displace the OLTP working set from cache), and contends for CPU and I/O with latency-sensitive transactional queries. Conversely, the highly normalized schemas and row-oriented storage of OLTP systems are poorly suited to analytical aggregations across millions of rows.</p>
+
+    <h3>Data Warehouses and the ETL Pipeline</h3>
+    <p>A <strong>data warehouse</strong> is a separate read-optimized analytical database, loaded from OLTP systems on a regular schedule via an ETL (Extract, Transform, Load) pipeline. The extract step pulls data from operational systems (often via database replication or change data capture). The transform step cleans, normalizes, and reshapes data into the warehouse's schema. The load step inserts the data into the warehouse.</p>
+    <p>ETL runs on a schedule (nightly, hourly, or near-real-time) rather than synchronously with OLTP writes, introducing a propagation delay. A sale made at 11:59 PM might not appear in the warehouse until after the nightly ETL completes. Modern "streaming ETL" architectures (using Kafka, Flink, or Spark Streaming) reduce this lag to seconds or minutes, enabling near-real-time analytics, but add architectural complexity.</p>
+    <p>The data warehouse exposes a SQL interface that is surface-level similar to OLTP SQL, but the underlying execution engine is radically different — built for massive parallel scans rather than indexed point lookups. SQL analysts who write against the warehouse do not need to understand this distinction; the declarative query interface hides it. This is one of the great practical successes of the declarative query model.</p>
+
+    <h3>Star Schema and Snowflake Schema</h3>
+    <p>The dominant schema pattern in data warehouses is the <strong>star schema</strong>. At its center is a <strong>fact table</strong>, where each row represents an event: a sale, a click, a page view, a login, an ad impression. Fact tables are typically the largest tables in the warehouse — billions of rows, each representing one occurrence of a business event. Each row contains foreign keys to multiple <strong>dimension tables</strong> (product, customer, date, store, geography, campaign) and one or more numeric <strong>measures</strong> (amount, quantity, duration, revenue).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Star schema: fact table at center, dimensions radiating out</span>
+<span class="kw">CREATE TABLE</span> fact_sales (
+  sale_id       <span class="ty">BIGINT</span>,
+  date_key      <span class="ty">INT</span>,        <span class="cm">-- FK → dim_date</span>
+  product_key   <span class="ty">INT</span>,        <span class="cm">-- FK → dim_product</span>
+  customer_key  <span class="ty">INT</span>,        <span class="cm">-- FK → dim_customer</span>
+  store_key     <span class="ty">INT</span>,        <span class="cm">-- FK → dim_store</span>
+  quantity      <span class="ty">INT</span>,
+  amount_cents  <span class="ty">BIGINT</span>
+);
+
+<span class="cm">-- Typical OLAP query: aggregation across millions of rows, few columns</span>
+<span class="kw">SELECT</span> d.month, p.category, <span class="fn">SUM</span>(f.amount_cents) <span class="kw">AS</span> revenue
+<span class="kw">FROM</span> fact_sales f
+  <span class="kw">JOIN</span> dim_date d     <span class="kw">ON</span> f.date_key    = d.date_key
+  <span class="kw">JOIN</span> dim_product p  <span class="kw">ON</span> f.product_key = p.product_key
+<span class="kw">WHERE</span> d.year = <span class="num">2024</span> <span class="kw">AND</span> p.category = <span class="str">'Electronics'</span>
+<span class="kw">GROUP BY</span> d.month, p.category
+<span class="kw">ORDER BY</span> d.month;</code></pre>
+    </div>
+
+    <p>The <strong>snowflake schema</strong> is a variant where dimension tables are further normalized into sub-dimensions. For example, instead of a flat <code>dim_product</code> table with category_name as a text column, a snowflake schema has a <code>dim_product</code> table with a foreign key to a separate <code>dim_category</code> table. Snowflake schemas are more normalized (less redundancy, smaller storage), but they require more joins per query. Most analytical query engines prefer star schemas for this reason — fewer joins, simpler query planning, and better query performance.</p>
 
     <h2>Column-Oriented Storage</h2>
-    <p>Analytical queries typically touch only a few columns out of a table with hundreds. Row-oriented storage must load the entire row to extract one column. <strong>Column-oriented storage</strong> (used by Redshift, Parquet, Clickhouse, Vertica) stores all values for one column together, so a query touching 3 columns out of 100 reads only 3% of the data.</p>
+    <p>The most important storage insight for analytical systems is column-oriented storage — and understanding why it matters requires understanding the I/O pattern of analytical queries. Consider a fact table with 100 columns and 1 billion rows. A typical OLAP query touches perhaps 3–5 of those columns but must scan all 1 billion rows for those columns. In row-oriented storage (PostgreSQL, MySQL), data is laid out as: all columns of row 1, then all columns of row 2, etc. To read 3 columns for 1 billion rows, you must load all 100 columns of all 1 billion rows from disk — reading 97% of data you do not need.</p>
+    <p>In <strong>column-oriented storage</strong> (Redshift, Snowflake, ClickHouse, Vertica, Apache Parquet), data is laid out as: all values of column 1 for all rows, then all values of column 2 for all rows, etc. To read 3 columns for 1 billion rows, you load only those 3 columns — 3% of total data. The I/O reduction is approximately (columns needed / total columns). For a table with 100 columns and a query touching 4, this is a 25× reduction in I/O — a transformative improvement for disk-bound analytical workloads.</p>
 
     <h3>Column Compression</h3>
-    <p>Column values are often repetitive (e.g., a product_id column with only a few thousand distinct values across billions of rows). This compresses extremely well. Common techniques:</p>
+    <p>Column storage enables aggressive compression because each column contains values of the same type and often a small number of distinct values. Compression reduces both disk storage cost and the amount of data transferred from disk to CPU — further improving query performance. The main techniques:</p>
     <ul>
-      <li><strong>Bitmap encoding</strong> — one bit per row per distinct value. For low-cardinality columns, store a sparse bitmap (run-length encoded).</li>
-      <li><strong>Run-length encoding</strong> — consecutive identical values compressed to (value, count). Effective when data is sorted by the column.</li>
-      <li><strong>Dictionary encoding</strong> — map distinct values to small integers, store integers. Used by Parquet and ORC.</li>
+      <li><strong>Bitmap encoding:</strong> for a column with low cardinality (few distinct values relative to row count), create one bit vector per distinct value, where bit i is 1 if row i has that value. A <code>product_category</code> column with 50 distinct categories across 1 billion rows can be represented as 50 bit vectors of 1 billion bits each — roughly 6 GB total instead of ~4 GB of 4-byte integers. The real win: operations like filtering (<code>WHERE category = 'Electronics'</code>) become bitwise AND operations on bit vectors, which modern CPUs execute extremely efficiently using SIMD instructions.</li>
+      <li><strong>Run-length encoding (RLE):</strong> when data is sorted by the column, consecutive rows often have the same value. RLE represents a run of N identical values as the pair (value, N). A <code>store_id</code> column sorted by store might have runs of 10,000 rows all with the same store ID. Instead of storing 10,000 integers, you store one (store_id, 10000) pair. This can reduce storage by 100–1000× for highly repetitive sorted data, and it makes GROUP BY operations trivially fast (each run is one group).</li>
+      <li><strong>Dictionary encoding:</strong> replace each distinct value with a small integer code; store a dictionary mapping codes to values; store the column as integer codes. For a <code>country_code</code> column with 200 distinct values, replace 2-byte strings with 1-byte codes. Dictionary encoding is used by Parquet, ORC, and most columnar formats. It also enables predicate pushdown: <code>WHERE country = 'US'</code> becomes a lookup in the dictionary (find code for 'US'), then a simple integer comparison — no string parsing per row.</li>
     </ul>
-    <p>Compression also enables <strong>vectorized processing</strong>: the query engine operates on compressed column chunks using CPU SIMD instructions without decompressing first, dramatically reducing CPU cycles per row processed.</p>
+
+    <h3>Vectorized Processing</h3>
+    <p>Compression enables a further optimization: <strong>vectorized execution</strong> (also called SIMD vectorized processing). Modern CPUs have SIMD (Single Instruction Multiple Data) instruction sets (SSE, AVX, AVX-512) that operate on vectors of values simultaneously — for example, a single AVX-512 instruction can compare 16 32-bit integers against a constant in one CPU cycle. Columnar storage with compressed integer codes feeds directly into SIMD operations: a bitmap column can be ANDed with another in one instruction per 64 rows. Row-based storage, by contrast, requires branching on the column type at each row, preventing SIMD optimization.</p>
+    <p>The combination of column layout + compression + SIMD vectorized execution is why analytical queries on ClickHouse or BigQuery scan billions of rows per second on commodity hardware — and why row-oriented storage engines cannot match this throughput even with much more powerful hardware.</p>
 
     <h3>Sort Order in Column Stores</h3>
-    <p>Rows can be sorted by one or more columns (like a clustered index). Sorting enables better run-length compression for the first sort key and speeds up range queries and GROUP BY on that key. Vertica even stores multiple sort orders on different replicas — different queries pick the replica whose sort order helps them most.</p>
+    <p>Column stores can choose a sort order for rows, analogous to a clustered index in a row-oriented database. If rows are sorted by <code>date_key</code>, then queries with a date range predicate (<code>WHERE date_key BETWEEN 20240101 AND 20240131</code>) can skip large portions of the file using min/max statistics per column chunk. Sorting also dramatically improves RLE compression for the sort key: sorted <code>date_key</code> values form long runs of identical values (all transactions on a given day), compressing extremely well.</p>
+    <p>Vertica takes this further by storing multiple sort orders across different replicas — a replica sorted by date for time-range queries, another sorted by region for geographic aggregations, another sorted by product_category for product analytics. Reads are routed to the replica whose sort order best matches the query. This trades storage (3× more data for 3 sort orders) for dramatically faster query performance across diverse query patterns — a reasonable tradeoff in analytics systems where storage is cheap relative to query time.</p>
+
+    <h3>Materialized Views and Data Cubes</h3>
+    <p>A <strong>materialized view</strong> is a precomputed query result stored as a real table on disk, rather than a virtual view that is recomputed on each access. When an underlying table changes, the materialized view must be refreshed (either eagerly on each write, or periodically in batch). In OLAP systems, materialized views are used aggressively to pre-aggregate expensive computations.</p>
+    <p>A special case is the <strong>data cube</strong> (OLAP cube): a multi-dimensional pre-aggregated view of a fact table. For the fact_sales table, a data cube might pre-aggregate revenue for every combination of (month, category, store, region) — 4 dimensions. This allows any slice-and-dice query within those 4 dimensions to be answered with a single lookup instead of a full table scan. The tradeoff: the cube grows exponentially with the number of dimensions (the "curse of dimensionality"), and it must be rebuilt when underlying data changes. For frequently queried, slowly changing data (weekly or monthly aggregates), data cubes are still widely used in traditional BI systems.</p>
+    <p>Modern cloud data warehouses (BigQuery, Snowflake) handle this differently: instead of pre-computing cubes, they use massive parallelism and columnar storage to make the scan fast enough that materialization is less necessary. But materialized views are still used for the most frequently accessed, most expensive aggregations where even parallel scans are too slow for interactive query response times.</p>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>For OLTP writes: LSM-tree beats B-tree on write throughput; B-tree beats LSM on read latency and predictability. For analytics: column-oriented storage is a near-universal win — less I/O, better compression, and CPU-friendly vectorized execution. Know that a data warehouse's star schema (fact + dimension tables) is the foundation for every SQL analytics query you will ever see in a BI tool or interview whiteboard.</p>
+      <p>For OLTP writes: LSM-tree beats B-tree on write throughput (sequential appends beat random page updates, especially on SSD); B-tree beats LSM on read latency and predictability (one root-to-leaf path vs multiple SSTable checks). For analytics: column-oriented storage is a near-universal win — less I/O (read only needed columns), better compression (column values are homogeneous and often repetitive), and CPU SIMD vectorized execution on compressed column chunks. Know that a data warehouse's star schema (fact table + dimension tables) is the foundation for every analytics query you will write in a BI tool, and that materialized views and data cubes exist to pre-answer the most expensive aggregations.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>LSM-tree vs B-tree — when do you pick each?</strong> LSM-tree for write-heavy workloads (Cassandra, RocksDB): sequential append + compaction give higher write throughput, better compression, but slower and less predictable reads. B-tree for read-heavy or mixed workloads (PostgreSQL, MySQL): one root-to-leaf path for fast predictable reads, but random in-place page writes have higher write amplification.<br>
-      <strong>Why does column-oriented storage make analytics faster?</strong> An OLAP query typically touches 3–5 columns out of hundreds. Row storage must load entire rows to extract those columns. Column storage reads only the needed columns — a fraction of total I/O. Combined with high compression (repetitive column values) and CPU SIMD vectorized execution on compressed chunks, it dramatically reduces both I/O and CPU cycles.<br>
-      <strong>What is a Bloom filter and why do LSM-trees use one?</strong> A Bloom filter is a probabilistic data structure that definitively answers "key definitely not here" with no false negatives. LSM-trees attach one per SSTable so reads can skip disk seeks to SSTables that cannot contain the key — avoiding expensive I/O for non-existent keys.</p>
+      <p><strong>LSM-tree vs B-tree — when do you pick each?</strong> LSM-tree for write-heavy workloads (Cassandra, RocksDB): sequential memtable appends + background compaction give higher write throughput and better compression, especially on SSDs. But reads may check multiple SSTables — mitigated by Bloom filters. B-tree for read-heavy or mixed OLTP (PostgreSQL, MySQL): deterministic O(log n) root-to-leaf path for fast predictable reads; writes do random page updates with WAL for durability. For truly mixed workloads, RocksDB (LSM) under MySQL (MyRocks) is a popular hybrid.<br>
+      <strong>What are write amplification, read amplification, and space amplification?</strong> Write amp: bytes written to disk / bytes of application data (B-tree's in-place page writes are high; LSM compaction rewrites data across levels). Read amp: disk reads required per logical read (LSM can check many SSTables; B-tree is one path). Space amp: disk space used / logical data size (LSM has old + new data during compaction; B-tree reclaims freed pages quickly).<br>
+      <strong>Why does column-oriented storage make analytics faster?</strong> An OLAP query touches 3–5 columns out of potentially hundreds. Row storage must load all 100+ columns to extract those few. Column storage reads only the needed columns — often a 10–30× reduction in I/O. Combined with bitmap/RLE/dictionary compression (column values are repetitive) and CPU SIMD vectorized operations on compressed chunks, both I/O and CPU cycles are dramatically reduced.<br>
+      <strong>What is a Bloom filter and why do LSM-trees use one?</strong> A probabilistic data structure with no false negatives: if the Bloom filter says "key definitely not here," the key is guaranteed absent. LSM-trees attach one per SSTable to skip disk reads for SSTables that cannot contain the queried key — essential for reducing read amplification on negative lookups.<br>
+      <strong>What is write-ahead logging and why do both B-trees and LSM-trees need it?</strong> WAL is an append-only durability log written before any data modification. B-trees use it to recover from crashes that interrupt in-place page updates (which leave pages partially modified). LSM-trees use it to recover the unflushed memtable after a crash (memtable contents are lost from RAM; WAL replays them). In both cases, the WAL is the source of truth for recent writes until they are durably committed to the main data structure.</p>
     </div>
 
     <div class="article-nav">
@@ -312,7 +474,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

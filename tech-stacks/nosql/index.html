@@ -129,7 +129,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -148,14 +148,14 @@
     <div class="article-meta">
       <span>Apr 02, 2023</span>
       <span class="separator">·</span>
-      <span>12 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>NoSQL ("Not Only SQL") is a broad category of database systems that abandon the relational table model in exchange for flexible schemas, horizontal scalability, and data models tuned for specific access patterns. They emerged as web-scale companies ran into the limits of relational databases under massive read/write throughput and rapidly evolving schemas.</p>
+    <p>NoSQL ("Not Only SQL") is a broad category of database systems that abandon the relational table model in exchange for flexible schemas, horizontal scalability, and data models tuned for specific access patterns. They emerged as web-scale companies ran into the limits of relational databases under massive read/write throughput and rapidly evolving schemas. Google published Bigtable in 2006, Amazon published Dynamo in 2007, and an industry was born. Today NoSQL encompasses four fundamentally different data models — key-value, document, column-family, and graph — each solving a different class of problem. Understanding which model fits which workload, and why, is what separates a senior engineer's storage decisions from a junior one's coin-flip.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -181,20 +181,43 @@
 
     <h2>The Four NoSQL Categories</h2>
 
-    <h3>Key-Value Stores</h3>
-    <p>The simplest data model: every value is stored under a unique key. Reads and writes are O(1) by key. There is no query language, no schema, and no relationships — just raw speed for lookups.</p>
+    <h3>Key-Value Stores — The Speed Layer</h3>
+    <p>The simplest data model: every value is stored under a unique key. Reads and writes are O(1) by key — literally a hash table lookup. There is no query language, no schema, and no relationships — just raw speed for exact lookups. The value itself is completely opaque to the store; it can be a string, a serialized object, a binary blob, or a counter. The database does not interpret it.</p>
     <ul>
       <li><strong>Examples:</strong> Redis, DynamoDB (in KV mode), Memcached</li>
-      <li><strong>Best for:</strong> Session storage, caching, rate limiting counters, feature flags</li>
-      <li><strong>Limitation:</strong> Can only access data by exact key; no range scans, no secondary indexes without additional infrastructure</li>
+      <li><strong>Best for:</strong> Session storage, cache layers, rate limiting counters, feature flags, leaderboards (with Redis sorted sets), distributed locks</li>
+      <li><strong>Limitation:</strong> Can only access data by exact key; no range scans without additional infrastructure; no secondary indexes unless the database adds them as a separate feature layer</li>
     </ul>
+    <p>Redis deserves special attention because it goes far beyond a simple KV store. Its data structures — strings, lists, sets, sorted sets, hashes, streams, and HyperLogLogs — let you implement sophisticated patterns like sliding-window rate limiters (<code>ZRANGEBYSCORE</code> on timestamps), pub/sub fanout, leaderboards (<code>ZADD</code>/<code>ZRANK</code>), and distributed locks via the <code>SET key value NX PX ttl</code> atomic conditional set. The key insight is that Redis executes all operations atomically in a single-threaded event loop, which eliminates the concurrency bugs that plague multi-threaded in-process caches.</p>
 
-    <h3>Document Stores</h3>
-    <p>Data is stored as self-describing documents (usually JSON or BSON). A document can contain nested objects and arrays, representing a complete entity without joins. The schema is flexible — different documents in the same collection can have different fields.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">redis-cli</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># session storage with TTL</span>
+<span class="fn">SET</span> session:<span class="str">abc123</span> <span class="str">'{"userId":42,"role":"admin"}'</span> <span class="kw">EX</span> <span class="num">3600</span>
+
+<span class="cm"># rate limiter: sliding window of 100 req/min per user</span>
+<span class="fn">ZADD</span> ratelimit:<span class="str">user42</span> <span class="num">1716550000.123</span> <span class="str">"req:a1b2"</span>
+<span class="fn">ZREMRANGEBYSCORE</span> ratelimit:<span class="str">user42</span> <span class="num">-inf</span> <span class="num">1716549940.000</span>  <span class="cm"># prune old entries</span>
+<span class="fn">ZCARD</span> ratelimit:<span class="str">user42</span>                                    <span class="cm"># count remaining in window</span>
+
+<span class="cm"># distributed lock — atomic compare-and-set</span>
+<span class="fn">SET</span> lock:<span class="str">order-42</span> <span class="str">"owner-xyz"</span> <span class="kw">NX PX</span> <span class="num">30000</span>  <span class="cm"># only succeeds if key does not exist</span></code></pre>
+    </div>
+
+    <h3>Document Stores — The Schema-Flexibility Layer</h3>
+    <p>Data is stored as self-describing documents (usually JSON or BSON). A document can contain nested objects and arrays, representing a complete entity without joins. The schema is flexible — different documents in the same collection can have different fields. This is not a weakness; it is a deliberate design choice. When your data model is genuinely heterogeneous (a product catalog where a laptop has CPU/RAM specs and a T-shirt has size/color variants), forcing everything into a normalized relational schema produces either a forest of nullable columns or the dreaded entity-attribute-value anti-pattern.</p>
     <ul>
       <li><strong>Examples:</strong> MongoDB, Couchbase, Firestore</li>
-      <li><strong>Best for:</strong> User profiles, product catalogs, content management — any domain where the data is naturally hierarchical and the schema evolves frequently</li>
-      <li><strong>Limitation:</strong> Denormalized data means updates must be applied in multiple places; multi-document transactions are possible but expensive</li>
+      <li><strong>Best for:</strong> User profiles, product catalogs, content management, any domain where the data is naturally hierarchical and the schema evolves frequently</li>
+      <li><strong>Limitation:</strong> Denormalized data means updates must be applied in multiple places; multi-document transactions are possible (MongoDB 4.0+ supports them) but expensive — they exist as a safety net, not the primary pattern</li>
     </ul>
 
     <div class="code-block">
@@ -218,38 +241,234 @@
 
 <span class="kw">const</span> user = <span class="kw">await</span> db.<span class="fn">collection</span>(<span class="str">'users'</span>).<span class="fn">findOne</span>(
   { <span class="str">'address.city'</span>: <span class="str">'Seattle'</span> }   <span class="cm">// query on nested field</span>
-);</code></pre>
+);
+
+<span class="cm">// DynamoDB: single-table design pattern — all entity types in one table</span>
+<span class="cm">// PK = "USER#alice"   SK = "PROFILE"           → user record</span>
+<span class="cm">// PK = "USER#alice"   SK = "ORDER#2024-01-15"  → order record</span>
+<span class="cm">// Enables single-query fetch of user + recent orders</span>
+<span class="kw">const</span> result = <span class="kw">await</span> ddb.<span class="fn">query</span>({
+  TableName: <span class="str">'AppTable'</span>,
+  KeyConditionExpression: <span class="str">'PK = :pk AND begins_with(SK, :prefix)'</span>,
+  ExpressionAttributeValues: { <span class="str">':pk'</span>: <span class="str">'USER#alice'</span>, <span class="str">':prefix'</span>: <span class="str">'ORDER#'</span> }
+});</code></pre>
     </div>
 
-    <h3>Column-Family Stores (Wide-Column)</h3>
-    <p>Data is organized into rows identified by a row key, with columns grouped into <strong>column families</strong>. Columns within a family are stored together on disk, making it extremely efficient to read a large number of rows for a small set of columns — the classic analytics access pattern. Rows can have different columns, and new columns can be added without a schema migration.</p>
+    <p>DynamoDB deserves its own mention here. Although marketed as a KV store, its composite key model (partition key + sort key) with GSIs and LSIs makes it a powerful document store for access-pattern-driven design. The <strong>single-table design</strong> pattern — storing all entity types in one table and co-locating related records via sort key prefix — lets you satisfy multiple access patterns in a single query, eliminating joins entirely at the cost of upfront modeling rigor.</p>
+
+    <h3>Column-Family Stores — The Write-Scale Layer</h3>
+    <p>Data is organized into rows identified by a row key, with columns grouped into <strong>column families</strong>. Columns within a family are stored together on disk, making it extremely efficient to read a large number of rows for a small set of columns — the classic analytics access pattern. Rows can have different columns, and new columns can be added without a schema migration. The key design insight: the primary key (in Cassandra, this is the partition key + clustering key) completely determines where data lives and what queries are efficient. You design tables around your query patterns, not around normalized entities.</p>
     <ul>
-      <li><strong>Examples:</strong> Apache Cassandra, HBase, Google Bigtable</li>
-      <li><strong>Best for:</strong> Time-series data (IoT sensors, metrics), event logs, leaderboards, any workload with very high write throughput and read patterns known upfront</li>
-      <li><strong>Limitation:</strong> Query patterns must be modeled into the table design — you effectively denormalize around your queries; ad-hoc queries are painful</li>
+      <li><strong>Examples:</strong> Apache Cassandra, HBase, Google Bigtable, ScyllaDB</li>
+      <li><strong>Best for:</strong> Time-series data (IoT sensors, metrics), event logs, leaderboards, write-heavy workloads like click-streams and user activity feeds</li>
+      <li><strong>Limitation:</strong> Query patterns must be modeled into the table design — you effectively denormalize around your queries; ad-hoc queries across different partition keys require full scans or secondary indexes, which are expensive</li>
     </ul>
 
-    <h3>Graph Databases</h3>
-    <p>Data is modeled as nodes (entities) and edges (relationships), with properties on both. Graph traversal — "find all friends of friends who live in NYC" — is a native first-class operation, achieved without expensive multi-level joins.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">cql</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Cassandra: time-series sensor readings</span>
+<span class="cm">-- Partition key: sensor_id (one partition = one sensor's data)</span>
+<span class="cm">-- Clustering key: ts DESC (newest first within partition)</span>
+<span class="kw">CREATE TABLE</span> sensor_readings (
+  sensor_id   <span class="ty">UUID</span>,
+  ts          <span class="ty">TIMESTAMP</span>,
+  value       <span class="ty">DOUBLE</span>,
+  unit        <span class="ty">TEXT</span>,
+  <span class="kw">PRIMARY KEY</span> (sensor_id, ts)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (ts <span class="kw">DESC</span>);
+
+<span class="cm">-- Fetching last 100 readings for a sensor: single partition, no scatter</span>
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> sensor_readings
+<span class="kw">WHERE</span> sensor_id = <span class="num">550e8400-e29b-41d4-a716-446655440000</span>
+<span class="kw">LIMIT</span> <span class="num">100</span>;
+
+<span class="cm">-- Cassandra write path: writes go to a commit log + memtable</span>
+<span class="cm">-- then are periodically flushed to immutable SSTables on disk</span>
+<span class="cm">-- → O(1) writes regardless of data volume</span></code></pre>
+    </div>
+
+    <p>Cassandra's write path explains why it can sustain millions of writes per second: every write appends to an in-memory memtable and a sequential commit log, then the memtable is periodically flushed to an immutable SSTable. There are no in-place updates, no locking, no index maintenance at write time. The cost is paid at compaction time. This LSM-tree architecture (Log-Structured Merge-tree) is also used by RocksDB, LevelDB, and HBase — it is the fundamental reason column-family stores dominate write-heavy workloads.</p>
+
+    <h3>Graph Databases — The Relationship Layer</h3>
+    <p>Data is modeled as nodes (entities) and edges (relationships), with properties on both. Graph traversal — "find all friends of friends who live in NYC who also purchased product X" — is a native first-class operation, achieved without expensive multi-level joins. In a relational database, the same query requires multiple self-joins on a friendship table, and performance degrades polynomially with depth. In a graph database, each node directly stores pointers to its adjacent edges — traversal is O(degree) per hop regardless of total graph size.</p>
     <ul>
-      <li><strong>Examples:</strong> Neo4j, Amazon Neptune, ArangoDB</li>
-      <li><strong>Best for:</strong> Social networks, recommendation engines, fraud detection, knowledge graphs</li>
-      <li><strong>Limitation:</strong> Poor fit for bulk tabular data; horizontal scaling is harder than other NoSQL types</li>
+      <li><strong>Examples:</strong> Neo4j, Amazon Neptune, ArangoDB, TigerGraph</li>
+      <li><strong>Best for:</strong> Social networks, recommendation engines, fraud detection (transaction graphs), knowledge graphs, network topology</li>
+      <li><strong>Limitation:</strong> Poor fit for bulk tabular data; horizontal sharding is harder than other NoSQL types because cutting a graph across partitions causes cross-shard traversal overhead; most graph DBs are best run on a single beefy node or a small cluster</li>
     </ul>
 
-    <h2>CAP Theorem</h2>
-    <p>The CAP theorem states that a distributed data store can only guarantee two of the following three properties simultaneously:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">cypher</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// Neo4j Cypher: find 2nd-degree connections who are not already friends</span>
+<span class="kw">MATCH</span> (me:Person {id: <span class="str">'alice'</span>})-[:FRIENDS_WITH]->(friend)
+                                 -[:FRIENDS_WITH]->(fof)
+<span class="kw">WHERE</span> fof.id &lt;&gt; <span class="str">'alice'</span>
+  <span class="kw">AND NOT</span> (me)-[:FRIENDS_WITH]->(fof)
+<span class="kw">RETURN</span> fof.name, <span class="fn">count</span>(*) <span class="kw">AS</span> mutual_friends
+<span class="kw">ORDER BY</span> mutual_friends <span class="kw">DESC</span>
+<span class="kw">LIMIT</span> <span class="num">10</span>;
+
+<span class="cm">// Fraud detection: find shared identifiers between accounts</span>
+<span class="kw">MATCH</span> (a:Account)-[:USES]->(device:Device)<-[:USES]-(b:Account)
+<span class="kw">WHERE</span> a.id &lt;&gt; b.id
+<span class="kw">RETURN</span> a.id, b.id, device.fingerprint <span class="kw">AS</span> shared_device</code></pre>
+    </div>
+
+    <h2>CAP Theorem — The Distributed Systems Constraint</h2>
+    <p>The CAP theorem, proved by Eric Brewer and formalized by Gilbert and Lynch, states that a distributed data store can only guarantee two of the following three properties simultaneously:</p>
     <table class="compare-table">
       <thead>
         <tr><th>Property</th><th>Meaning</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>Consistency (C)</strong></td><td>Every read returns the most recent write or an error. All nodes see the same data at the same time.</td></tr>
-        <tr><td><strong>Availability (A)</strong></td><td>Every request receives a non-error response, even if it may not be the most recent data.</td></tr>
-        <tr><td><strong>Partition Tolerance (P)</strong></td><td>The system continues to operate even if network partitions prevent some nodes from communicating.</td></tr>
+        <tr><td><strong>Consistency (C)</strong></td><td>Every read returns the most recent write or an error. All nodes see the same data at the same time. This is linearizability — a strong safety guarantee.</td></tr>
+        <tr><td><strong>Availability (A)</strong></td><td>Every request receives a non-error response, even if it may not be the most recent data. The system never refuses to serve.</td></tr>
+        <tr><td><strong>Partition Tolerance (P)</strong></td><td>The system continues to operate even if network partitions prevent some nodes from communicating. Messages can be lost or delayed between nodes.</td></tr>
       </tbody>
     </table>
-    <p>Network partitions are inevitable in any distributed system, so P is effectively mandatory. The real choice is between <strong>CP</strong> (sacrifice availability during a partition — HBase, Zookeeper) and <strong>AP</strong> (sacrifice consistency — Cassandra, DynamoDB in eventual-consistency mode). Most NoSQL databases let you tune this per-operation through consistency levels.</p>
+    <p>Network partitions are inevitable in any distributed system — a switch fails, a rack loses power, a cross-datacenter link degrades. So P is effectively mandatory. The real choice is between <strong>CP</strong> (sacrifice availability during a partition — return an error rather than stale data; HBase, ZooKeeper) and <strong>AP</strong> (sacrifice consistency — serve stale data rather than erroring out; Cassandra, DynamoDB in eventual-consistency mode). Most NoSQL databases let you tune this per-operation through consistency levels.</p>
+
+    <div class="callout">
+      <div class="callout-label">PACELC — the fuller picture</div>
+      <p>CAP only describes behavior during a network partition. PACELC extends it: even when there is <em>no</em> partition, there is still a tradeoff between Latency and Consistency. DynamoDB's "eventually consistent reads" are faster because they can serve from any replica; "strongly consistent reads" must route to the primary and wait for it to confirm no newer write exists. Real production systems are tuned on the PACELC axis far more often than the CAP axis, because partitions are rare but the latency/consistency tradeoff is constant.</p>
+    </div>
+
+    <h2>Consistency Models in Depth</h2>
+    <p>CAP's binary "C or A" framing is too coarse for production decisions. Real systems offer a spectrum of consistency guarantees, and understanding them lets you pick the right level per operation rather than per database:</p>
+    <ul>
+      <li><strong>Linearizability (Strong Consistency)</strong> — every operation appears to execute atomically at a single point in time. Any read after a write returns that write. The safest, most expensive model. Used for financial ledgers, inventory counts. In Cassandra: <code>QUORUM</code> reads with <code>QUORUM</code> writes (more than half of replicas must respond).</li>
+      <li><strong>Causal Consistency</strong> — if operation A causally precedes B (you wrote a post, then its reply was written), any read that sees B also sees A. Captures the happens-before relationship without requiring global ordering. Used in collaboration tools (Google Docs internal model). More available than linearizability, more correct than eventual consistency.</li>
+      <li><strong>Eventual Consistency</strong> — if no new writes happen, all replicas will eventually converge to the same value. No timing guarantee. Reads may return stale data. Suitable for social media likes, DNS, caches. In Cassandra: <code>ONE</code> consistency level means only one replica needs to respond — maximum throughput, maximum staleness risk.</li>
+      <li><strong>Read-Your-Writes</strong> — a user always sees their own writes, even if other users may see stale data. Critical for any interactive UI — if you post a comment and immediately refresh, it should be visible. Achieved in Cassandra by routing the read to the same coordinator or using sticky sessions.</li>
+      <li><strong>Monotonic Reads</strong> — once a client reads value X, subsequent reads never return something older than X. Prevents the "ghost update" experience where a value appears to go backwards. Achieved by pinning reads to a replica.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">cql</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Cassandra consistency levels for a 3-replica cluster</span>
+<span class="cm">-- (RF=3, so QUORUM = 2 replicas must respond)</span>
+
+<span class="cm">-- Strong consistency: W=QUORUM + R=QUORUM guarantees no stale reads</span>
+<span class="kw">INSERT INTO</span> orders (id, status) <span class="kw">VALUES</span> (<span class="num">42</span>, <span class="str">'PAID'</span>) <span class="kw">USING</span> CONSISTENCY QUORUM;
+<span class="kw">SELECT</span> * <span class="kw">FROM</span> orders <span class="kw">WHERE</span> id = <span class="num">42</span> CONSISTENCY QUORUM;
+
+<span class="cm">-- Maximum throughput: W=ANY + R=ONE — fastest but stalest</span>
+<span class="kw">INSERT INTO</span> page_views (url, ts) <span class="kw">VALUES</span> (<span class="str">'/home'</span>, now()) <span class="kw">USING</span> CONSISTENCY ANY;
+<span class="kw">SELECT</span> count <span class="kw">FROM</span> page_view_totals <span class="kw">WHERE</span> url = <span class="str">'/home'</span> CONSISTENCY ONE;</code></pre>
+    </div>
+
+    <h2>BASE vs. ACID — The Correctness Tradeoff</h2>
+    <p>Relational databases are defined by ACID guarantees. NoSQL databases typically offer BASE semantics instead. Understanding this tradeoff is fundamental to choosing a storage layer:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Property</th><th class="col-a">ACID (SQL)</th><th class="col-b">BASE (NoSQL)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Atomicity</td><td class="col-a">All operations in a transaction succeed or all fail — no partial state</td><td class="col-b">Single-entity operations are atomic; multi-entity operations may leave partial state visible</td></tr>
+        <tr><td>Consistency</td><td class="col-a">Database moves from one valid state to another; constraints enforced</td><td class="col-b">Basically Available — the system makes progress even with failures</td></tr>
+        <tr><td>Isolation</td><td class="col-a">Concurrent transactions appear to execute serially</td><td class="col-b">Soft state — data may change over time without an explicit write (TTL expiry, compaction)</td></tr>
+        <tr><td>Durability</td><td class="col-a">Committed data survives crashes (WAL/journal)</td><td class="col-b">Eventually Consistent — replicas converge without requiring synchronous agreement</td></tr>
+      </tbody>
+    </table>
+    <p>The practical consequence: use SQL and ACID for any domain where partial writes cause semantic errors — financial ledgers, inventory counts, order records. Use BASE semantics for domains where temporary inconsistency is acceptable — social feeds, read caches, analytics counters, recommendation scores. The mistake engineers make is assuming all their data falls into one category. In a real system, you almost always need both: a relational database for transactional truth, and one or more NoSQL stores for specific high-throughput or high-scale workloads.</p>
+
+    <h2>Data Modeling Approaches</h2>
+
+    <h3>Document Store Modeling — Embed vs. Reference</h3>
+    <p>The central design decision in document stores is whether to embed related data inside a document or reference it with a foreign-key equivalent. The rule of thumb follows the "one-to-squiggly" guideline: if the related entity has bounded cardinality and is always accessed with the parent, embed it. If it has unbounded cardinality or is sometimes accessed independently, reference it.</p>
+    <ul>
+      <li><strong>Embed:</strong> A blog post embedding its tags, a product embedding its variant list, a user embedding their most recent address — all bounded, always read together.</li>
+      <li><strong>Reference:</strong> A blog post's comments (unbounded growth), a user's full order history (accessed independently), a product's seller (accessed independently) — unbounded or independently accessed.</li>
+    </ul>
+    <p>The antipattern: embedding arrays that grow without bound. An order document embedding every comment about it will eventually hit MongoDB's 16 MB document size limit and slow down every read of that order even when comments aren't needed. Detect this by asking: "Does this array grow forever?" If yes, reference instead.</p>
+
+    <h3>Column-Family Modeling — Design Tables Around Queries</h3>
+    <p>In Cassandra you do not normalize data and then write queries. You write your queries first, then design tables to serve exactly those queries. Each table is a denormalized projection of your data optimized for one specific access pattern. A "user's activity feed" and "all activities of type X" require two separate tables in Cassandra, both populated on every write — a write amplification tradeoff that buys O(1) reads on known patterns.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">cql</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Query 1: "show me user alice's feed, newest first"</span>
+<span class="kw">CREATE TABLE</span> user_feed_by_user (
+  user_id     <span class="ty">UUID</span>,
+  created_at  <span class="ty">TIMESTAMP</span>,
+  activity_id <span class="ty">UUID</span>,
+  type        <span class="ty">TEXT</span>,
+  payload     <span class="ty">TEXT</span>,
+  <span class="kw">PRIMARY KEY</span> (user_id, created_at, activity_id)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (created_at <span class="kw">DESC</span>);
+
+<span class="cm">-- Query 2: "show all 'purchase' events globally, newest first"</span>
+<span class="kw">CREATE TABLE</span> activities_by_type (
+  type        <span class="ty">TEXT</span>,
+  created_at  <span class="ty">TIMESTAMP</span>,
+  user_id     <span class="ty">UUID</span>,
+  payload     <span class="ty">TEXT</span>,
+  <span class="kw">PRIMARY KEY</span> (type, created_at)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (created_at <span class="kw">DESC</span>);
+
+<span class="cm">-- On write: populate BOTH tables in the application</span></code></pre>
+    </div>
+
+    <h2>Representative Products Deep Dive</h2>
+
+    <h3>DynamoDB — Managed Scale at Any Cost</h3>
+    <p>DynamoDB is AWS's fully managed, serverless NoSQL database. Its defining properties: single-digit millisecond latency at any scale, automatic sharding, and a pricing model based on provisioned or on-demand read/write capacity units. Its design philosophy — strongly opinionated about access patterns — forces upfront modeling discipline that pays off at scale. Global tables provide multi-region active-active replication with conflict resolution. DynamoDB Streams can feed CDC pipelines. The tradeoffs: complex queries are impossible without multiple tables and application-side joins; secondary indexes (GSI) are eventually consistent; cross-partition transactions exist (via <code>TransactWriteItems</code>) but are expensive and limited to 100 items.</p>
+
+    <h3>MongoDB — The Document Generalist</h3>
+    <p>MongoDB is the most widely deployed document database. Its aggregation pipeline — a sequence of stages including <code>$match</code>, <code>$group</code>, <code>$lookup</code> (server-side join), <code>$unwind</code>, and <code>$project</code> — covers analytics use cases that would require multiple queries in pure KV stores. Change Streams enable CDC-style pipelines. Atlas Search provides Lucene-powered full-text search on top of document collections. The tradeoffs: schema-less collections can become "schemaless chaos" if discipline is not applied via application-level validation or JSON Schema constraints; multi-document ACID transactions are available but should be the exception, not the rule; horizontal sharding requires explicit shard key planning and is operationally complex.</p>
+
+    <h3>Cassandra — Write-Scale Champion</h3>
+    <p>Cassandra was built by Facebook to power the inbox search feature, then open-sourced and adopted by Netflix, Apple, and Discord (who use it to store billions of messages). Its leaderless, peer-to-peer architecture (no primary node, no single point of failure) means it can absorb node failures and even datacenter outages without downtime. The consistent hashing ring distributes partitions across nodes, and the virtual node (vnode) concept spreads each physical node's token ranges to ensure even distribution even with heterogeneous hardware. Discord's famous "Cassandra migration" post documented how they moved from Cassandra to ScyllaDB (a C++ reimplementation with better JVM-free performance) — worth reading for the operational reality of column-family stores at scale.</p>
+
+    <h3>Neo4j — The Graph Standard</h3>
+    <p>Neo4j uses a native graph storage format where each node directly stores pointers to its adjacent edges, eliminating the index lookups that relational databases need for joins. Its Cypher query language is arguably more readable than SQL for relationship-heavy queries. The practical ceiling: Neo4j Community Edition is single-node; the Enterprise clustering model works well up to tens of billions of nodes and edges but sharding a property graph across machines remains a hard research problem. For truly massive graphs (Facebook's social graph), custom in-house solutions or purpose-built systems like JanusGraph on top of Cassandra/HBase are used.</p>
+
+    <h2>CAP in Practice: NoSQL Product Placement</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Database</th><th>Type</th><th>CAP Position</th><th>Default Consistency</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Redis (cluster)</td><td class="col-a">KV</td><td>CP — primary holds writes; replicas may lag</td><td>Strong on primary; async replica</td></tr>
+        <tr><td>DynamoDB</td><td class="col-a">KV / Document</td><td>AP (default) / CP (strong reads)</td><td>Eventual; opt-in strong</td></tr>
+        <tr><td>MongoDB</td><td class="col-a">Document</td><td>CP (primary election)</td><td>Primary read by default; tunable</td></tr>
+        <tr><td>Cassandra</td><td class="col-b">Column-family</td><td>AP (default) / CP (QUORUM)</td><td>Eventual; tunable per operation</td></tr>
+        <tr><td>HBase</td><td class="col-b">Column-family</td><td>CP — writes blocked during region server failure</td><td>Strong (single region server owns range)</td></tr>
+        <tr><td>Neo4j</td><td class="col-b">Graph</td><td>CP (single-primary writes)</td><td>Strong on primary; read replicas async</td></tr>
+      </tbody>
+    </table>
 
     <h2>NoSQL vs. SQL: When to Choose Which</h2>
     <table class="compare-table">
@@ -257,24 +476,56 @@
         <tr><th>Scenario</th><th class="col-a">Prefer SQL</th><th class="col-b">Prefer NoSQL</th></tr>
       </thead>
       <tbody>
-        <tr><td>Schema</td><td class="col-a">Stable, well-defined relationships</td><td class="col-b">Rapidly evolving or highly variable</td></tr>
-        <tr><td>Transactions</td><td class="col-a">Multi-table ACID required</td><td class="col-b">Single-entity updates sufficient</td></tr>
-        <tr><td>Query patterns</td><td class="col-a">Flexible, ad-hoc SQL queries</td><td class="col-b">Known, repetitive access patterns</td></tr>
-        <tr><td>Scale</td><td class="col-a">Moderate — vertical scaling + read replicas</td><td class="col-b">Massive — horizontal write scaling needed</td></tr>
-        <tr><td>Consistency</td><td class="col-a">Strong consistency required</td><td class="col-b">Eventual consistency acceptable</td></tr>
+        <tr><td>Schema</td><td class="col-a">Stable, well-defined relationships</td><td class="col-b">Rapidly evolving or highly variable per entity</td></tr>
+        <tr><td>Transactions</td><td class="col-a">Multi-table ACID required (finance, orders)</td><td class="col-b">Single-entity updates sufficient; BASE acceptable</td></tr>
+        <tr><td>Query patterns</td><td class="col-a">Flexible, ad-hoc SQL queries across entities</td><td class="col-b">Known, repetitive access patterns designed upfront</td></tr>
+        <tr><td>Scale</td><td class="col-a">Moderate — vertical scaling + read replicas</td><td class="col-b">Massive — horizontal write scaling needed (millions/sec)</td></tr>
+        <tr><td>Consistency</td><td class="col-a">Strong consistency required everywhere</td><td class="col-b">Eventual consistency acceptable for most reads</td></tr>
+        <tr><td>Data shape</td><td class="col-a">Tabular, normalized, relational</td><td class="col-b">Hierarchical, graph-like, or time-series</td></tr>
       </tbody>
     </table>
 
+    <h2>When Not to Use NoSQL</h2>
+    <p>The hype cycle around NoSQL led many teams to abandon SQL prematurely. Here are the scenarios where NoSQL is the wrong choice:</p>
+    <ul>
+      <li><strong>Complex multi-entity transactions</strong> — if a business operation touches multiple entity types and must be all-or-nothing (e.g., transfer $100 between two bank accounts and log the transaction), SQL's native ACID transactions are simpler, safer, and more performant than orchestrating distributed Sagas across multiple NoSQL stores.</li>
+      <li><strong>Heavy ad-hoc analytics</strong> — a Cassandra table designed for "user's recent orders" cannot answer "all orders placed between $50 and $100 in California last month" without a painful secondary index or full scan. SQL's query planner handles this elegantly.</li>
+      <li><strong>Strong relational constraints</strong> — foreign key enforcement, cascading deletes, and referential integrity are first-class SQL features. NoSQL stores give you none of these; you must enforce them in application code, where they are less reliable.</li>
+      <li><strong>Small to medium datasets with complex queries</strong> — Postgres with proper indexing handles hundreds of millions of rows comfortably. Reaching for Cassandra for a dataset that could live in a well-tuned Postgres instance adds operational complexity for no gain.</li>
+      <li><strong>Rapidly changing access patterns</strong> — if your query patterns evolve frequently, Cassandra's "design tables around queries" philosophy turns into a migration nightmare. SQL lets you add indexes later; Cassandra requires new tables.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">the polyglot reality</div>
+      <p>Production systems at scale almost never use a single database type. A typical architecture: PostgreSQL for the transactional core (orders, accounts, users), MongoDB for flexible catalogs and content, Cassandra or DynamoDB for high-write event streams and time-series, Redis for caching and real-time counters, and Elasticsearch for full-text search. Each NoSQL store was added to solve a specific bottleneck, not to replace the relational core.</p>
+    </div>
+
+    <h2>Performance and Scaling Patterns</h2>
+
+    <h3>Horizontal Sharding in NoSQL</h3>
+    <p>Most NoSQL databases handle sharding automatically or semi-automatically. Understanding the mechanics matters when things go wrong. In Cassandra, consistent hashing distributes partition keys across the ring — but a poorly chosen partition key creates hot partitions where one node absorbs a disproportionate share of traffic. The cardinal rule: partition keys should have high cardinality and evenly distributed write load. Using a low-cardinality key (like "country code") as a partition key in Cassandra creates at most a few hundred partitions, leaving most nodes idle during peak.</p>
+    <p>In DynamoDB, hot partitions manifest as "ProvisionedThroughputExceededException" errors on specific keys. The mitigation is partition key sharding: append a random suffix (1–N) to the key, distribute writes across suffixed variants, and scatter-gather reads across all variants. Ugly but effective for pathological workloads like a global like counter on a viral post.</p>
+
+    <h3>Replication and Conflict Resolution</h3>
+    <p>Multi-replica stores face the write-conflict problem: two writes to the same key on different replicas before they sync. The resolution strategies, from simplest to most correct:</p>
+    <ul>
+      <li><strong>Last-Write-Wins (LWW)</strong> — whichever write has the later timestamp wins. Used by Cassandra by default. Risk: clock skew means a write made 10ms later on a machine with a slow clock can be silently dropped. Acceptable for eventually-consistent data like user preferences, unacceptable for financial records.</li>
+      <li><strong>Multi-Value / Sibling Resolution</strong> — Riak (and some DynamoDB configurations) store both conflicting values and return them both to the client, which must merge them explicitly. Correct but complex — the client must implement merge logic.</li>
+      <li><strong>CRDTs (Conflict-free Replicated Data Types)</strong> — data structures mathematically guaranteed to merge without conflicts: G-Counters (grow-only), PN-Counters (increment/decrement), LWW-Element-Sets. Redis and Riak support CRDTs natively for specific use cases like distributed counters and sets.</li>
+    </ul>
+
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>NoSQL is not a replacement for relational databases — it is a set of specialized tools. Start with SQL; it handles most use cases well. Reach for NoSQL when you have a specific bottleneck: key-value for cache-speed lookups, document for flexible hierarchical data, column-family for high-write time-series, graph for deep relationship traversal. Always model your data around your query patterns, not the other way around.</p>
+      <p>NoSQL is not a replacement for relational databases — it is a set of specialized tools. Start with SQL; it handles most use cases well. Reach for NoSQL when you have a specific bottleneck: key-value for cache-speed lookups, document for flexible hierarchical data, column-family for high-write time-series, graph for deep relationship traversal. Model your data around your access patterns, understand the consistency level you're running at, and be deliberate about where you accept BASE over ACID. The best engineers use both in the same system.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Explain CAP theorem and what "P is mandatory" means.</strong> In any distributed system, network partitions will occur — so you can't sacrifice P. The real tradeoff is CP (return an error or block during partition to stay consistent, e.g. HBase) vs AP (return possibly stale data to stay available, e.g. Cassandra).<br>
-      <strong>When would you choose column-family over document stores?</strong> When your write throughput is very high and your read patterns are known upfront — column-family stores like Cassandra excel at time-series and analytics because columns in the same family are stored together on disk.<br>
-      <strong>Why can't you just use NoSQL for everything?</strong> NoSQL trades multi-table ACID transactions and flexible ad-hoc queries for scale and schema flexibility. If your domain has complex relationships and you need joins or cross-entity transactions, SQL is almost always simpler and safer.</p>
+      <p><strong>Explain CAP theorem and what "P is mandatory" means.</strong> In any distributed system, network partitions will occur — so you cannot sacrifice P. The real tradeoff is CP (return an error or block during partition to stay consistent, e.g. HBase) vs AP (return possibly stale data to stay available, e.g. Cassandra). PACELC extends this: even without a partition, there is a constant latency/consistency tradeoff that matters far more day-to-day.<br>
+      <strong>When would you choose column-family over document stores?</strong> When your write throughput is very high (millions/sec), your read patterns are known upfront, and you can afford to design tables around queries. Cassandra's LSM-tree write path makes writes O(1) regardless of data volume — document stores pay random-write costs at high volume.<br>
+      <strong>Why can't you just use NoSQL for everything?</strong> NoSQL trades multi-table ACID transactions and flexible ad-hoc queries for scale and schema flexibility. If your domain has complex relationships and you need joins or cross-entity transactions, SQL is almost always simpler, safer, and operationally cheaper. Adding NoSQL prematurely adds operational complexity without a bottleneck to solve.<br>
+      <strong>What is eventual consistency and when is it dangerous?</strong> Eventual consistency means replicas will converge over time, but reads may return stale data in the interim. It is dangerous for inventory counts (two threads both reading 1 and writing 0, leading to negative stock), financial balances, and anything where a stale read leads to a real-world action. Use strong consistency (QUORUM in Cassandra, strongly consistent reads in DynamoDB) for these cases — at higher latency cost.<br>
+      <strong>What is the single-table design pattern in DynamoDB?</strong> Storing all entity types in one table and using composite sort keys (e.g. <code>ORDER#2024-01</code>, <code>PROFILE</code>) to co-locate related records so multiple entity types can be fetched in a single query without joins. It requires upfront access-pattern analysis but delivers O(1) reads for all modeled patterns.</p>
     </div>
 
     <div class="article-nav">
@@ -295,7 +546,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

@@ -133,7 +133,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -152,7 +152,7 @@
     <div class="article-meta">
       <span>Apr 02, 2023</span>
       <span class="separator">·</span>
-      <span>10 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
@@ -259,16 +259,332 @@
     <h2>Load Balancer Redundancy</h2>
     <p>The load balancer itself is a potential single point of failure. Production deployments use an <strong>active-passive</strong> or <strong>active-active</strong> pair, often with a <strong>Virtual IP (VIP)</strong> address that floats between nodes. DNS or BGP routes the VIP to the active node; if it fails, the passive node claims the VIP within seconds via protocols like VRRP (HAProxy + Keepalived) or by updating the DNS record.</p>
 
+    <h2>Consistent Hashing</h2>
+    <p>IP Hash and simple modulo-based routing share a catastrophic flaw: adding or removing a server reshuffles nearly all client assignments. If you have 10 servers and add one, modulo 11 produces completely different targets for most keys — suddenly 90% of your cache keys miss on the new server mapping, causing a thundering herd on the backends. <strong>Consistent hashing</strong> solves this by mapping both servers and requests onto a circular hash ring, so that adding or removing one server affects only the keys in the range between it and its nearest neighbor — roughly <code>1/n</code> of keys for <em>n</em> servers.</p>
+
+    <h3>How the Ring Works</h3>
+    <p>Each server is hashed to one or more points on a 0–2³²−1 ring. Each request key is also hashed to a point on the ring; the request is routed to the first server encountered moving clockwise from that point. With <strong>virtual nodes</strong> (vnodes), each physical server occupies multiple points on the ring (e.g., 150 vnodes per server), which smooths out the uneven distribution that occurs when server hashes cluster in one region of the ring.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> hashlib, <span class="fn">bisect</span>
+
+<span class="kw">class</span> <span class="ty">ConsistentHashRing</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, nodes, vnodes=<span class="num">150</span>):
+        self.ring = {}        <span class="cm"># hash → node</span>
+        self.keys = []        <span class="cm"># sorted hash values</span>
+        <span class="kw">for</span> node <span class="kw">in</span> nodes:
+            <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(vnodes):
+                h = self.<span class="fn">_hash</span>(f<span class="str">"{node}-{i}"</span>)
+                self.ring[h] = node
+                self.keys.<span class="fn">append</span>(h)
+        self.keys.<span class="fn">sort</span>()
+
+    <span class="kw">def</span> <span class="fn">_hash</span>(self, key):
+        <span class="kw">return</span> <span class="fn">int</span>(hashlib.<span class="fn">md5</span>(key.<span class="fn">encode</span>()).<span class="fn">hexdigest</span>(), <span class="num">16</span>)
+
+    <span class="kw">def</span> <span class="fn">get_node</span>(self, key):
+        h = self.<span class="fn">_hash</span>(key)
+        idx = bisect.<span class="fn">bisect</span>(self.keys, h) % <span class="fn">len</span>(self.keys)
+        <span class="kw">return</span> self.ring[self.keys[idx]]   <span class="cm"># clockwise successor</span></code></pre>
+    </div>
+
+    <p>Consistent hashing is used by: distributed caches (Memcached, Redis Cluster), CDN edge servers, database sharding routers, and Kafka's partition assignment. It is the answer whenever session affinity or cache locality matters and you need to add/remove nodes without catastrophic key remapping.</p>
+
+    <h2>L4 vs L7 — Going Deeper</h2>
+    <p>The high-level distinction is well known, but the implementation details determine which you should reach for in each scenario.</p>
+
+    <h3>Layer 4 Under the Hood</h3>
+    <p>An L4 load balancer operates at the TCP/UDP transport layer. It sees source IP, destination IP, source port, and destination port — and nothing else. The two dominant forwarding strategies are:</p>
+    <ul>
+      <li><strong>NAT mode</strong> — the LB rewrites the destination IP to the chosen backend's IP and the source IP to its own address, so the backend replies to the LB, which translates back. Simple but adds one network hop.</li>
+      <li><strong>Direct Server Return (DSR)</strong> — the LB rewrites only the destination MAC address (or uses tunneling) so the backend responds directly to the client, bypassing the LB on the return path. Response traffic (which is typically 10–100× the request traffic for HTTP) never touches the LB. This is how Google's Maglev and Facebook's IPVS-based LBs achieve million-packet-per-second throughput — by keeping the LB entirely out of the high-volume return path.</li>
+    </ul>
+
+    <h3>Layer 7 Under the Hood</h3>
+    <p>An L7 load balancer terminates the TCP connection from the client, reads the HTTP/gRPC/WebSocket request, makes a routing decision based on content, and establishes a separate TCP connection to the backend. This two-connection model is what enables features that L4 cannot provide:</p>
+    <ul>
+      <li><strong>Request-level routing</strong> — <code>POST /api/orders</code> → order service; <code>GET /api/products</code> → product service.</li>
+      <li><strong>Header manipulation</strong> — add <code>X-Request-ID</code>, rewrite <code>Host</code>, strip internal headers before sending to backends.</li>
+      <li><strong>TLS termination</strong> — decrypt at the LB (or service mesh sidecar), inspect the plaintext, optionally re-encrypt to backend (TLS origination). Centralizes certificate management.</li>
+      <li><strong>Authentication offload</strong> — validate JWTs or API keys at the LB, forward only authenticated requests to backends.</li>
+      <li><strong>Rate limiting and circuit breaking</strong> — count requests per client/API key and reject excess before they reach backends.</li>
+      <li><strong>gRPC load balancing</strong> — L4 LBs can't balance individual gRPC calls within a long-lived HTTP/2 connection; only an L7 proxy that understands HTTP/2 framing can distribute calls across backends.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">gRPC and HTTP/2</div>
+      <p>gRPC multiplexes many calls over a single long-lived HTTP/2 connection. An L4 load balancer routes the entire connection to one backend — all calls on that connection land on the same server, completely defeating load balancing. The fix is an L7-aware proxy (Envoy, Nginx with gRPC proxy module, Linkerd) that can distribute individual gRPC frames across backends.</p>
+    </div>
+
+    <h2>SSL/TLS Termination Strategies</h2>
+    <p>There are three standard approaches to TLS in a load-balanced architecture, each with different security and performance tradeoffs:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>Description</th><th>Pros</th><th>Cons</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">TLS Termination at LB</td><td>LB decrypts traffic; backend receives plain HTTP</td><td>Centralized cert management; LB can inspect/route on content; backends simpler</td><td>Internal traffic unencrypted; LB is a decryption oracle</td></tr>
+        <tr><td class="col-a">TLS Pass-through (L4)</td><td>LB forwards encrypted bytes; backend terminates TLS</td><td>End-to-end encryption; LB never sees plaintext</td><td>No L7 routing possible; cert management per backend</td></tr>
+        <tr><td class="col-b">TLS Re-encryption</td><td>LB terminates TLS from client, then opens a new TLS connection to backend</td><td>Both segments encrypted; LB can inspect and route</td><td>Higher CPU cost; two cert pairs to manage</td></tr>
+      </tbody>
+    </table>
+
+    <p>Most cloud architectures use <strong>TLS termination at the edge LB</strong> (AWS ALB, Cloudflare) combined with <strong>internal mTLS</strong> (mutual TLS between services, enforced by a service mesh like Istio or Linkerd). This gives you L7 routing at the edge, centralized public cert management, and end-to-end encryption without hand-managing backend certificates.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">nginx</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># TLS termination + re-encryption to backends</span>
+<span class="kw">server</span> {
+    <span class="kw">listen</span> <span class="num">443</span> ssl;
+    <span class="fn">ssl_certificate</span>     /etc/ssl/certs/api.example.com.crt;
+    <span class="fn">ssl_certificate_key</span> /etc/ssl/private/api.example.com.key;
+    <span class="fn">ssl_protocols</span>       TLSv1.2 TLSv1.3;
+    <span class="fn">ssl_ciphers</span>         <span class="str">ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256</span>;
+
+    <span class="kw">location</span> / {
+        <span class="fn">proxy_pass</span>              https://backend;  <span class="cm"># re-encrypt to backends</span>
+        <span class="fn">proxy_ssl_verify</span>        on;
+        <span class="fn">proxy_ssl_trusted_certificate</span> /etc/ssl/certs/internal-ca.crt;
+        <span class="fn">proxy_ssl_session_reuse</span> on;              <span class="cm"># reuse TLS sessions for perf</span>
+    }
+}</code></pre>
+    </div>
+
+    <h2>Health Checks — Advanced Configuration</h2>
+    <p>Basic health checks send a TCP SYN or an HTTP GET to <code>/health</code>. In production, the gap between "the process is alive" and "the process can serve production traffic" is where most failures hide. Advanced health check design closes this gap.</p>
+
+    <h3>Health Check Endpoint Design</h3>
+    <p>A well-designed <code>/health</code> endpoint should check all critical dependencies — database connectivity, cache availability, downstream service reachability — and return structured JSON with per-dependency status. This lets a load balancer distinguish between "server completely dead" (TCP failure) and "server alive but database is down" (HTTP 503), and route accordingly.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// GET /health/readiness — 200 OK if ready, 503 if not</span>
+{
+  <span class="str">"status"</span>: <span class="str">"degraded"</span>,
+  <span class="str">"checks"</span>: {
+    <span class="str">"database"</span>:  { <span class="str">"status"</span>: <span class="str">"up"</span>,   <span class="str">"latency_ms"</span>: <span class="num">3</span>   },
+    <span class="str">"cache"</span>:     { <span class="str">"status"</span>: <span class="str">"up"</span>,   <span class="str">"latency_ms"</span>: <span class="num">0.5</span> },
+    <span class="str">"payment_gw"</span>:{ <span class="str">"status"</span>: <span class="str">"down"</span>, <span class="str">"latency_ms"</span>: <span class="num">5000</span> }
+  }
+}</code></pre>
+    </div>
+
+    <h3>HAProxy Health Check Configuration</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">haproxy</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">backend</span> api_servers
+    <span class="fn">balance</span> leastconn
+    <span class="fn">option</span> httpchk GET /health/readiness
+    <span class="fn">http-check</span> expect status 200
+    <span class="fn">default-server</span> inter <span class="num">5s</span> fall <span class="num">3</span> rise <span class="num">2</span>   <span class="cm"># check every 5s; 3 failures = down, 2 successes = up</span>
+    <span class="fn">server</span> api1 10.0.0.1:<span class="num">8080</span> check weight <span class="num">10</span>
+    <span class="fn">server</span> api2 10.0.0.2:<span class="num">8080</span> check weight <span class="num">10</span>
+    <span class="fn">server</span> api3 10.0.0.3:<span class="num">8080</span> check weight <span class="num">5</span>   <span class="cm"># smaller instance — half the weight</span>
+    <span class="fn">server</span> api4 10.0.0.4:<span class="num">8080</span> check backup      <span class="cm"># only activated if all primary servers fail</span></code></pre>
+    </div>
+
+    <h2>DNS Load Balancing and Global Traffic Management</h2>
+    <p>DNS-based load balancing operates above the network layer entirely: the DNS server returns different A records to different clients, distributing them across server pools or geographic regions. It is the foundation of global traffic management and multi-region deployments.</p>
+
+    <h3>How DNS LB Works</h3>
+    <p>The authoritative DNS server for your domain returns different IP addresses based on a policy — simple round-robin across IPs, or geographic routing based on the resolver's IP. Clients cache the response for the TTL duration (often 30–300 seconds), then re-resolve. This creates a natural load distribution at the DNS layer, before any TCP connection is made.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">dns</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Simple DNS round-robin: return different IPs on successive queries</span>
+api.example.com.  30  IN  A  54.1.2.3    <span class="cm"># US-East LB VIP</span>
+api.example.com.  30  IN  A  52.4.5.6    <span class="cm"># US-West LB VIP</span>
+api.example.com.  30  IN  A  13.7.8.9    <span class="cm"># EU-West LB VIP</span>
+
+<span class="cm"># DNS TTL = 30s: clients cache for 30s, then re-resolve to a different IP</span>
+<span class="cm"># Low TTL enables fast failover but increases DNS query load</span></code></pre>
+    </div>
+
+    <h3>Limitations of DNS LB</h3>
+    <ul>
+      <li><strong>TTL caching</strong> — clients and intermediate resolvers cache DNS responses for the TTL. If a server goes down, clients who cached its IP will try to reach it for up to TTL seconds before getting the updated record. Setting TTL=0 helps but many resolvers ignore it.</li>
+      <li><strong>No connection state</strong> — DNS knows nothing about server load, connection counts, or response times. A server that is alive but overloaded continues to receive its share.</li>
+      <li><strong>Sticky by default</strong> — long-lived applications resolve once and cache the result in their own connection pool. They won't re-resolve for hours regardless of the TTL.</li>
+    </ul>
+
+    <h3>GeoDNS and Latency-Based Routing</h3>
+    <p>Services like AWS Route 53, Cloudflare, and Akamai extend DNS with geographic intelligence: they identify the resolver's location (typically proxy for the user's location) and return the IP of the nearest healthy endpoint. A user in Europe resolves <code>api.example.com</code> to a Frankfurt IP; a user in Singapore resolves to a Singapore IP. Combined with health checks that remove unhealthy endpoints from rotation, GeoDNS provides region-level failover in addition to latency optimization.</p>
+
+    <h2>Anycast and Global Load Balancing</h2>
+    <p><strong>Anycast</strong> is a routing technique where the same IP address is announced from multiple geographic locations simultaneously via BGP. The Internet's routing protocol naturally delivers packets to the topologically closest origin — traffic from Europe reaches a European PoP, traffic from Asia reaches an Asian PoP, all to the same destination IP address. This is how CDNs and DDoS scrubbing services work: a single IP address appears at hundreds of edge locations.</p>
+
+    <p>Anycast differs from DNS LB in an important way: the routing decision is made at the network layer (BGP), not the application layer. There is no TTL caching problem — packets are routed to the nearest PoP at every hop. And because BGP re-converges within seconds when a PoP fails, failover is faster and more reliable than waiting for DNS TTLs to expire.</p>
+
+    <div class="callout">
+      <div class="callout-label">cloudflare example</div>
+      <p>Cloudflare operates the same IP address (e.g., <code>1.1.1.1</code> for their DNS resolver, or their anycast network for CDN) from 300+ data centers worldwide. A user in Tokyo connects to a Tokyo edge node; a user in São Paulo connects to a São Paulo edge node — all to the same IP. This is Anycast at scale: global load distribution and fault tolerance with a single IP address.</p>
+    </div>
+
+    <h2>Session Persistence Deep Dive</h2>
+    <p>Sticky sessions come in several implementation variants with meaningfully different tradeoffs. Understanding them matters for both production operations and interview discussions about stateful applications.</p>
+
+    <h3>Cookie-Based Affinity</h3>
+    <p>The load balancer sets a cookie (e.g., <code>SERVERID=api2</code>) on the client's first request. On subsequent requests, the LB reads the cookie and routes to the designated backend. This is the most common and flexible approach — it works across IP changes (mobile clients switching networks), doesn't expose backend IPs, and the cookie TTL controls how long affinity persists.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">haproxy</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">backend</span> web_servers
+    <span class="fn">balance</span> roundrobin
+    <span class="fn">cookie</span> SERVERID insert indirect nocache   <span class="cm"># LB-managed sticky cookie</span>
+    <span class="fn">server</span> web1 10.0.0.1:<span class="num">80</span> check cookie <span class="str">web1</span>
+    <span class="fn">server</span> web2 10.0.0.2:<span class="num">80</span> check cookie <span class="str">web2</span>
+    <span class="fn">server</span> web3 10.0.0.3:<span class="num">80</span> check cookie <span class="str">web3</span></code></pre>
+    </div>
+
+    <h3>IP Hash Affinity</h3>
+    <p>Hash the client IP to select a backend deterministically. No cookie overhead, but mobile clients roaming between networks get reassigned, and corporate clients (many users behind one NAT IP) all land on the same backend. Adding or removing a server changes the hash result for a fraction of clients proportional to 1/n (assuming consistent hashing) or almost all clients (naive modulo).</p>
+
+    <h3>The Right Fix: Externalize Session State</h3>
+    <p>Both approaches are workarounds for a deeper problem: session state stored in the application server's memory. The production-grade solution is to move session state to a shared, fast store like Redis or Memcached. Any backend can then handle any request because the session is looked up from the external store, not local memory. This enables truly elastic horizontal scaling: add or remove servers without any client-visible disruption.</p>
+
+    <h2>High Availability and Failover Patterns</h2>
+    <p>A load balancer that itself has a single point of failure has solved the wrong problem. Production LB setups use one of two high-availability patterns.</p>
+
+    <h3>Active-Passive with VIP</h3>
+    <p>Two load balancer nodes share a <strong>Virtual IP (VIP)</strong> address. Under normal operation, only the active node claims the VIP and handles all traffic. The passive node monitors the active via heartbeat (VRRP, keepalived). If the active fails to send a heartbeat within a configurable window, the passive claims the VIP via gratuitous ARP and takes over. Failover typically completes in 1–2 seconds. AWS Elastic Load Balancer, Google Cloud LB, and Azure Load Balancer manage this internally — you never see the VIP mechanics.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># keepalived.conf (VRRP active-passive LB pair)</span>
+vrrp_instance VI_1 {
+    state MASTER            <span class="cm"># set BACKUP on the passive node</span>
+    interface eth0
+    virtual_router_id <span class="num">51</span>
+    priority <span class="num">110</span>           <span class="cm"># higher priority = preferred master; BACKUP = 100</span>
+    advert_int <span class="num">1</span>           <span class="cm"># VRRP heartbeat every 1s</span>
+    authentication {
+        auth_type PASS
+        auth_pass <span class="str">secret123</span>
+    }
+    virtual_ipaddress {
+        <span class="num">203.0.113.10</span>        <span class="cm"># the VIP both nodes compete for</span>
+    }
+    track_script {
+        chk_haproxy         <span class="cm"># demote if haproxy process dies</span>
+    }
+}</code></pre>
+    </div>
+
+    <h3>Active-Active</h3>
+    <p>Both LB nodes handle traffic simultaneously, typically via DNS round-robin between two VIPs or via an upstream Anycast address. Total throughput is doubled. On failure, the surviving node absorbs all traffic. The tradeoff: slightly more complex configuration and state synchronization (connection tables must be replicated if TCP sessions are to survive failover seamlessly).</p>
+
+    <h2>Algorithm Comparison and Selection Guide</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Algorithm</th><th>Best for</th><th>Weakness</th><th>Complexity</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Round Robin</td><td>Uniform request cost, identical servers</td><td>Uneven if requests vary in duration or server capacity differs</td><td>O(1)</td></tr>
+        <tr><td class="col-a">Weighted Round Robin</td><td>Heterogeneous server capacities</td><td>Still ignores current server load; static weights need manual tuning</td><td>O(1)</td></tr>
+        <tr><td class="col-a">Least Connections</td><td>Variable request duration (long-polling, streaming)</td><td>All new connections sent to an idle server simultaneously (thundering herd on recovery)</td><td>O(log n)</td></tr>
+        <tr><td class="col-b">IP Hash</td><td>Session affinity without cookie overhead</td><td>Reshuffles on server add/remove; NAT clients create hot spots</td><td>O(1)</td></tr>
+        <tr><td class="col-b">Consistent Hash</td><td>Session affinity + cache locality at scale</td><td>Slightly uneven distribution without vnodes; more implementation complexity</td><td>O(log n)</td></tr>
+        <tr><td class="col-b">Random</td><td>Very large homogeneous pools with stateless requests</td><td>No guarantees for small pools; no awareness of server load</td><td>O(1)</td></tr>
+        <tr><td style="color:var(--accent)">Least Response Time</td><td>Latency-sensitive APIs; weighted by actual response speed</td><td>Requires active measurement overhead; can amplify thundering herds</td><td>O(log n)</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Load Balancing in Modern Architectures</h2>
+
+    <h3>Service Mesh</h3>
+    <p>In microservices architectures, a <strong>service mesh</strong> (Istio, Linkerd, Consul Connect) moves load balancing logic from a central LB appliance into a sidecar proxy (typically Envoy) running alongside every application Pod. Each sidecar intercepts all inbound and outbound traffic, applies load balancing, retries, circuit breaking, and mTLS — without the application code knowing. The control plane (Istio's istiod, Linkerd's control plane) distributes configuration updates to all sidecars.</p>
+    <p>The advantage: L7 load balancing with per-request routing decisions at every service-to-service call, not just at the edge. The cost: every Pod now has a sidecar consuming ~50–100 MB RAM and adding ~1–2 ms latency per hop.</p>
+
+    <h3>AWS Application Load Balancer — Key Features</h3>
+    <ul>
+      <li><strong>Content-based routing</strong> — route by path (<code>/api/*</code> → ECS service), host header, query string, or HTTP method.</li>
+      <li><strong>Target group weighting</strong> — send 10% of traffic to a new service version for canary deployments.</li>
+      <li><strong>Lambda targets</strong> — route specific paths to Lambda functions, mixing containerized and serverless backends behind one LB.</li>
+      <li><strong>WebSocket and HTTP/2 support</strong> — ALB is connection-aware enough to maintain long-lived WebSocket connections and distribute HTTP/2 streams.</li>
+      <li><strong>WAF integration</strong> — attach AWS WAF to block common attack patterns at the LB before traffic reaches backends.</li>
+    </ul>
+
+    <h2>Common Pitfalls and Best Practices</h2>
+    <ul>
+      <li><strong>Never forget the LB is a SPOF</strong> — run active-passive or active-active pairs. A single LB in front of 100 highly-available backends makes the architecture no more available than the LB itself.</li>
+      <li><strong>Health check what matters, not just TCP port open</strong> — a process can be listening on port 8080 while its database connection pool is exhausted. Check <code>/health/readiness</code>, not just TCP SYN.</li>
+      <li><strong>Set connection draining (deregistration delay)</strong> — when removing a backend from the pool, allow in-flight requests to complete (typically 30–300 seconds) before closing connections. AWS ALB calls this "deregistration delay"; Nginx calls it <code>proxy_next_upstream</code> combined with graceful shutdown.</li>
+      <li><strong>Low TTL for DNS LB does not equal instant failover</strong> — resolvers ignore TTL floors, browsers cache, OS stub resolvers cache. Budget 60–120 seconds for DNS changes to fully propagate even with 30-second TTLs.</li>
+      <li><strong>Monitor backend queue depth, not just connection count</strong> — least-connections algorithms route to the server with fewest connections, but a server processing slow 30-second DB queries has fewer connections than one serving fast 50ms requests. Least-response-time or a queue-depth metric is more accurate for latency-sensitive tiers.</li>
+      <li><strong>Separate health check traffic from production traffic</strong> — a noisy health check hammering <code>/health</code> every second to 50 backends generates 50 req/sec of load. Use a lightweight endpoint that does minimal work, and cache dependency check results for a few seconds.</li>
+    </ul>
+
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Choose Layer 7 for HTTP workloads that need path routing, TLS termination, or header inspection. Choose Layer 4 for raw TCP throughput or non-HTTP protocols. Pick your algorithm based on request homogeneity: round-robin for uniform workloads, least-connections for variable ones, IP hash for session affinity. Always run at least two load balancers to avoid introducing the very SPOF you set out to eliminate.</p>
+      <p>Choose Layer 7 for HTTP workloads that need path routing, TLS termination, or header inspection. Choose Layer 4 for raw TCP throughput, non-HTTP protocols, or extreme performance via Direct Server Return. Pick your algorithm based on request homogeneity: round-robin for uniform workloads, least-connections for variable ones, consistent hash for cache locality and session affinity. Always run at least two load balancers in active-passive or active-active configuration to avoid introducing the very SPOF you set out to eliminate.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Layer 4 vs Layer 7 — when do you pick each?</strong> Layer 4 for raw TCP throughput or non-HTTP protocols; Layer 7 when you need path-based routing, TLS termination, or header-based decisions.<br>
-      <strong>How does a load balancer detect a failed server?</strong> Active health checks (synthetic probes to /health on a schedule) or passive health checks (infer from 5xx error rates on real traffic).<br>
-      <strong>Why are sticky sessions a problem?</strong> They reduce load distribution and mean all session data is lost if that server goes down — the fix is moving session state to a shared store like Redis.</p>
+      <p><strong>Layer 4 vs Layer 7 — when do you pick each?</strong> Layer 4 for raw TCP throughput, non-HTTP protocols, or when you need Direct Server Return to keep return traffic off the LB; Layer 7 when you need path-based routing, TLS termination, gRPC support, or header-based decisions.<br>
+      <strong>How does a load balancer detect a failed server?</strong> Active health checks (synthetic probes to /health on a schedule) or passive health checks (infer from 5xx error rates on real traffic). Active checks detect pre-traffic failures; passive checks detect in-flight failures.<br>
+      <strong>Why are sticky sessions a problem?</strong> They reduce load distribution, complicate scaling, and mean all session data is lost if that server goes down — the fix is externalizing session state to Redis so any server can handle any request.<br>
+      <strong>What is consistent hashing and when is it used?</strong> Maps servers and requests to a ring; adding/removing a server affects only ~1/n of keys instead of reshuffling everything. Used by distributed caches, CDNs, database sharding, and Kafka partition assignment.<br>
+      <strong>How does Anycast work?</strong> The same IP is announced via BGP from multiple geographic PoPs; the Internet's routing naturally delivers packets to the topologically nearest PoP — no DNS resolution, no TTL caching, sub-second failover when a PoP goes down.<br>
+      <strong>Why can't an L4 LB balance gRPC traffic?</strong> gRPC multiplexes many calls over a single HTTP/2 connection; an L4 LB routes the entire connection to one backend. Only an L7 proxy that understands HTTP/2 framing can distribute individual calls across backends.</p>
     </div>
 
     <div class="article-nav">
@@ -289,7 +605,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

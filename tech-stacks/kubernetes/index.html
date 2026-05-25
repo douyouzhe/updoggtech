@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,7 +170,7 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>12 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
@@ -320,16 +320,428 @@ helm list
 helm rollback my-redis <span class="num">1</span></code></pre>
     </div>
 
+    <h2>Workload Controllers: DaemonSet and Jobs</h2>
+
+    <h3>DaemonSet</h3>
+    <p>A DaemonSet ensures that exactly one copy of a Pod runs on <em>every</em> node (or every node matching a selector). It is the right tool for infrastructure-level agents that must be node-local: log collectors (Fluentd, Fluent Bit), metrics exporters (node-exporter), network plugins (CNI agents), and security scanners. As nodes join the cluster, the DaemonSet controller automatically places a Pod on each new node. As nodes leave, their Pod is garbage collected.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: apps/v1
+<span class="kw">kind</span>: DaemonSet
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">fluent-bit</span>
+  <span class="kw">namespace</span>: <span class="str">logging</span>
+<span class="kw">spec</span>:
+  <span class="kw">selector</span>:
+    <span class="kw">matchLabels</span>:
+      <span class="kw">app</span>: <span class="str">fluent-bit</span>
+  <span class="kw">template</span>:
+    <span class="kw">metadata</span>:
+      <span class="kw">labels</span>:
+        <span class="kw">app</span>: <span class="str">fluent-bit</span>
+    <span class="kw">spec</span>:
+      <span class="kw">tolerations</span>:                      <span class="cm"># tolerate master-node taint so it runs everywhere</span>
+        - <span class="kw">key</span>: <span class="str">node-role.kubernetes.io/control-plane</span>
+          <span class="kw">effect</span>: <span class="str">NoSchedule</span>
+      <span class="kw">containers</span>:
+        - <span class="kw">name</span>: <span class="str">fluent-bit</span>
+          <span class="kw">image</span>: <span class="str">fluent/fluent-bit:2.1</span>
+          <span class="kw">volumeMounts</span>:
+            - <span class="kw">name</span>: <span class="str">varlog</span>
+              <span class="kw">mountPath</span>: <span class="str">/var/log</span>
+      <span class="kw">volumes</span>:
+        - <span class="kw">name</span>: <span class="str">varlog</span>
+          <span class="kw">hostPath</span>:
+            <span class="kw">path</span>: <span class="str">/var/log</span></code></pre>
+    </div>
+
+    <h3>Deployment vs. StatefulSet vs. DaemonSet — Decision Matrix</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th class="col-a">Deployment</th><th class="col-b">StatefulSet</th><th style="color:var(--accent)">DaemonSet</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Pod identity</td><td class="col-a">Interchangeable — random suffix</td><td class="col-b">Stable: pod-0, pod-1, pod-2</td><td style="color:var(--accent)">One per node, node-named</td></tr>
+        <tr><td>Storage</td><td class="col-a">Shared or none</td><td class="col-b">Per-Pod PVC, retained on delete</td><td style="color:var(--accent)">HostPath typical</td></tr>
+        <tr><td>Rollout order</td><td class="col-a">Concurrent (maxSurge / maxUnavailable)</td><td class="col-b">Ordered: pod-0 → pod-1 → …</td><td style="color:var(--accent)">Node-by-node rolling update</td></tr>
+        <tr><td>Scale down</td><td class="col-a">Random Pod removed</td><td class="col-b">Highest ordinal removed first</td><td style="color:var(--accent)">Pod per node, not manually scaled</td></tr>
+        <tr><td>Use cases</td><td class="col-a">Web servers, APIs, workers</td><td class="col-b">Databases, Kafka, ZooKeeper, Elasticsearch</td><td style="color:var(--accent)">Log agents, node exporters, CNI plugins</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Scheduling and Node Affinity</h2>
+    <p>The Kubernetes Scheduler does more than just "find a node with enough CPU and RAM." It applies a sophisticated two-phase algorithm: <strong>filtering</strong> eliminates nodes that cannot satisfy the Pod's requirements, and <strong>scoring</strong> ranks the remaining nodes by preference. Understanding this lets you control exactly where workloads land.</p>
+
+    <h3>Node Selectors and Node Affinity</h3>
+    <p><code>nodeSelector</code> is the simplest form: a map of key-value pairs that must match a node's labels. Node Affinity is more powerful — it supports <code>requiredDuringSchedulingIgnoredDuringExecution</code> (hard constraint) and <code>preferredDuringSchedulingIgnoredDuringExecution</code> (soft preference with a weight).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">spec</span>:
+  <span class="kw">affinity</span>:
+    <span class="kw">nodeAffinity</span>:
+      <span class="kw">requiredDuringSchedulingIgnoredDuringExecution</span>:   <span class="cm"># hard: only GPU nodes</span>
+        <span class="kw">nodeSelectorTerms</span>:
+          - <span class="kw">matchExpressions</span>:
+            - <span class="kw">key</span>: <span class="str">accelerator</span>
+              <span class="kw">operator</span>: <span class="str">In</span>
+              <span class="kw">values</span>: [<span class="str">nvidia-a100</span>]
+    <span class="kw">podAntiAffinity</span>:
+      <span class="kw">preferredDuringSchedulingIgnoredDuringExecution</span>:  <span class="cm"># soft: spread replicas across zones</span>
+        - <span class="kw">weight</span>: <span class="num">100</span>
+          <span class="kw">podAffinityTerm</span>:
+            <span class="kw">labelSelector</span>:
+              <span class="kw">matchLabels</span>:
+                <span class="kw">app</span>: <span class="str">my-app</span>
+            <span class="kw">topologyKey</span>: <span class="str">topology.kubernetes.io/zone</span></code></pre>
+    </div>
+
+    <h3>Taints and Tolerations</h3>
+    <p>Taints work in the opposite direction: they repel Pods from nodes unless a Pod explicitly tolerates the taint. Common uses include dedicating nodes to specific workloads (GPU nodes that only accept ML jobs), excluding Pods from control-plane nodes, or gracefully draining nodes for maintenance (<code>kubectl drain</code> adds a <code>NoSchedule</code> taint automatically).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Taint a node so only GPU-tolerating Pods land on it</span>
+kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</span>
+
+<span class="cm"># Pod must declare this toleration to be scheduled on gpu-node-1</span>
+<span class="cm"># tolerations:</span>
+<span class="cm">#   - key: "accelerator"</span>
+<span class="cm">#     operator: "Equal"</span>
+<span class="cm">#     value: "gpu"</span>
+<span class="cm">#     effect: "NoSchedule"</span></code></pre>
+    </div>
+
+    <h2>Networking: CNI, Services, and Ingress in Depth</h2>
+    <p>Kubernetes networking follows four fundamental rules: every Pod gets a unique IP, every Pod can communicate with every other Pod without NAT, every node can communicate with every Pod, and Pods see the same IP that external agents use to address them. Enforcing these rules is the job of the Container Network Interface plugin.</p>
+
+    <h3>CNI Plugins</h3>
+    <p>The <strong>Container Network Interface (CNI)</strong> is a specification that Kubernetes calls when a Pod is created or deleted to configure network interfaces. Popular implementations differ significantly in their networking model:</p>
+    <ul>
+      <li><strong>Flannel</strong> — simplest; uses a flat overlay network (VXLAN or host-gw). No network policy support. Good for development clusters.</li>
+      <li><strong>Calico</strong> — BGP-based routing (no overlay in L3 mode) for high performance; full NetworkPolicy support and optional WireGuard encryption between nodes.</li>
+      <li><strong>Cilium</strong> — eBPF-based; bypasses iptables entirely, supporting high-throughput service routing and deep application-layer network policies (L7 policy, Kafka-aware, HTTP-aware). The preferred choice for high-scale production clusters.</li>
+      <li><strong>Weave Net</strong> — mesh overlay; supports network encryption but higher CPU overhead than Calico or Cilium.</li>
+    </ul>
+
+    <h3>Service Types</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Type</th><th>Behavior</th><th>Use case</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">ClusterIP</td><td>Virtual IP reachable only inside the cluster; default type</td><td>Internal microservice-to-microservice communication</td></tr>
+        <tr><td class="col-a">NodePort</td><td>Exposes the Service on a port (30000–32767) on every node's external IP</td><td>Dev/test external access; not for production</td></tr>
+        <tr><td class="col-a">LoadBalancer</td><td>Provisions a cloud load balancer (AWS ELB, GCP LB) with an external IP pointing at the Service</td><td>Exposing a single Service to the internet in cloud environments</td></tr>
+        <tr><td class="col-b">ExternalName</td><td>Returns a CNAME DNS alias to an external hostname; no proxying</td><td>Pointing cluster services at external DBs or SaaS APIs</td></tr>
+        <tr><td class="col-b">Headless (ClusterIP: None)</td><td>No virtual IP; DNS returns Pod IPs directly</td><td>StatefulSets, service discovery by the application itself (Kafka, Cassandra)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ingress and Ingress Controllers</h3>
+    <p>An <strong>Ingress</strong> resource defines routing rules (hostname, path prefix → Service), but it does nothing without an <strong>Ingress Controller</strong> — a running Pod that watches Ingress objects and reconfigures itself accordingly. Common controllers include Nginx Ingress Controller, Traefik, HAProxy, and the cloud-native AWS ALB Ingress Controller. You can run multiple controllers in one cluster by annotating Ingresses with <code>ingressClassName</code>.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: networking.k8s.io/v1
+<span class="kw">kind</span>: Ingress
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">api-ingress</span>
+  <span class="kw">annotations</span>:
+    <span class="kw">nginx.ingress.kubernetes.io/rewrite-target</span>: <span class="str">/</span>
+    <span class="kw">cert-manager.io/cluster-issuer</span>: <span class="str">letsencrypt-prod</span>   <span class="cm"># auto TLS via cert-manager</span>
+<span class="kw">spec</span>:
+  <span class="kw">ingressClassName</span>: <span class="str">nginx</span>
+  <span class="kw">tls</span>:
+    - <span class="kw">hosts</span>: [<span class="str">api.example.com</span>]
+      <span class="kw">secretName</span>: <span class="str">api-tls-cert</span>
+  <span class="kw">rules</span>:
+    - <span class="kw">host</span>: <span class="str">api.example.com</span>
+      <span class="kw">http</span>:
+        <span class="kw">paths</span>:
+          - <span class="kw">path</span>: <span class="str">/v1/orders</span>
+            <span class="kw">pathType</span>: <span class="str">Prefix</span>
+            <span class="kw">backend</span>:
+              <span class="kw">service</span>:
+                <span class="kw">name</span>: <span class="str">order-service</span>
+                <span class="kw">port</span>:
+                  <span class="kw">number</span>: <span class="num">8080</span>
+          - <span class="kw">path</span>: <span class="str">/v1/products</span>
+            <span class="kw">pathType</span>: <span class="str">Prefix</span>
+            <span class="kw">backend</span>:
+              <span class="kw">service</span>:
+                <span class="kw">name</span>: <span class="str">product-service</span>
+                <span class="kw">port</span>:
+                  <span class="kw">number</span>: <span class="num">8080</span></code></pre>
+    </div>
+
+    <h2>Storage: PV, PVC, and StorageClass</h2>
+    <p>Kubernetes abstracts storage through a three-layer hierarchy: <strong>PersistentVolume (PV)</strong> represents actual storage capacity in the cluster (provisioned by an admin or dynamically by a StorageClass); <strong>PersistentVolumeClaim (PVC)</strong> is a user's request for storage with specific size and access mode requirements; and <strong>StorageClass</strong> defines the provisioner and parameters for dynamic PV creation.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">--- StorageClass: defines how PVs are dynamically provisioned</span>
+<span class="kw">apiVersion</span>: storage.k8s.io/v1
+<span class="kw">kind</span>: StorageClass
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">fast-ssd</span>
+<span class="kw">provisioner</span>: <span class="str">ebs.csi.aws.com</span>
+<span class="kw">parameters</span>:
+  <span class="kw">type</span>: <span class="str">gp3</span>
+  <span class="kw">iops</span>: <span class="str">"3000"</span>
+  <span class="kw">throughput</span>: <span class="str">"125"</span>
+<span class="kw">reclaimPolicy</span>: <span class="str">Retain</span>          <span class="cm"># don't delete EBS volume when PVC is deleted</span>
+<span class="kw">volumeBindingMode</span>: <span class="str">WaitForFirstConsumer</span>  <span class="cm"># provision in same AZ as the Pod</span>
+
+<span class="cm">--- PVC: user requests 50 GiB from the fast-ssd StorageClass</span>
+<span class="kw">apiVersion</span>: v1
+<span class="kw">kind</span>: PersistentVolumeClaim
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">postgres-data</span>
+<span class="kw">spec</span>:
+  <span class="kw">accessModes</span>: [<span class="str">ReadWriteOnce</span>]    <span class="cm"># only one node can mount read-write</span>
+  <span class="kw">storageClassName</span>: <span class="str">fast-ssd</span>
+  <span class="kw">resources</span>:
+    <span class="kw">requests</span>:
+      <span class="kw">storage</span>: <span class="str">50Gi</span></code></pre>
+    </div>
+
+    <h3>Access Modes</h3>
+    <ul>
+      <li><strong>ReadWriteOnce (RWO)</strong> — mounted read-write by a single node; the standard mode for databases. Note: multiple Pods on the same node can all mount an RWO volume.</li>
+      <li><strong>ReadOnlyMany (ROX)</strong> — mounted read-only by many nodes simultaneously; useful for shared configuration or model weights.</li>
+      <li><strong>ReadWriteMany (RWX)</strong> — mounted read-write by many nodes; requires a distributed filesystem (NFS, CephFS, AWS EFS). Rare and slower than block storage.</li>
+      <li><strong>ReadWriteOncePod (RWOP)</strong> — Kubernetes 1.22+; only one Pod cluster-wide can mount the volume read-write. Stronger than RWO for StatefulSets.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">StatefulSet + PVC</div>
+      <p>StatefulSets use <code>volumeClaimTemplates</code> to automatically create one PVC per Pod (e.g., <code>postgres-data-postgres-0</code>, <code>postgres-data-postgres-1</code>). These PVCs are <em>not</em> deleted when the StatefulSet is scaled down or deleted — a deliberate safety net so you don't accidentally wipe your database. Delete them explicitly when you truly want the data gone.</p>
+    </div>
+
+    <h2>Probes and Self-Healing</h2>
+    <p>Kubernetes makes three kinds of health probes available for every container. Configuring them correctly is the difference between a self-healing cluster and one where failed Pods silently take traffic until an on-call engineer notices.</p>
+
+    <h3>Liveness Probe</h3>
+    <p>Determines whether the container is alive. A failing liveness probe causes kubelet to <strong>kill and restart</strong> the container. Use it to detect deadlocks and unrecoverable hangs — situations where the process is running but not actually doing work. Be careful not to set the initial threshold too low: a liveness probe that fires during startup kills the Pod before it's ready, causing a restart loop.</p>
+
+    <h3>Readiness Probe</h3>
+    <p>Determines whether the container is ready to serve traffic. A failing readiness probe removes the Pod from the Service's endpoints — traffic stops being routed to it — but the container is <em>not</em> restarted. This is the right probe for slow-starting applications, warmup periods, or temporary overload: the Pod stays alive but is taken out of rotation until it signals readiness again.</p>
+
+    <h3>Startup Probe</h3>
+    <p>Runs during container startup and disables liveness and readiness probes until it succeeds. Essential for applications with long startup times (e.g., JVM services, databases loading large datasets). Once the startup probe succeeds, liveness and readiness probes take over. Without it, a liveness probe might kill a legitimately-starting container.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">containers</span>:
+  - <span class="kw">name</span>: <span class="str">order-service</span>
+    <span class="kw">image</span>: <span class="str">order-service:2.3.1</span>
+    <span class="kw">startupProbe</span>:               <span class="cm"># allow up to 60s to start</span>
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">failureThreshold</span>: <span class="num">12</span>      <span class="cm"># 12 * 5s = 60s max startup time</span>
+      <span class="kw">periodSeconds</span>: <span class="num">5</span>
+    <span class="kw">livenessProbe</span>:
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health/liveness</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">initialDelaySeconds</span>: <span class="num">0</span>    <span class="cm"># startup probe already handled the delay</span>
+      <span class="kw">periodSeconds</span>: <span class="num">10</span>
+      <span class="kw">failureThreshold</span>: <span class="num">3</span>
+    <span class="kw">readinessProbe</span>:
+      <span class="kw">httpGet</span>:
+        <span class="kw">path</span>: <span class="str">/actuator/health/readiness</span>
+        <span class="kw">port</span>: <span class="num">8080</span>
+      <span class="kw">periodSeconds</span>: <span class="num">5</span>
+      <span class="kw">failureThreshold</span>: <span class="num">2</span></code></pre>
+    </div>
+
+    <h2>Autoscaling: HPA, VPA, and Cluster Autoscaler</h2>
+    <p>Kubernetes offers three complementary autoscaling mechanisms that operate at different granularities. Understanding when to use each — and how they interact — is a common interview topic.</p>
+
+    <h3>Horizontal Pod Autoscaler (HPA)</h3>
+    <p>HPA scales the <em>number of Pod replicas</em> up or down based on observed metrics. The default metric is CPU utilization relative to the Pod's resource request, but custom metrics (request rate, queue depth, external metrics from Prometheus) are supported via the custom metrics API. HPA polls the metrics server every 15 seconds and adjusts replicas within the bounds of <code>minReplicas</code> and <code>maxReplicas</code>.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">apiVersion</span>: autoscaling/v2
+<span class="kw">kind</span>: HorizontalPodAutoscaler
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">order-service-hpa</span>
+<span class="kw">spec</span>:
+  <span class="kw">scaleTargetRef</span>:
+    <span class="kw">apiVersion</span>: apps/v1
+    <span class="kw">kind</span>: Deployment
+    <span class="kw">name</span>: <span class="str">order-service</span>
+  <span class="kw">minReplicas</span>: <span class="num">3</span>
+  <span class="kw">maxReplicas</span>: <span class="num">50</span>
+  <span class="kw">metrics</span>:
+    - <span class="kw">type</span>: Resource
+      <span class="kw">resource</span>:
+        <span class="kw">name</span>: cpu
+        <span class="kw">target</span>:
+          <span class="kw">type</span>: Utilization
+          <span class="kw">averageUtilization</span>: <span class="num">60</span>   <span class="cm"># scale up if CPU &gt; 60% of request</span>
+    - <span class="kw">type</span>: Pods
+      <span class="kw">pods</span>:
+        <span class="kw">metric</span>:
+          <span class="kw">name</span>: <span class="str">http_requests_per_second</span>
+        <span class="kw">target</span>:
+          <span class="kw">type</span>: AverageValue
+          <span class="kw">averageValue</span>: <span class="str">"1000"</span>    <span class="cm"># 1000 RPS per replica</span>
+  <span class="kw">behavior</span>:
+    <span class="kw">scaleDown</span>:
+      <span class="kw">stabilizationWindowSeconds</span>: <span class="num">300</span>  <span class="cm"># wait 5 min before scaling down</span></code></pre>
+    </div>
+
+    <h3>Vertical Pod Autoscaler (VPA)</h3>
+    <p>VPA adjusts <em>resource requests and limits</em> (CPU and memory) for individual Pods rather than the replica count. In <code>Auto</code> mode it evicts and restarts Pods with updated requests; in <code>Off</code> mode it only provides recommendations. VPA is useful when you don't know the right resource requests up front, but it conflicts with HPA on CPU/memory — use VPA for requests and HPA on custom metrics, or use VPA in recommendation-only mode alongside HPA.</p>
+
+    <h3>Cluster Autoscaler</h3>
+    <p>Both HPA and VPA assume there are available nodes to schedule Pods onto. When there aren't, the <strong>Cluster Autoscaler (CA)</strong> talks to the cloud provider's API (AWS, GCP, Azure) to add or remove nodes from the cluster's node groups. CA adds nodes when Pods are unschedulable due to insufficient resources, and removes underutilized nodes after a configurable cool-down period (default 10 minutes). Importantly, CA respects Pod Disruption Budgets during scale-down: it won't remove a node if doing so would violate your PDB.</p>
+
+    <div class="callout">
+      <div class="callout-label">autoscaling recipe</div>
+      <p>The standard production setup: <strong>HPA on CPU + custom metrics</strong> to adjust replica count; <strong>VPA in recommendation mode</strong> to right-size your resource requests; <strong>Cluster Autoscaler</strong> to add/remove nodes as needed. Set resource <code>requests</code> and <code>limits</code> on every container — without requests, the HPA has no baseline to compute utilization against, and the scheduler can't make informed placement decisions.</p>
+    </div>
+
+    <h2>The Operator Pattern</h2>
+    <p>A <strong>Kubernetes Operator</strong> is a custom controller that encodes the operational knowledge of a specific application into code. It extends the Kubernetes API with <strong>Custom Resource Definitions (CRDs)</strong> — new resource types like <code>PostgresCluster</code>, <code>KafkaCluster</code>, or <code>ElasticsearchCluster</code> — and runs a control loop that watches those resources and drives the cluster toward the desired state they declare.</p>
+
+    <h3>Why Operators Exist</h3>
+    <p>Kubernetes natively handles stateless workloads beautifully: deploy, scale, rollback. But stateful systems — databases, message brokers, search engines — require domain-specific operational logic: initializing a cluster, electing a leader, performing a rolling upgrade that respects quorum, taking consistent backups, restoring from a snapshot. A human operator executing runbooks encodes this knowledge; a Kubernetes Operator automates it.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">yaml</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Using the CloudNativePG Operator to declare a PostgreSQL cluster</span>
+<span class="kw">apiVersion</span>: postgresql.cnpg.io/v1
+<span class="kw">kind</span>: Cluster
+<span class="kw">metadata</span>:
+  <span class="kw">name</span>: <span class="str">orders-db</span>
+<span class="kw">spec</span>:
+  <span class="kw">instances</span>: <span class="num">3</span>           <span class="cm"># 1 primary + 2 replicas</span>
+  <span class="kw">primaryUpdateStrategy</span>: <span class="str">unsupervised</span>
+  <span class="kw">storage</span>:
+    <span class="kw">size</span>: <span class="str">100Gi</span>
+    <span class="kw">storageClass</span>: <span class="str">fast-ssd</span>
+  <span class="kw">backup</span>:
+    <span class="kw">barmanObjectStore</span>:
+      <span class="kw">destinationPath</span>: <span class="str">s3://my-bucket/backups/orders-db</span>
+      <span class="kw">s3Credentials</span>:
+        <span class="kw">accessKeyId</span>:
+          <span class="kw">name</span>: <span class="str">s3-creds</span>
+          <span class="kw">key</span>: <span class="str">ACCESS_KEY_ID</span></code></pre>
+    </div>
+
+    <p>The CloudNativePG Operator sees this <code>Cluster</code> CR and handles the rest: creating the primary Pod, setting up streaming replication to the replicas, configuring a headless Service for each Pod's stable DNS name, configuring a separate Service for primary writes vs. replica reads, setting up continuous WAL archiving to S3, and performing rolling upgrades that promote a replica before shutting down the primary to minimize downtime. All of that operational complexity — which would require a lengthy runbook — is now encoded as code and triggered by a single YAML declaration.</p>
+
+    <h3>Popular Operators</h3>
+    <ul>
+      <li><strong>Strimzi</strong> — Kafka clusters and topics as CRDs; manages brokers, ZooKeeper, Kafka Connect, and MirrorMaker 2.</li>
+      <li><strong>Prometheus Operator</strong> — <code>ServiceMonitor</code>, <code>PodMonitor</code>, and <code>PrometheusRule</code> CRDs to configure scrape targets and alerting rules declaratively.</li>
+      <li><strong>cert-manager</strong> — <code>Certificate</code> and <code>ClusterIssuer</code> CRDs for automatic TLS certificate provisioning and renewal from Let's Encrypt or private CAs.</li>
+      <li><strong>Argo CD</strong> — GitOps operator that reconciles the cluster state to match a Git repository, making every deployment a git commit.</li>
+      <li><strong>KEDA</strong> (Kubernetes Event-Driven Autoscaling) — scales Deployments and Jobs based on external event sources: Kafka consumer lag, SQS queue depth, HTTP request rate — bridging the gap between HPA's CPU-centric model and event-driven workloads.</li>
+    </ul>
+
+    <h2>Resource Management: Requests, Limits, and QoS Classes</h2>
+    <p>Every container should declare CPU and memory <code>requests</code> (guaranteed allocation used by the scheduler) and <code>limits</code> (the maximum the container may consume). The relationship between them determines a Pod's <strong>QoS class</strong>, which controls eviction priority under node memory pressure.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>QoS Class</th><th>Condition</th><th>Eviction Priority</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Guaranteed</td><td>requests == limits for every container in the Pod</td><td>Last to be evicted; reserved capacity</td></tr>
+        <tr><td class="col-a">Burstable</td><td>At least one container has requests set, but requests &lt; limits</td><td>Evicted after BestEffort; eviction order by memory usage relative to request</td></tr>
+        <tr><td class="col-b">BestEffort</td><td>No requests or limits set at all</td><td>First to be evicted under memory pressure</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">best practice</div>
+      <p>Set CPU <code>requests</code> = your steady-state usage and CPU <code>limits</code> = 2-4x requests to allow bursting. For memory, set <code>requests</code> = your p99 usage and <code>limits</code> = requests (i.e., Guaranteed class) for latency-sensitive services — a container that exceeds its memory limit is OOMKilled immediately; a pod that exceeds its CPU limit is only throttled (not killed), making memory limits far more consequential.</p>
+    </div>
+
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Think of Kubernetes as a self-healing, declarative control loop: you describe <em>what</em> you want in YAML, and the master node's Controller Manager continuously drives actual state toward it. Pods give you isolation; Services give you stable addressing; etcd gives you durable cluster memory; and Helm gives you reusable, versioned packaging.</p>
+      <p>Think of Kubernetes as a self-healing, declarative control loop: you describe <em>what</em> you want in YAML, and the master node's Controller Manager continuously drives actual state toward it. Pods give you isolation; Services give you stable addressing; etcd gives you durable cluster memory; and Helm gives you reusable, versioned packaging. Layer in HPA + Cluster Autoscaler for elasticity, Operators for stateful applications, and proper probe configuration to make the self-healing loop actually work.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
       <p><strong>What happens when a Pod crashes?</strong> The Controller Manager detects divergence from the desired replica count and instructs the Scheduler to place a new Pod — the Service's IP stays unchanged throughout.<br>
-      <strong>Deployment vs StatefulSet?</strong> Deployments treat Pods as interchangeable; StatefulSets give each Pod a stable identity (pod-0, pod-1) and ordered rollouts — required for databases that need leader/follower sync.<br>
-      <strong>Why is etcd critical?</strong> It is the single source of truth for all cluster state; losing etcd without a backup means losing the entire cluster configuration.</p>
+      <strong>Deployment vs StatefulSet vs DaemonSet?</strong> Deployments for stateless apps (interchangeable Pods); StatefulSets for databases (stable ordered Pod identity, per-Pod PVC); DaemonSets for node-local infrastructure agents (one Pod per node).<br>
+      <strong>Why is etcd critical?</strong> It is the single source of truth for all cluster state; losing etcd without a backup means losing the entire cluster configuration.<br>
+      <strong>HPA vs VPA vs Cluster Autoscaler?</strong> HPA scales replica count; VPA adjusts per-Pod resource requests; Cluster Autoscaler adds/removes nodes. Use all three together: HPA on custom metrics, VPA in recommendation mode, CA to provision capacity.<br>
+      <strong>What is a liveness vs readiness probe?</strong> Liveness failure kills and restarts the container; readiness failure removes it from the Service endpoint without restarting — use readiness for warmup and temporary overload.<br>
+      <strong>What is the Operator pattern?</strong> A custom controller that encodes operational runbooks as code, using CRDs to extend the Kubernetes API with domain-specific resource types like <code>KafkaCluster</code> or <code>PostgresCluster</code>.</p>
     </div>
 
     <div class="article-nav">
@@ -350,7 +762,7 @@ helm rollback my-redis <span class="num">1</span></code></pre>
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

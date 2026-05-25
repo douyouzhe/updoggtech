@@ -147,7 +147,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -166,7 +166,7 @@
     <div class="article-meta">
       <span>Sep 08, 2023</span>
       <span class="separator">·</span>
-      <span>15 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
@@ -358,11 +358,547 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
       <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
     </div>
 
+    <h2>The Resolver Execution Model</h2>
+    <p>Understanding how GraphQL actually runs your query — field by field — is essential for writing servers that perform well. When a request arrives, the GraphQL runtime parses the query document into an abstract syntax tree, validates it against the schema, and then executes it by calling a <strong>resolver function</strong> for every selected field. Resolvers are pure functions with the signature <code>(parent, args, context, info)</code>: <code>parent</code> is the resolved value of the parent field, <code>args</code> are query arguments, <code>context</code> is a request-scoped object (auth token, DataLoader instances, DB connections), and <code>info</code> exposes the AST of the current field.</p>
+    <p>Execution is depth-first: the root <code>Query</code> fields resolve first, then the runtime fans out to resolve each child field in parallel within the same depth level. This means sibling fields at the same level can resolve concurrently, but a child field cannot start until its parent has returned a value. The practical implication is that deep query trees will chain resolver calls, and any synchronous IO in a resolver blocks the entire chain.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript / Apollo Server</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">const</span> resolvers = {
+  <span class="ty">Query</span>: {
+    <span class="cm">// root resolver — receives null parent, query args</span>
+    <span class="fn">movies</span>: async (parent, args, context) => {
+      <span class="kw">return</span> context.db.<span class="fn">query</span>(<span class="str">'SELECT * FROM movies LIMIT ?'</span>, [args.limit])
+    },
+  },
+  <span class="ty">Movie</span>: {
+    <span class="cm">// field resolver — parent is the movie row from above</span>
+    <span class="fn">director</span>: async (movie, args, context) => {
+      <span class="kw">return</span> context.db.<span class="fn">query</span>(<span class="str">'SELECT * FROM directors WHERE id = ?'</span>, [movie.directorId])
+    },
+  },
+}</code></pre>
+    </div>
+
+    <h3>The N+1 Problem</h3>
+    <p>The resolver model has a well-known failure mode. If you query a list of 100 movies and each movie has a <code>director</code> field, the GraphQL runtime calls the <code>Movie.director</code> resolver <em>100 separate times</em> — once per movie object. Each call fires a new database query. That's 1 query for the list plus 100 queries for the directors: the classic <strong>N+1 problem</strong>. At scale this turns a sub-millisecond operation into hundreds of sequential round trips.</p>
+
+    <div class="callout">
+      <div class="callout-label">why it's worse than REST</div>
+      <p>A REST handler for <code>GET /movies</code> typically does a single JOIN or a manually batched lookup under the engineer's control. GraphQL's per-field resolver architecture makes the N+1 pattern the <em>default</em> outcome if you don't actively fight it — every nested field is a potential landmine.</p>
+    </div>
+
+    <h3>DataLoader: Batching and Per-Request Caching</h3>
+    <p>Facebook's <strong>DataLoader</strong> library (now standard across every GraphQL ecosystem) solves N+1 with two mechanisms working together. First, it <strong>batches</strong> all load calls within a single event-loop tick into a single batch function that you supply — so 100 individual <code>directorLoader.load(id)</code> calls become one call to your batch function with an array of 100 IDs. Second, it <strong>memoizes</strong> results for the duration of the request, so loading the same director ID twice from different parts of the query only hits the database once.</p>
+    <p>Critically, DataLoader instances should be created <em>per request</em> inside the <code>context</code> factory — sharing a DataLoader across requests would leak data between users.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — DataLoader</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> DataLoader <span class="kw">from</span> <span class="str">'dataloader'</span>
+
+<span class="cm">// batch function: called once per tick with all accumulated keys</span>
+<span class="kw">const</span> <span class="fn">batchDirectors</span> = <span class="kw">async</span> (directorIds) => {
+  <span class="kw">const</span> rows = <span class="kw">await</span> db.<span class="fn">query</span>(
+    <span class="str">'SELECT * FROM directors WHERE id = ANY(?)'</span>,
+    [directorIds]
+  )
+  <span class="cm">// DataLoader requires results in the SAME ORDER as keys</span>
+  <span class="kw">const</span> byId = <span class="ty">Object</span>.<span class="fn">fromEntries</span>(rows.<span class="fn">map</span>(r => [r.id, r]))
+  <span class="kw">return</span> directorIds.<span class="fn">map</span>(id => byId[id] ?? <span class="kw">new</span> <span class="ty">Error</span>(<span class="str">`Director <span class="str">${id}</span> not found`</span>))
+}
+
+<span class="cm">// created per-request in Apollo's context factory</span>
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  resolvers: {
+    <span class="ty">Movie</span>: {
+      <span class="fn">director</span>: (movie, _, context) =>
+        context.directorLoader.<span class="fn">load</span>(movie.directorId),  <span class="cm">// batched!</span>
+    },
+  },
+  context: () => ({
+    directorLoader: <span class="kw">new</span> <span class="ty">DataLoader</span>(batchDirectors),   <span class="cm">// fresh per request</span>
+  }),
+})</code></pre>
+    </div>
+
+    <p>With this setup, 100 calls to <code>directorLoader.load(id)</code> within a single request coalesce into one SQL query with 100 IDs. If the same director ID appears multiple times (several movies by the same director), the memoization layer returns the cached value without touching the database at all. The result: 1 query for movies + 1 batched query for all distinct directors, regardless of result set size.</p>
+
+    <h2>Caching: GraphQL's Hardest Problem</h2>
+    <p>REST inherits decades of HTTP caching infrastructure for free. A <code>GET /movies/123</code> response can be cached by browsers, proxies, and CDNs keyed on the URL; <code>Cache-Control</code>, <code>ETag</code>, and <code>Last-Modified</code> headers wire everything up automatically. GraphQL throws this out because almost all GraphQL requests go over <code>POST</code> to a single endpoint — HTTP caches treat all POSTs as uncacheable by default. This is not a trivial problem; CDN caching alone can absorb 90%+ of read traffic on a well-designed REST API.</p>
+
+    <h3>Layer 1 — Application-Level Caching</h3>
+    <p>The most portable solution is to cache at the data layer, not the HTTP layer. DataLoader already provides per-request memoization (described above). For cross-request caching, resolvers can check Redis before hitting the database. This is the same cache-aside pattern used in REST, just shifted into the resolver rather than the controller.</p>
+    <p>A more GraphQL-native approach is <strong>response field-level caching</strong> using cache hints. Apollo Server's <code>@cacheControl</code> directive lets you annotate individual types or fields with a max-age and scope (<code>PUBLIC</code> or <code>PRIVATE</code>). The server computes the minimum cache hint across all resolved fields and emits a <code>Cache-Control</code> header accordingly — allowing shared caches to cache the response if all fields are public and have a non-zero max-age.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — cache hints</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Movie</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">3600</span>, scope: PUBLIC) {
+  id:       <span class="ty">ID!</span>
+  title:    <span class="ty">String!</span>
+  director: <span class="ty">Director!</span>
+}
+
+<span class="kw">type </span><span class="ty">Director</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">86400</span>, scope: PUBLIC) {
+  id:   <span class="ty">ID!</span>
+  name: <span class="ty">String!</span>
+}
+
+<span class="kw">type </span><span class="ty">Viewer</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">0</span>, scope: PRIVATE) {
+  <span class="cm">// user-specific — never share across users</span>
+  watchlist: [<span class="ty">Movie!</span>]!
+}</code></pre>
+    </div>
+
+    <h3>Layer 2 — Persisted Queries</h3>
+    <p><strong>Automatic Persisted Queries (APQ)</strong> solve two problems simultaneously: they convert POST requests into GET requests (unlocking HTTP caches and CDNs) and they shrink request bodies by sending a query hash instead of the full query string. The protocol works in two steps. The client first sends a <code>GET</code> with just the hash; if the server has seen it before, it executes the cached query. If not, the server returns a <code>PersistedQueryNotFound</code> error, the client retries as a <code>POST</code> with the full query body, and the server stores the query keyed by its hash for future requests.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP — APQ flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Step 1: client sends hash only (GET = cacheable by CDN)</span>
+<span class="kw">GET</span> <span class="str">/graphql?extensions={"persistedQuery":{"version":1,"sha256Hash":"abc123"}}</span>
+
+<span class="cm"># Step 2: server returns error if hash not found</span>
+{ <span class="str">"errors"</span>: [{ <span class="str">"message"</span>: <span class="str">"PersistedQueryNotFound"</span> }] }
+
+<span class="cm"># Step 3: client retries with full query body (POST)</span>
+<span class="kw">POST</span> <span class="str">/graphql</span>
+{ <span class="str">"query"</span>: <span class="str">"{ movies { title director { name } } }"</span>,
+  <span class="str">"extensions"</span>: { <span class="str">"persistedQuery"</span>: { <span class="str">"sha256Hash"</span>: <span class="str">"abc123"</span> } } }
+
+<span class="cm"># Subsequent requests: GET with hash → CDN cache hit</span></code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">CDN strategy</div>
+      <p>With APQ + <code>@cacheControl</code> hints, fully public queries (no user-specific data) can be served from a CDN edge node just like REST. The catch: a single query mixing public movie data with the viewer's watchlist gets the worst cache hint (maxAge 0, PRIVATE) and bypasses the CDN entirely. Design queries to separate public from private data, or split them into two requests.</p>
+    </div>
+
+    <h2>Schema Design Best Practices</h2>
+    <p>A GraphQL schema is a public contract — changing it breaks clients. Thoughtful schema design prevents painful migrations later and makes the API intuitive to use.</p>
+
+    <h3>Nullable by Default vs Non-Null by Default</h3>
+    <p>In GraphQL SDL, every field is nullable by default; the <code>!</code> suffix marks a field as non-null. The common mistake is over-using <code>!</code> for "performance" or ergonomics and then discovering that a missing nested resource forces you to return <code>null</code> all the way up the tree, making fields you promised non-null into a runtime error. A principled rule: mark a field non-null only if the server can <em>always</em> provide it — primary keys, timestamps that are always set, fields on a freshly created object. Nullable fields signal "this might legitimately be absent."</p>
+
+    <h3>Design for the Client, Not the Database</h3>
+    <p>GraphQL schemas should reflect the product's domain model, not a 1:1 projection of the database schema. If the database has separate <code>first_name</code> and <code>last_name</code> columns but every client concatenates them, expose a single <code>fullName</code> field in the schema and do the concatenation in the resolver. This keeps business logic in one place and prevents clients from reinventing the same transformation independently.</p>
+
+    <h3>Input Types for Mutations</h3>
+    <p>Always wrap mutation arguments in a dedicated <code>input</code> type rather than listing arguments inline. This allows you to add fields to the input type over time without changing the mutation signature, keeps argument lists from becoming unwieldy, and makes the schema self-documenting about what a mutation expects.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — mutation inputs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Avoid: inline args break when you need to add fields</span>
+<span class="kw">type </span><span class="ty">Mutation</span> {
+  <span class="fn">createMovie</span>(title: <span class="ty">String!</span>, releaseYear: <span class="ty">Int!</span>): <span class="ty">Movie</span>
+}
+
+<span class="cm"># Prefer: named input type — additive changes are non-breaking</span>
+<span class="kw">input </span><span class="ty">CreateMovieInput</span> {
+  title:       <span class="ty">String!</span>
+  releaseYear: <span class="ty">Int!</span>
+  tagline:     <span class="ty">String</span>    <span class="cm"># added later — no breaking change</span>
+}
+
+<span class="kw">type </span><span class="ty">Mutation</span> {
+  <span class="fn">createMovie</span>(input: <span class="ty">CreateMovieInput!</span>): <span class="ty">CreateMoviePayload!</span>
+}
+
+<span class="kw">type </span><span class="ty">CreateMoviePayload</span> {
+  movie:  <span class="ty">Movie</span>
+  errors: [<span class="ty">UserError!</span>]  <span class="cm"># domain errors in the payload, not HTTP errors</span>
+}</code></pre>
+    </div>
+
+    <h3>Return Payload Types for Mutations</h3>
+    <p>The pattern above also shows returning a <em>payload type</em> rather than the entity directly. This lets mutations return both the result entity and any user-facing validation errors in a single response, without abusing the HTTP error layer. It also leaves room to add ancillary data (affected counts, side-effected objects) without a breaking change.</p>
+
+    <h2>Pagination: Cursor-Based and the Relay Connection Spec</h2>
+    <p>REST typically paginates via <code>?page=2&amp;limit=20</code> (offset pagination) or a <code>next_cursor</code> field in the response. Offset pagination has a well-known flaw: if items are inserted or deleted between pages, you'll see duplicates or skip items. <strong>Cursor-based pagination</strong> — using an opaque pointer to a position in the result set — is stable regardless of mutations between requests.</p>
+    <p>GraphQL codified this into the <strong>Relay Connection Specification</strong>, which has become an unofficial standard across the ecosystem. The connection pattern wraps a list of nodes in a typed envelope that carries pagination metadata alongside the data.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — Relay connection</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
+  <span class="fn">movies</span>(first: <span class="ty">Int</span>, after: <span class="ty">String</span>, last: <span class="ty">Int</span>, before: <span class="ty">String</span>): <span class="ty">MovieConnection!</span>
+}
+
+<span class="kw">type </span><span class="ty">MovieConnection</span> {
+  edges:    [<span class="ty">MovieEdge</span>]
+  pageInfo: <span class="ty">PageInfo!</span>
+}
+
+<span class="kw">type </span><span class="ty">MovieEdge</span> {
+  node:   <span class="ty">Movie!</span>
+  cursor: <span class="ty">String!</span>   <span class="cm"># opaque base64 position token</span>
+}
+
+<span class="kw">type </span><span class="ty">PageInfo</span> {
+  hasNextPage:     <span class="ty">Boolean!</span>
+  hasPreviousPage: <span class="ty">Boolean!</span>
+  startCursor:     <span class="ty">String</span>
+  endCursor:       <span class="ty">String</span>
+}</code></pre>
+    </div>
+
+    <p>A client fetching the next page passes <code>after: pageInfo.endCursor</code>. The server decodes the cursor (typically a base64-encoded row ID or timestamp), applies it as a <code>WHERE id &gt; :cursor</code> clause, and returns the next page. This is stable regardless of concurrent inserts. The <code>edges</code> wrapper exists to carry per-edge metadata (e.g., when a user followed a user-to-user relationship edge), which is why the data is not directly a flat array of nodes.</p>
+
+    <div class="callout">
+      <div class="callout-label">offset vs cursor tradeoff</div>
+      <p>Offset pagination supports random-access page jumps (jump to page 50), which cursor pagination cannot. If your UI has numbered pages or needs a "go to page N" feature, offset pagination is pragmatically fine — just accept that results may shift between pages. Cursor pagination is the correct default for infinite-scroll feeds, timelines, and any list where stability matters more than random access.</p>
+    </div>
+
+    <h2>Error Handling and Partial Responses</h2>
+    <p>GraphQL's error model is fundamentally different from REST's. In REST, an error typically produces a non-200 status code and the response body is either empty or a single error object — the entire request either succeeds or fails. GraphQL almost always returns HTTP 200, even when resolver errors occur. Instead, errors appear in a top-level <code>errors</code> array alongside the <code>data</code> object. This enables <strong>partial responses</strong>: if one field's resolver fails but others succeed, the client receives all the data that could be resolved alongside error details for the part that failed.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL — partial response</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"data"</span>: {
+    <span class="str">"movies"</span>: [
+      { <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>, <span class="str">"director"</span>: { <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span> } },
+      { <span class="str">"title"</span>: <span class="str">"Dune Part Two"</span>, <span class="str">"director"</span>: <span class="kw">null</span> }  <span class="cm">// resolver failed</span>
+    ]
+  },
+  <span class="str">"errors"</span>: [
+    {
+      <span class="str">"message"</span>: <span class="str">"Director not found"</span>,
+      <span class="str">"locations"</span>: [{ <span class="str">"line"</span>: <span class="num">4</span>, <span class="str">"column"</span>: <span class="num">5</span> }],
+      <span class="str">"path"</span>: [<span class="str">"movies"</span>, <span class="num">1</span>, <span class="str">"director"</span>],
+      <span class="str">"extensions"</span>: { <span class="str">"code"</span>: <span class="str">"NOT_FOUND"</span> }
+    }
+  ]
+}</code></pre>
+    </div>
+
+    <p>The <code>path</code> field pinpoints exactly which field in which list item failed. The <code>extensions</code> object is the standard place for machine-readable error codes that clients can branch on — never put sensitive stack traces in <code>extensions</code> in production. The partial-response model is a double-edged sword: clients receive useful partial data, but they must always check the <code>errors</code> array even on a 200 response, which is counterintuitive to teams coming from REST.</p>
+
+    <h3>User Errors vs System Errors</h3>
+    <p>A useful pattern in production schemas is to distinguish between <em>user errors</em> (input validation failures, "email already taken") and <em>system errors</em> (database unavailable, unhandled exception). System errors surface in the top-level <code>errors</code> array. User errors should be modeled as domain types within the mutation's payload — they are expected outcomes, not exceptions, so encoding them in the schema makes them self-documenting and type-safe for client codegen.</p>
+
+    <h2>Subscriptions: Real-Time GraphQL</h2>
+    <p>REST has no built-in mechanism for server-pushed updates; teams bolt on WebSockets, SSE, or long-polling as out-of-band protocols. GraphQL has a first-class <code>Subscription</code> operation type that integrates real-time events into the same schema and query language as reads and writes.</p>
+    <p>A subscription opens a persistent connection (typically over WebSocket using the <code>graphql-ws</code> protocol) and streams a new result whenever the subscribed event occurs. The client writes a subscription document that looks exactly like a query — selecting only the fields it needs — and the server sends only those fields with each event.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL — subscription definition and client usage</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Schema</span>
+<span class="kw">type </span><span class="ty">Subscription</span> {
+  <span class="fn">orderStatusChanged</span>(orderId: <span class="ty">ID!</span>): <span class="ty">Order!</span>
+  <span class="fn">newMessage</span>(conversationId: <span class="ty">ID!</span>): <span class="ty">Message!</span>
+}
+
+<span class="cm"># Client subscribes — receives a stream of Order updates</span>
+<span class="kw">subscription </span><span class="ty">TrackOrder</span>($orderId: <span class="ty">ID!</span>) {
+  <span class="fn">orderStatusChanged</span>(orderId: $orderId) {
+    id
+    status
+    updatedAt
+    estimatedDelivery
+  }
+}</code></pre>
+    </div>
+
+    <p>On the server, subscriptions are backed by a pub-sub engine. Apollo Server supports an in-process <code>PubSub</code> for development and Redis- or Kafka-backed pub-sub for production. When a mutation changes order status, it publishes to a topic keyed by <code>orderId</code>; the subscription resolver listens to that topic and filters incoming events by the subscribed ID before streaming the result to the connected client.</p>
+    <p>Subscriptions carry operational overhead: each active subscriber holds a WebSocket connection, and a server restart disconnects all clients. In production, you typically place a stateless WebSocket gateway (e.g., AWS API Gateway WebSockets, or a dedicated subscription server) in front of stateless application servers, using Redis pub-sub as the shared event bus.</p>
+
+    <h2>Federation and Schema Stitching</h2>
+    <p>At scale — especially in a microservices organization — a single monolithic GraphQL schema becomes a coordination bottleneck. Every team that wants to expose data must submit a PR to the same schema file. <strong>Schema federation</strong> solves this by letting each service own its own GraphQL subgraph while a central <strong>gateway</strong> composes them into a unified supergraph that clients query as a single API.</p>
+
+    <h3>Apollo Federation</h3>
+    <p>Apollo Federation (the dominant implementation) uses SDL directives to annotate how types are shared across subgraphs. A type can be <em>defined</em> in one subgraph and <em>extended</em> in another. The gateway inspects the query plan, dispatches subqueries to the appropriate subgraphs in parallel where possible, and stitches the results together before responding to the client.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — Federation subgraphs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># movies-subgraph: defines Movie, owns it</span>
+<span class="kw">type </span><span class="ty">Movie</span> <span class="kw">@key</span>(fields: <span class="str">"id"</span>) {
+  id:       <span class="ty">ID!</span>
+  title:    <span class="ty">String!</span>
+  released: <span class="ty">Int!</span>
+}
+
+<span class="cm"># reviews-subgraph: extends Movie with reviews field</span>
+<span class="kw">extend type </span><span class="ty">Movie</span> <span class="kw">@key</span>(fields: <span class="str">"id"</span>) {
+  id:      <span class="ty">ID!</span> <span class="kw">@external</span>   <span class="cm"># owned by movies-subgraph</span>
+  reviews: [<span class="ty">Review!</span>]!      <span class="cm"># contributed by reviews-subgraph</span>
+}
+
+<span class="kw">type </span><span class="ty">Review</span> {
+  id:      <span class="ty">ID!</span>
+  rating:  <span class="ty">Int!</span>
+  comment: <span class="ty">String</span>
+}</code></pre>
+    </div>
+
+    <p>When a client queries <code>movie { title reviews { rating } }</code>, the gateway sends <code>title</code> to the movies-subgraph and <code>reviews</code> to the reviews-subgraph (using the movie's <code>id</code> as the key to join), then merges the results. From the client's perspective there is one API. Each team deploys their subgraph independently — adding a field to <code>Review</code> requires no coordination with the movies team.</p>
+
+    <h3>Schema Stitching vs Federation</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th class="col-graphql">Federation</th><th class="col-rest">Schema Stitching</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Type ownership</td><td>Per-subgraph, explicit with <code>@key</code></td><td>Merged at gateway with custom transforms</td></tr>
+        <tr><td>Runtime coupling</td><td>Gateway fetches live subgraph SDL on startup</td><td>Schemas stitched at build time or startup</td></tr>
+        <tr><td>Team autonomy</td><td>High — each subgraph deploys independently</td><td>Medium — merge logic lives centrally</td></tr>
+        <tr><td>Ecosystem support</td><td>Apollo Router, GraphOS, strong tooling</td><td>graphql-tools; less opinionated</td></tr>
+        <tr><td>Query planning</td><td>Automatic distributed query planning</td><td>Manual link/delegate definitions</td></tr>
+        <tr><td>Best for</td><td>Large orgs with many independent teams</td><td>Small-scale schema composition, gradual migration</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Security: Limiting Query Complexity</h2>
+    <p>GraphQL's flexibility is its attack surface. A malicious — or merely careless — client can send a single query that generates an exponentially expensive execution on the server. Unlike REST, where the server controls the cost of every endpoint, in GraphQL the client composes the query, and a deeply nested or cyclically structured query can trigger millions of resolver calls.</p>
+
+    <h3>Query Depth Limiting</h3>
+    <p>The simplest protection is capping how deeply nested a query can be. A depth of 10 is generous for virtually any real product use case; anything deeper is almost certainly a bug or an attack. Depth limiting is cheap to enforce — it requires only a traversal of the query AST before execution begins, adding negligible overhead.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — graphql-depth-limit</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> depthLimit <span class="kw">from</span> <span class="str">'graphql-depth-limit'</span>
+
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  schema,
+  validationRules: [
+    <span class="fn">depthLimit</span>(<span class="num">10</span>),  <span class="cm">// reject queries deeper than 10 levels</span>
+  ],
+})</code></pre>
+    </div>
+
+    <h3>Query Complexity Analysis</h3>
+    <p>Depth alone is insufficient — a wide query (requesting 1000 fields at depth 2) can be just as expensive as a deep one. <strong>Complexity analysis</strong> assigns a numeric cost to each field and rejects queries whose total cost exceeds a budget. Field costs can be static (every field costs 1) or dynamic (a list field costs proportional to its <code>first</code> argument). This lets you say "this API will execute queries up to cost 1000 per request" — effectively a budget that encompasses both depth and breadth.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — graphql-query-complexity</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { createComplexityLimitRule } <span class="kw">from</span> <span class="str">'graphql-query-complexity'</span>
+
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  schema,
+  validationRules: [
+    <span class="fn">createComplexityLimitRule</span>(<span class="num">1000</span>, {
+      scalarCost: <span class="num">1</span>,      <span class="cm">// leaf fields cost 1</span>
+      objectCost: <span class="num">2</span>,      <span class="cm">// object fields cost 2</span>
+      listFactor: <span class="num">10</span>,     <span class="cm">// list multiplier — first:50 costs 50×child</span>
+      onCost: (cost) => {
+        metrics.<span class="fn">histogram</span>(<span class="str">'graphql.query_cost'</span>, cost)
+      },
+    }),
+  ],
+})</code></pre>
+    </div>
+
+    <h3>Rate Limiting and Persisted Query Allowlisting</h3>
+    <p>Beyond per-query analysis, apply rate limiting at the API gateway level — per-IP and per-authenticated-user token buckets are the standard approach. In production APIs where you control all clients (a first-party mobile app or SPA), <strong>persisted query allowlisting</strong> is the strongest security posture: the server only executes queries whose hash is in an approved registry; arbitrary query strings are rejected entirely. This effectively turns GraphQL into a typed REST API during production while retaining full flexibility during development.</p>
+
+    <div class="callout">
+      <div class="callout-label">security checklist</div>
+      <p>Disable introspection in production (it maps your entire schema for attackers). Set a query depth limit (10 is a sane default). Set a complexity budget. Apply per-user rate limits at the gateway. Use persisted query allowlisting if clients are first-party. Never trust client-supplied field aliases to bypass resolver authorization — check auth in every resolver that touches sensitive data, not just at the root.</p>
+    </div>
+
+    <h2>Versioning Philosophy</h2>
+    <p>REST versioning is typically handled at the URL level (<code>/api/v1/</code>, <code>/api/v2/</code>), with the previous version kept alive until clients migrate. This is explicit but creates maintenance overhead: two versions of every endpoint run concurrently, bugs must be fixed in both, and deprecation is a coordination exercise across all consumers.</p>
+    <p>GraphQL takes a different philosophical stance: <strong>schemas should evolve without versioning</strong>. The SDL's deprecation mechanism lets you mark fields with <code>@deprecated(reason: "Use newField instead")</code> without removing them. Clients that don't request old fields are unaffected; clients on old fields see the deprecation warning in introspection and tooling. New fields are additive and non-breaking. The schema evolves continuously rather than in versioned snapshots.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — deprecation</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
+  id:           <span class="ty">ID!</span>
+  title:        <span class="ty">String!</span>
+  releaseYear:  <span class="ty">Int!</span>
+  <span class="cm"># old field kept alive, clients nudged to migrate</span>
+  year: <span class="ty">Int</span> <span class="kw">@deprecated</span>(reason: <span class="str">"Use releaseYear instead"</span>)
+}</code></pre>
+    </div>
+
+    <p>The practical limit of this philosophy is <em>removing</em> types or fields — GraphQL has no safe way to do that without potentially breaking existing clients. In practice, fields accumulate in mature schemas. Discipline requires tracking which clients request which fields (Apollo Studio's field usage analytics does this) and running a grace period before removal. The end state — a schema full of deprecated fields no one uses — is the GraphQL equivalent of a REST API that never retires old versions.</p>
+
+    <h2>REST vs GraphQL vs gRPC — The Decision Matrix</h2>
+    <p>Real systems rarely live purely in one paradigm. Understanding when each is the right tool is what separates senior engineers from those who reach for GraphQL by default.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Criterion</th><th class="col-graphql">GraphQL</th><th class="col-rest">REST</th><th style="color:var(--accent)">gRPC</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Primary transport</td>
+          <td>HTTP/1.1 (WebSocket for subscriptions)</td>
+          <td>HTTP/1.1 or HTTP/2</td>
+          <td>HTTP/2 (binary frames)</td>
+        </tr>
+        <tr>
+          <td>Data format</td>
+          <td>JSON</td>
+          <td>JSON (or XML, form data)</td>
+          <td>Protocol Buffers (binary)</td>
+        </tr>
+        <tr>
+          <td>Schema / contract</td>
+          <td>SDL — introspectable at runtime</td>
+          <td>OpenAPI/Swagger — optional, external</td>
+          <td>.proto files — strict, code-generated</td>
+        </tr>
+        <tr>
+          <td>Performance</td>
+          <td>Medium — JSON parsing overhead; single round trip for complex queries</td>
+          <td>Medium — JSON; multiple round trips for nested data</td>
+          <td>High — binary encoding, multiplexed streams, ~5–10× smaller payload</td>
+        </tr>
+        <tr>
+          <td>HTTP caching</td>
+          <td>Difficult (POST by default; requires APQ + CDN tricks)</td>
+          <td>Native (GET responses cache by URL)</td>
+          <td>None — not designed for HTTP caching</td>
+        </tr>
+        <tr>
+          <td>Streaming / real-time</td>
+          <td>Subscriptions (WebSocket)</td>
+          <td>SSE / long-polling / WebSocket (bolted on)</td>
+          <td>Native bidirectional streaming</td>
+        </tr>
+        <tr>
+          <td>Browser support</td>
+          <td>Full — works in any browser</td>
+          <td>Full — the native browser API</td>
+          <td>Limited — requires grpc-web proxy</td>
+        </tr>
+        <tr>
+          <td>Over/under-fetching</td>
+          <td>Eliminated — client selects fields</td>
+          <td>Common — server decides response shape</td>
+          <td>None — generated clients match proto exactly</td>
+        </tr>
+        <tr>
+          <td>Best for</td>
+          <td>Complex frontends, mobile with varied field needs, BFF (Backend for Frontend)</td>
+          <td>Public APIs, simple CRUD, HTTP cache-critical reads, file uploads</td>
+          <td>Internal microservice-to-microservice calls, high-throughput, polyglot backends</td>
+        </tr>
+        <tr>
+          <td>Operational complexity</td>
+          <td>High — schema federation, DataLoader, persisted queries, N+1 vigilance</td>
+          <td>Low — well-understood, vast tooling ecosystem</td>
+          <td>Medium — proto management, breaking change discipline across services</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Practical Heuristics</h3>
+    <ul>
+      <li><strong>Use GraphQL</strong> when you have multiple client types (web, iOS, Android, partner integrations) with meaningfully different data needs, or when a product page requires data from many resources in a single low-latency request. The canonical use case is a BFF (Backend for Frontend) layer that aggregates multiple microservices into a client-optimized graph.</li>
+      <li><strong>Use REST</strong> for public APIs where consumers are unknown and HTTP caching is valuable; for simple CRUD services with predictable access patterns; for file uploads or responses where content negotiation matters; and for teams who want the least operational overhead and the widest ecosystem of middleware.</li>
+      <li><strong>Use gRPC</strong> for internal service-to-service communication where performance is critical, payload size matters, you need bidirectional streaming, or you want strict contract enforcement enforced at compile time. gRPC is rarely exposed directly to browsers — a translation layer (gRPC-Gateway, gRPC-web, or a REST/GraphQL facade) sits in front.</li>
+      <li><strong>Hybrid architectures are normal</strong>: a GraphQL API gateway facing clients, gRPC between internal microservices, and REST for third-party webhooks and public integrations is a common and sensible combination. Pick the protocol whose tradeoffs fit the specific communication channel, not the one that fits the whole system.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>When asked "GraphQL or REST?" in a system design interview, never pick one unconditionally. State what you're optimizing for: if the client has variable data needs and you control both sides, GraphQL. If it's a public API or you need HTTP caching to scale reads cheaply, REST. If it's internal service-to-service with latency SLOs, gRPC. Demonstrating awareness of all three and their tradeoffs is what earns senior-level credit.</p>
+    </div>
+
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
       <p><strong>GraphQL vs REST — when would you pick GraphQL?</strong> When clients have complex, varied data needs (e.g., a mobile app and web app needing different fields from the same data) — GraphQL eliminates over-fetching and multiple round trips with a single typed query.<br>
-      <strong>What is the N+1 problem in GraphQL?</strong> A query for a list of items where each item triggers a separate resolver call — fetching 100 movies each fires a separate DB query for the director. The fix is DataLoader (batching + caching resolver calls within a request).<br>
-      <strong>REST advantage over GraphQL?</strong> HTTP caching is straightforward with REST (GET requests cache by URL); GraphQL uses POST by default, making HTTP-level caching harder. REST is also simpler for public APIs with stable, predictable consumers.</p>
+      <strong>What is the N+1 problem in GraphQL?</strong> A query for a list of items where each item triggers a separate resolver call — fetching 100 movies each fires a separate DB query for the director. The fix is DataLoader: it batches all <code>.load(id)</code> calls within a single event-loop tick into one batch function, then memoizes results for the request's lifetime, collapsing N queries into 1.<br>
+      <strong>REST advantage over GraphQL?</strong> HTTP caching is straightforward with REST (GET requests cache by URL); GraphQL uses POST by default, making HTTP-level caching harder. REST is also simpler for public APIs with stable, predictable consumers.<br>
+      <strong>How do you handle caching in GraphQL?</strong> Three layers: DataLoader for per-request memoization; Redis in resolvers for cross-request caching; Automatic Persisted Queries (APQ) to convert POST to GET so CDNs can cache public queries. Annotate types with <code>@cacheControl</code> to set max-age per field.<br>
+      <strong>How do you prevent a malicious client from sending a query that DoS's your GraphQL server?</strong> Depth limiting (reject queries deeper than N levels), complexity analysis (assign a numeric cost per field, reject over budget), rate limiting per user at the gateway, and in production: persisted query allowlisting so only known query hashes are executed.<br>
+      <strong>When would you use gRPC instead of GraphQL?</strong> Internal microservice communication where binary encoding, bidirectional streaming, and strict proto contracts matter more than developer ergonomics or browser compatibility.</p>
     </div>
 
     <div class="article-nav">
@@ -383,7 +919,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

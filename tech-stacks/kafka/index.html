@@ -147,7 +147,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -166,7 +166,7 @@
     <div class="article-meta">
       <span>Mar 31, 2023</span>
       <span class="separator">·</span>
-      <span>14 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
@@ -314,16 +314,367 @@ kafka-console-consumer \
   --from-beginning</code></pre>
     </div>
 
+    <h2>Consumer Groups and Rebalancing</h2>
+    <p>A <strong>consumer group</strong> is the unit of parallel consumption in Kafka. Every consumer instance in a group is assigned a disjoint subset of partitions, and the group together consumes the full topic. Add a sixth consumer to a five-partition topic and that consumer will be idle — there are no spare partitions to assign. The constraint is deliberately simple: it means each partition has exactly one authoritative offset per group, and progress is never ambiguous.</p>
+
+    <h3>The Rebalance Protocol</h3>
+    <p>A rebalance is triggered whenever group membership changes: a new consumer joins, an existing one crashes or exceeds <code>session.timeout.ms</code>, a new partition is added to the topic, or an application calls <code>unsubscribe()</code>. During a rebalance, the <strong>Group Coordinator</strong> (a broker elected for each consumer group) stops all consumption, revokes partition assignments, then redistributes them. The cost is a pause — sometimes several seconds — during which no messages are processed. Minimizing rebalance frequency and duration is therefore a major operational concern.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Tune these to reduce unnecessary rebalances</span>
+<span class="fn">session.timeout.ms</span>=<span class="num">45000</span>        <span class="cm"># how long before a silent consumer is declared dead</span>
+<span class="fn">heartbeat.interval.ms</span>=<span class="num">15000</span>     <span class="cm"># must be &lt; session.timeout.ms / 3</span>
+<span class="fn">max.poll.interval.ms</span>=<span class="num">300000</span>    <span class="cm"># max time between poll() calls before consumer is dropped</span>
+<span class="fn">partition.assignment.strategy</span>=<span class="str">org.apache.kafka.clients.consumer.CooperativeStickyAssignor</span></code></pre>
+    </div>
+
+    <h3>Eager vs. Cooperative Rebalancing</h3>
+    <p>The classic <strong>eager</strong> rebalance (used by <code>RangeAssignor</code> and <code>RoundRobinAssignor</code>) revokes <em>all</em> partition assignments before any redistribution begins — a global stop-the-world pause. Kafka 2.4+ introduced the <strong>cooperative sticky rebalance protocol</strong> (<code>CooperativeStickyAssignor</code>): consumers only revoke partitions that need to move, while keeping the ones they retain. This typically eliminates the pause entirely for consumers not involved in the reassignment, and keeps partition assignments "sticky" to minimize unnecessary state migration.</p>
+
+    <div class="callout">
+      <div class="callout-label">pitfall</div>
+      <p><code>max.poll.interval.ms</code> is the silent killer. If your <code>poll()</code> loop takes longer than this (e.g., a slow database write downstream of message processing), the broker assumes the consumer is dead and triggers a rebalance. The fix: either increase the timeout or, better, move slow work to a separate thread and keep the poll loop tight.</p>
+    </div>
+
+    <h3>Static Group Membership</h3>
+    <p>Kafka 2.3+ added <code>group.instance.id</code>, which gives a consumer a persistent identity across restarts. With static membership, a consumer that crashes and rejoins within <code>session.timeout.ms</code> reclaims its old partitions without a rebalance — an important optimization for container workloads where pods restart frequently during deployments.</p>
+
+    <h2>Log Compaction</h2>
+    <p>Retention in Kafka comes in two flavors. The default <strong>delete</strong> policy simply removes segments older than <code>log.retention.hours</code> (or exceeding a size threshold). <strong>Log compaction</strong> is fundamentally different: instead of discarding messages by time, it retains only the <em>most recent message for each key</em>, creating a compacted log that behaves like an eventually-consistent key-value store.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Create a compacted topic for a user-profile changelog</span>
+kafka-topics \
+  --bootstrap-server localhost:9092 \
+  --topic user-profiles \
+  --create \
+  --partitions <span class="num">12</span> \
+  --replication-factor <span class="num">3</span> \
+  --config <span class="fn">cleanup.policy</span>=<span class="str">compact</span> \
+  --config <span class="fn">min.cleanable.dirty.ratio</span>=<span class="num">0.1</span> \
+  --config <span class="fn">segment.ms</span>=<span class="num">86400000</span>    <span class="cm"># roll a new segment daily</span></code></pre>
+    </div>
+
+    <h3>How the Log Cleaner Works</h3>
+    <p>The broker's background <strong>log cleaner</strong> threads scan the "dirty" (recently written) portion of each partition. They build an offset map in memory (key → latest offset), then copy only the records from the dirty portion that are the latest for their key into a new "clean" segment, discarding older duplicates. The result: the compacted log grows only with distinct keys, not with time.</p>
+
+    <p>A special <strong>tombstone message</strong> — a record with a non-null key and a <code>null</code> value — signals deletion. After compaction, even the tombstone is eventually removed (after <code>delete.retention.ms</code>), so consumers that read the compacted log see the key fully erased.</p>
+
+    <div class="callout">
+      <div class="callout-label">use case</div>
+      <p>Log compaction powers <strong>Kafka Streams' state stores</strong> and <strong>changelog topics</strong>. When a KTable is rebuilt after a crash, the application replays only the compacted log — not the full history — to reconstruct current state. Database CDC topics (Debezium) also use compaction so downstream consumers can bootstrap from the latest row image per primary key.</p>
+    </div>
+
+    <h2>KRaft — Kafka Without ZooKeeper</h2>
+    <p>ZooKeeper served Kafka for years as its cluster coordination layer: controller election, broker membership, topic metadata. But it introduced a separate operational dependency, a separate scaling concern, and a bottleneck during cluster startup. <strong>KRaft</strong> (Kafka Raft Metadata mode), introduced in Kafka 2.8 and production-ready from Kafka 3.3, replaces ZooKeeper entirely with Kafka's own built-in Raft consensus implementation.</p>
+
+    <h3>Architecture Shift</h3>
+    <p>Under KRaft, a subset of brokers are designated <strong>controllers</strong>. They run a dedicated metadata partition (topic <code>__cluster_metadata</code>) replicated via the Raft protocol. The active controller is the Raft leader. All cluster metadata — broker registrations, topic configurations, partition leadership — lives in this single log rather than spread across ZooKeeper znodes.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># KRaft server.properties (combined broker+controller node)</span>
+<span class="fn">process.roles</span>=<span class="str">broker,controller</span>
+<span class="fn">node.id</span>=<span class="num">1</span>
+<span class="fn">controller.quorum.voters</span>=<span class="str">1@kafka1:9093,2@kafka2:9093,3@kafka3:9093</span>
+<span class="fn">listeners</span>=<span class="str">PLAINTEXT://:9092,CONTROLLER://:9093</span>
+<span class="fn">inter.broker.listener.name</span>=<span class="str">PLAINTEXT</span>
+<span class="fn">controller.listener.names</span>=<span class="str">CONTROLLER</span>
+<span class="fn">log.dirs</span>=<span class="str">/var/lib/kafka/data</span></code></pre>
+    </div>
+
+    <h3>KRaft Benefits</h3>
+    <ul>
+      <li><strong>Single operational footprint</strong> — one system to deploy, monitor, and upgrade instead of two.</li>
+      <li><strong>Faster startup and leader election</strong> — metadata is already in Kafka's log; no ZooKeeper epoch handshake. Cluster restart goes from minutes to seconds in large clusters.</li>
+      <li><strong>Higher partition counts</strong> — ZooKeeper struggled beyond ~200K partitions; KRaft targets millions. The metadata log scales with Kafka's own storage, not ZooKeeper's memory-resident znodes.</li>
+      <li><strong>Simplified security</strong> — one set of TLS/SASL configurations instead of separate Kafka and ZooKeeper configs.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">migration path</div>
+      <p>Kafka 3.5+ supports a <strong>migration mode</strong> that lets you convert an existing ZooKeeper-based cluster to KRaft without downtime: run both coordinators simultaneously during the transition, then decommission ZooKeeper once all metadata is in KRaft. Never skip this dual-write phase in production.</p>
+    </div>
+
+    <h2>Performance Tuning Parameters</h2>
+    <p>Kafka's defaults are conservative. Real-world tuning targets three dimensions: <strong>producer throughput</strong>, <strong>consumer lag</strong>, and <strong>durability guarantees</strong>. The following parameters are the levers that matter most.</p>
+
+    <h3>Producer Tuning</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Throughput-optimized producer</span>
+<span class="fn">acks</span>=<span class="str">all</span>                   <span class="cm"># durable writes to all ISR replicas</span>
+<span class="fn">enable.idempotence</span>=<span class="str">true</span>    <span class="cm"># deduplicate retries, exactly-once within producer session</span>
+<span class="fn">linger.ms</span>=<span class="num">5</span>               <span class="cm"># wait up to 5ms to batch records; 0 = send immediately</span>
+<span class="fn">batch.size</span>=<span class="num">65536</span>          <span class="cm"># 64 KB batch; larger = fewer round trips, more latency</span>
+<span class="fn">compression.type</span>=<span class="str">lz4</span>     <span class="cm"># lz4 for best CPU/ratio tradeoff; snappy also common</span>
+<span class="fn">buffer.memory</span>=<span class="num">67108864</span>   <span class="cm"># 64 MB in-memory buffer; increase for high-volume producers</span>
+<span class="fn">max.in.flight.requests.per.connection</span>=<span class="num">5</span>  <span class="cm"># &gt;1 is fine with idempotence enabled</span></code></pre>
+    </div>
+
+    <h3>Consumer Tuning</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="fn">fetch.min.bytes</span>=<span class="num">1024</span>         <span class="cm"># wait until 1 KB available; reduces fetch round trips</span>
+<span class="fn">fetch.max.wait.ms</span>=<span class="num">500</span>        <span class="cm"># max wait for fetch.min.bytes to be met</span>
+<span class="fn">max.poll.records</span>=<span class="num">500</span>         <span class="cm"># records per poll(); reduce if processing is slow</span>
+<span class="fn">auto.offset.reset</span>=<span class="str">earliest</span>  <span class="cm"># on first run: start from oldest; latest = tail only</span>
+<span class="fn">enable.auto.commit</span>=<span class="str">false</span>    <span class="cm"># manual commit for exactly-once processing semantics</span></code></pre>
+    </div>
+
+    <h3>Broker and Topic Tuning</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">properties</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># broker-level</span>
+<span class="fn">num.io.threads</span>=<span class="num">8</span>             <span class="cm"># number of I/O threads; set to disk count</span>
+<span class="fn">num.network.threads</span>=<span class="num">3</span>       <span class="cm"># network request threads</span>
+<span class="fn">socket.send.buffer.bytes</span>=<span class="num">102400</span>
+<span class="fn">socket.receive.buffer.bytes</span>=<span class="num">102400</span>
+<span class="fn">log.flush.interval.messages</span>=<span class="num">10000</span>  <span class="cm"># fsync every 10K msgs; leave to OS for best perf</span>
+
+<span class="cm"># topic-level overrides via kafka-configs</span>
+kafka-configs --bootstrap-server localhost:<span class="num">9092</span> \
+  --alter --entity-type topics --entity-name <span class="str">orders</span> \
+  --add-config <span class="fn">retention.ms</span>=<span class="num">604800000</span>,<span class="fn">min.insync.replicas</span>=<span class="num">2</span></code></pre>
+    </div>
+
+    <h2>Kafka vs. RabbitMQ vs. Apache Pulsar</h2>
+    <p>Choosing the right messaging system is one of the highest-leverage architecture decisions you can make. Kafka, RabbitMQ, and Pulsar each occupy a different point in the design space.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th class="col-a">Kafka</th><th class="col-b">RabbitMQ</th><th style="color:var(--accent)">Pulsar</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Message model</td><td class="col-a">Durable log — persists after consumption; consumers replay at any offset</td><td class="col-b">Queue — message is deleted after acknowledgement</td><td style="color:var(--accent)">Log + queue unified: topics backed by a durable log, queues as a cursor abstraction</td></tr>
+        <tr><td>Throughput</td><td class="col-a">Millions of msg/sec per cluster via sequential disk I/O</td><td class="col-b">~50K–100K msg/sec per queue (memory-bound)</td><td style="color:var(--accent)">Comparable to Kafka via Apache BookKeeper storage</td></tr>
+        <tr><td>Latency</td><td class="col-a">Low single-digit ms with tuned batching; higher with linger</td><td class="col-b">Sub-millisecond p50 (no batching overhead)</td><td style="color:var(--accent)">5–15 ms typical; geo-replication adds more</td></tr>
+        <tr><td>Routing</td><td class="col-a">Topic + partition key; no content-based routing</td><td class="col-b">Rich routing via exchanges (direct, fanout, topic, headers)</td><td style="color:var(--accent)">Namespaces + topic hierarchy; no exchange routing</td></tr>
+        <tr><td>Replay</td><td class="col-a">Native — seek to any offset within retention window</td><td class="col-b">Not supported — consumed messages are gone</td><td style="color:var(--accent)">Native — backed by BookKeeper ledgers</td></tr>
+        <tr><td>Multi-tenancy</td><td class="col-a">Namespaces (limited)</td><td class="col-b">Virtual hosts</td><td style="color:var(--accent)">First-class: tenants → namespaces → topics with quotas</td></tr>
+        <tr><td>Geo-replication</td><td class="col-a">MirrorMaker 2 (async)</td><td class="col-b">Shovel / Federation plugins</td><td style="color:var(--accent)">Built-in, synchronous cross-datacenter replication</td></tr>
+        <tr><td>Ops complexity</td><td class="col-a">Moderate (KRaft removes ZK dependency)</td><td class="col-b">Low — excellent management UI, easy setup</td><td style="color:var(--accent)">High — Kafka + ZooKeeper + BookKeeper triad historically</td></tr>
+        <tr><td>Best for</td><td class="col-a">Event streaming, CDC, audit logs, high-throughput pipelines</td><td class="col-b">Task queues, RPC patterns, complex routing, low latency jobs</td><td style="color:var(--accent)">Multi-tenant SaaS, native geo-replication, tiered storage at petabyte scale</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">decision guide</div>
+      <p>Pick <strong>Kafka</strong> when you need replay, high throughput, CDC, or event sourcing. Pick <strong>RabbitMQ</strong> for complex routing logic, task queues, or sub-millisecond latency requirements. Pick <strong>Pulsar</strong> when you need built-in geo-replication across datacenters or true multi-tenancy with per-namespace quota isolation — at the cost of significantly higher operational complexity.</p>
+    </div>
+
+    <h2>Kafka Streams and Kafka Connect</h2>
+    <p>Kafka is not just a message broker — it is the foundation for an entire streaming processing ecosystem. Two components extend it furthest: <strong>Kafka Streams</strong> for stream processing inside your JVM application, and <strong>Kafka Connect</strong> for plug-and-play data pipeline connectors.</p>
+
+    <h3>Kafka Streams</h3>
+    <p>Kafka Streams is a lightweight <strong>client library</strong> (not a cluster) for building stream processing applications. Unlike Apache Flink or Spark Streaming, there is no separate processing cluster to manage — the library runs inside your application process, reads from input topics, and writes results to output topics. Fault tolerance is achieved by storing state (windowed aggregations, join tables) in RocksDB on disk, backed by a Kafka changelog topic for recovery after crashes.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">java</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="ty">StreamsBuilder</span> builder = <span class="kw">new</span> <span class="fn">StreamsBuilder</span>();
+
+<span class="cm">// read from "orders" topic, group by userId, count over 5-minute windows</span>
+<span class="ty">KStream</span>&lt;<span class="ty">String</span>, <span class="ty">Order</span>&gt; orders = builder.<span class="fn">stream</span>(<span class="str">"orders"</span>);
+orders
+  .<span class="fn">groupByKey</span>()
+  .<span class="fn">windowedBy</span>(<span class="ty">TimeWindows</span>.<span class="fn">ofSizeWithNoGrace</span>(<span class="ty">Duration</span>.<span class="fn">ofMinutes</span>(<span class="num">5</span>)))
+  .<span class="fn">count</span>()
+  .<span class="fn">toStream</span>()
+  .<span class="fn">to</span>(<span class="str">"orders-per-user-5min"</span>);  <span class="cm">// write results back to Kafka</span>
+
+<span class="ty">KafkaStreams</span> streams = <span class="kw">new</span> <span class="fn">KafkaStreams</span>(builder.<span class="fn">build</span>(), props);
+streams.<span class="fn">start</span>();</code></pre>
+    </div>
+
+    <p>Key Kafka Streams concepts:</p>
+    <ul>
+      <li><strong>KStream</strong> — an unbounded stream of records; each record is an independent event.</li>
+      <li><strong>KTable</strong> — a stream viewed as a changelog; each key's value is its latest update (like a materialized view).</li>
+      <li><strong>GlobalKTable</strong> — a KTable fully replicated to every instance (useful for broadcast joins without repartitioning).</li>
+      <li><strong>Stream-Table Join</strong> — enrich each event with the current state of a lookup table; the join is local because both are co-partitioned by key.</li>
+      <li><strong>Windowing</strong> — tumbling (non-overlapping), hopping (overlapping), session (activity-driven), and sliding windows for time-based aggregations.</li>
+      <li><strong>Exactly-once</strong> — Kafka Streams supports end-to-end exactly-once semantics via transactions spanning both Kafka reads and writes.</li>
+    </ul>
+
+    <h3>Kafka Connect</h3>
+    <p>Kafka Connect is a scalable, fault-tolerant framework for moving data between Kafka and external systems — databases, object stores, search engines, SaaS APIs — without writing custom code. Connectors come in two flavors: <strong>source connectors</strong> read from an external system and write to Kafka (e.g., Debezium PostgreSQL CDC, S3 source), and <strong>sink connectors</strong> read from Kafka and write to an external system (e.g., Elasticsearch sink, Snowflake sink, JDBC sink).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"name"</span>: <span class="str">"postgres-orders-cdc"</span>,
+  <span class="str">"config"</span>: {
+    <span class="str">"connector.class"</span>: <span class="str">"io.debezium.connector.postgresql.PostgresConnector"</span>,
+    <span class="str">"database.hostname"</span>: <span class="str">"db.prod.internal"</span>,
+    <span class="str">"database.port"</span>: <span class="str">"5432"</span>,
+    <span class="str">"database.user"</span>: <span class="str">"debezium"</span>,
+    <span class="str">"database.dbname"</span>: <span class="str">"orders"</span>,
+    <span class="str">"table.include.list"</span>: <span class="str">"public.orders,public.inventory"</span>,
+    <span class="str">"topic.prefix"</span>: <span class="str">"cdc"</span>,
+    <span class="str">"plugin.name"</span>: <span class="str">"pgoutput"</span>,
+    <span class="str">"slot.name"</span>: <span class="str">"debezium_orders"</span>,
+    <span class="str">"publication.name"</span>: <span class="str">"dbz_publication"</span>
+  }
+}</code></pre>
+    </div>
+
+    <p>Connect runs as a cluster of workers that distribute connector tasks across themselves. If a worker fails, its tasks are reassigned to surviving workers — exactly the same consumer group rebalance mechanism. This means Connect scales horizontally by adding workers and survives node failures without operator intervention.</p>
+
+    <h2>Schema Registry and Avro</h2>
+    <p>Raw bytes in Kafka topics become a maintenance nightmare as schemas evolve. The <strong>Confluent Schema Registry</strong> (or AWS Glue Schema Registry) stores Avro, Protobuf, or JSON Schema definitions and assigns each version a numeric ID. Producers serialize messages by embedding a 4-byte schema ID in the payload prefix; consumers look up the schema by ID to deserialize. This enables <strong>schema evolution with compatibility checks</strong>: the registry rejects a new schema version that is backward- or forward-incompatible with the registered versions, preventing silent data corruption across independently deployed services.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">avro</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"type"</span>: <span class="str">"record"</span>,
+  <span class="str">"name"</span>: <span class="str">"OrderEvent"</span>,
+  <span class="str">"namespace"</span>: <span class="str">"com.example.orders"</span>,
+  <span class="str">"fields"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"orderId"</span>,  <span class="str">"type"</span>: <span class="str">"string"</span> },
+    { <span class="str">"name"</span>: <span class="str">"userId"</span>,   <span class="str">"type"</span>: <span class="str">"string"</span> },
+    { <span class="str">"name"</span>: <span class="str">"totalCents"</span>, <span class="str">"type"</span>: <span class="str">"long"</span> },
+    { <span class="str">"name"</span>: <span class="str">"currency"</span>, <span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"default"</span>: <span class="str">"USD"</span> }
+  ]
+}</code></pre>
+    </div>
+
+    <h2>Common Pitfalls and Best Practices</h2>
+
+    <h3>Partition Count — Getting It Right</h3>
+    <p>Partitions are Kafka's unit of parallelism and they cannot be decreased once created (only increased). Choosing too few caps your consumer throughput ceiling; choosing too many wastes memory and increases rebalance time. A rough starting point: aim for 1–3 MB/sec throughput per partition based on your broker disk bandwidth, and target roughly 1 partition per consumer instance you expect to run at peak. A common mistake is creating topics with a single partition to "keep things simple" — this makes every consumer in the group idle except one.</p>
+
+    <h3>Offset Management</h3>
+    <p>With <code>enable.auto.commit=true</code>, offsets are committed periodically regardless of whether the consumer actually processed the message. A crash between the commit and the downstream write means the message is permanently skipped. Use <code>enable.auto.commit=false</code> and commit offsets only after your processing is complete and durable. For exactly-once, wrap the downstream write and the offset commit in a Kafka transaction.</p>
+
+    <h3>Consumer Lag Monitoring</h3>
+    <p>Consumer lag — the gap between the latest produced offset and the consumer's committed offset — is the primary operational health metric for a Kafka consumer. A growing lag that doesn't recover signals either a slow consumer or a sudden production spike. Monitor it with Kafka's built-in consumer group describe, Confluent's Kafka Consumer Lag Exporter, or LinkedIn's Burrow.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Check consumer group lag across all partitions</span>
+kafka-consumer-groups \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+
+<span class="cm"># Sample output</span>
+<span class="cm"># GROUP                   TOPIC  PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG</span>
+<span class="cm"># order-processing-group  orders  0          1023440         1023441         1</span>
+<span class="cm"># order-processing-group  orders  1          998772          999201          429  ← lag growing!</span></code></pre>
+    </div>
+
+    <h3>Avoiding Common Anti-Patterns</h3>
+    <ul>
+      <li><strong>One topic per event type, not one topic for everything</strong> — mixing unrelated event types in one topic forces consumers to deserialize and filter messages they don't care about, and prevents independent retention policies.</li>
+      <li><strong>Don't store large payloads in Kafka</strong> — keep messages under 1 MB; for larger payloads (images, reports), store in S3 and put only the reference URL in Kafka. The default <code>message.max.bytes</code> is 1 MB for a reason.</li>
+      <li><strong>Don't rely on Kafka as a database</strong> — while log compaction approximates a KV store, Kafka has no random-access read path. For lookups, materialize the compacted log into Redis or a database.</li>
+      <li><strong>Dead-letter topics for poison pills</strong> — a single malformed message that fails deserialization will block a partition forever if your consumer crashes on it. Route failed messages to a dedicated DLQ topic and alert on it.</li>
+    </ul>
+
+    <h2>Real-World Usage Scenarios</h2>
+    <p>Understanding why organizations reach for Kafka — rather than a simpler queue — solidifies when to recommend it in an interview.</p>
+    <ul>
+      <li><strong>LinkedIn</strong> (Kafka's origin) — user activity tracking: every page view, click, and job application published to topics that feed real-time dashboards, recommendation models, and A/B test analysis. Replay is essential: a model retraining job can scan 30 days of raw events.</li>
+      <li><strong>Uber</strong> — geolocation updates from millions of drivers flow through Kafka topics at millions of events per second. Kafka decouples the driver app from the dispatch, maps, and surge pricing services. Topics are retained for 7 days so any downstream service that falls behind can catch up.</li>
+      <li><strong>Netflix</strong> — CDC streams from production databases flow via Debezium into Kafka, then into Elasticsearch for search and Iceberg tables in S3 for analytics. Kafka's retention window gives the analytics pipeline a recovery window if the Spark job fails.</li>
+      <li><strong>E-commerce checkout pipeline</strong> — the canonical system design example: the order service publishes an <code>OrderCreated</code> event, and separate consumers handle inventory deduction, payment processing, notification dispatch, and recommendation signal recording — all independently scaled and fault-isolated.</li>
+    </ul>
+
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Think of Kafka as a replicated log, not a queue. Partitions give you horizontal scale and ordering-per-key; consumer groups give you parallel reads; and <code>acks</code> + ISR + idempotence let you dial durability from fire-and-forget all the way to exactly-once.</p>
+      <p>Think of Kafka as a replicated log, not a queue. Partitions give you horizontal scale and ordering-per-key; consumer groups give you parallel reads; and <code>acks</code> + ISR + idempotence let you dial durability from fire-and-forget all the way to exactly-once. KRaft removes ZooKeeper from the equation; log compaction turns topics into a durable KV changelog; Kafka Streams and Connect complete a full streaming ecosystem without external dependencies.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>How does Kafka guarantee exactly-once?</strong> Idempotent producer (PID + sequence number) or transactions.<br>
-      <strong>Why is Kafka so fast?</strong> Sequential append-only writes + OS page cache + zero-copy.<br>
-      <strong>Queue vs. Kafka?</strong> Messages persist after consumption, so multiple consumer groups can replay independently.</p>
+      <p><strong>How does Kafka guarantee exactly-once?</strong> Idempotent producer (PID + sequence number prevents duplicates on retry) plus transactions that wrap <code>beginTransaction()</code>/<code>commitTransaction()</code> around produce + offset-commit atomically.<br>
+      <strong>Why is Kafka so fast?</strong> Sequential append-only writes + OS page cache (avoids double buffering) + zero-copy sendfile syscall + batch compression.<br>
+      <strong>What triggers a consumer group rebalance?</strong> Member joins/leaves, session timeout exceeded (<code>session.timeout.ms</code>), max poll interval breached (<code>max.poll.interval.ms</code>), or partition count changes. Use <code>CooperativeStickyAssignor</code> to make rebalances incremental instead of stop-the-world.<br>
+      <strong>Log compaction vs. retention?</strong> Retention deletes old segments by time/size; compaction retains only the latest record per key — effectively a durable KV changelog. Null-value tombstones signal deletes.<br>
+      <strong>Kafka vs. RabbitMQ?</strong> Kafka for high-throughput event streaming, replay, and CDC; RabbitMQ for complex routing patterns, task queues, and sub-millisecond latency requirements.<br>
+      <strong>What is KRaft and why does it matter?</strong> Kafka's built-in Raft metadata layer that replaces ZooKeeper, removing the separate dependency, enabling millions of partitions, and cutting cluster startup from minutes to seconds.</p>
     </div>
 
     <div class="article-nav">
@@ -344,7 +695,7 @@ kafka-console-consumer \
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

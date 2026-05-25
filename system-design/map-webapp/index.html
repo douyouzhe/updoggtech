@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,29 +170,31 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A map platform like Google Maps serves billions of users across wildly different use cases — turn-by-turn navigation, business discovery, satellite imagery, traffic-aware routing, and third-party integrations for apps like Uber. At 3 billion monthly active users and 10 million API partners, it is one of the most data-intensive and latency-sensitive systems in existence.</p>
+    <p>A map platform like Google Maps serves billions of users across wildly different use cases — turn-by-turn navigation, business discovery, satellite imagery, traffic-aware routing, and third-party integrations for apps like Uber. At 3 billion monthly active users and 10 million API partners, it is one of the most data-intensive and latency-sensitive systems in existence. The core challenge is not storing the world's road network — it is answering "what is the fastest route between two points right now?" in tens of milliseconds, for millions of concurrent users, while continuously integrating fresh traffic data from billions of location pings.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
       <ul>
         <li><strong>Geohash encodes 2D → 1D</strong> — converts lat/lng to a sortable string, enabling efficient range queries on standard key-value stores (BigTable/DynamoDB/Cassandra).</li>
         <li><strong>Pre-compute routes</strong> — Dijkstra is O((V+E)logV); too slow at 3B users. Store pre-computed routes between section nodes; only the final micro-segment is computed on-the-fly.</li>
+        <li><strong>Contraction Hierarchies</strong> — offline node-importance ranking lets query-time bidirectional Dijkstra skip low-importance nodes, achieving 1000× speedup over vanilla Dijkstra.</li>
         <li><strong>WebSockets for navigation</strong> — bidirectional persistent connection; a WebSocket Manager maps user IDs to server:port for routing.</li>
         <li><strong>At-most-once for location pings</strong> — GPS sent every 5s; one lost packet is acceptable, guaranteed delivery overhead is not.</li>
         <li><strong>CDC → Elasticsearch</strong> — map changes flow through Kafka to keep the search index eventually consistent.</li>
+        <li><strong>Map tiles served from CDN</strong> — pre-rendered raster tiles keyed by zoom/x/y; the most cacheable objects in the system.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>Pre-compute routes between sectional nodes and store them in a geohash-indexed key-value store (BigTable/DynamoDB/Cassandra). Use WebSockets for real-time navigation. Feed user location pings (every 5s, at-most-once) into a message queue. Let CDC-driven Kafka keep the Elasticsearch search index current with map changes. Push ML-powered ETA refinement and hotspot prediction offline.</p>
+      <p>Pre-compute routes between sectional nodes and store them in a geohash-indexed key-value store (BigTable/DynamoDB/Cassandra). Use Contraction Hierarchies offline to make query-time routing 1000× faster than vanilla Dijkstra. Use WebSockets for real-time navigation. Feed user location pings (every 5s, at-most-once) into a message queue. Serve map tiles from CDN. Let CDC-driven Kafka keep the Elasticsearch search index current with map changes. Push ML-powered ETA refinement and hotspot prediction offline.</p>
     </div>
 
     <figure class="article-figure">
@@ -200,95 +202,399 @@
       <figcaption>High-level map web app architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>A map platform is deceptively broad. Scoping it in an interview into a concrete surface is half the credit. State what you will cover and explicitly call out what you won't.</p>
 
     <h3>Functional</h3>
     <ul>
-      <li>Identify roads, places, and routes on a map</li>
-      <li>Calculate accurate distance and ETA accounting for traffic, road conditions, and real-time incidents</li>
-      <li>Provide a pluggable API for third-party integration (ride-share apps, vehicle manufacturers, data providers)</li>
+      <li>Identify roads, places, and points of interest on a rendered map.</li>
+      <li>Calculate accurate distance and ETA accounting for traffic, road conditions, and real-time incidents.</li>
+      <li>Turn-by-turn navigation with live rerouting on deviation or new incidents.</li>
+      <li>Nearby search: find restaurants, gas stations, hospitals within a radius.</li>
+      <li>Map tile rendering at multiple zoom levels.</li>
+      <li>Provide a pluggable API for third-party integration (ride-share, vehicle manufacturers, data providers).</li>
     </ul>
 
     <h3>Non-Functional</h3>
     <ul>
-      <li><strong>Low latency</strong> — route queries must return in milliseconds, not seconds</li>
-      <li><strong>High availability</strong> — navigation failures mid-trip are critical user experiences</li>
-      <li><strong>Massive scale</strong> — 3 billion monthly active users, 10 million API partners</li>
+      <li><strong>Low latency</strong> — route queries must return in &lt;100 ms p99; tile loads under 50 ms from CDN cache.</li>
+      <li><strong>High availability</strong> — navigation failures mid-trip are critical user experiences; target 99.99%.</li>
+      <li><strong>Massive scale</strong> — 3 billion monthly active users, 10 million API partners.</li>
+      <li><strong>Eventual consistency acceptable for map data</strong> — a newly added road appearing in search 30 seconds late is fine; a wrong route is not.</li>
+      <li><strong>Durability of map edits</strong> — user-submitted corrections must not be lost.</li>
     </ul>
 
-    <h2>Map Data: Ingestion and Storage</h2>
-    <p>Initial map data is sourced from government municipal maps (e.g., USGS), satellite imagery providers (Planet, Maxar), street-level imagery vehicles, and third-party geographic data providers. Continuous updates arrive via user-submitted feedback, business submissions, and ongoing satellite refreshes.</p>
-    <p>All map modifications are processed through Kafka via <strong>Change Data Capture (CDC)</strong>, enabling downstream consumers — search indexers, route pre-computers, analytics services — to react to map changes asynchronously.</p>
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Distinguish between the read path (tiles, routing, search) and the write path (map edits, live traffic ingestion). They have very different consistency requirements and can be designed almost independently. Call this split out early — interviewers reward it.</p>
+    </div>
 
-    <h3>Spatial Indexing with Geohash</h3>
-    <p>The map is represented as latitude/longitude coordinates (a 2D x-y plane). To make spatial queries efficient at database scale, the system uses two complementary structures:</p>
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Google Maps serves roughly <strong>1 billion daily active users (DAU)</strong>. Let's build a back-of-the-envelope estimate for the three main traffic types: tile fetches, route requests, and location pings.</p>
+
+    <h3>Map Tile Traffic</h3>
     <ul>
-      <li><strong>Quadtree</strong> — recursively subdivides regions into four quadrants, forming a hierarchical spatial index</li>
-      <li><strong>Geohash</strong> — encodes 2D geographic coordinates into a 1D sortable string, enabling efficient range queries on a standard key-value store</li>
+      <li>Each map view loads ~10–20 tiles (a 3×3 or 4×4 grid around the viewport).</li>
+      <li>1B DAU × 20 sessions/day × 15 tiles/session = <strong>300 billion tile fetches/day ≈ 3.5M tiles/sec</strong>.</li>
+      <li>The vast majority are served from CDN edge caches — the origin tile server handles only cache misses (&lt;1% of requests).</li>
+      <li>Tile storage: the world has ~4.5 trillion tiles across all zoom levels; at ~20 KB per raster tile, that is roughly <strong>90 PB</strong> of tile data — the reason tile storage uses distributed object stores (GCS/S3) and only hot zoom levels are fully pre-rendered.</li>
     </ul>
-    <p>The primary database of choice is Google's in-house single-keyed <strong>BigTable</strong>; at similar scale, AWS DynamoDB or Cassandra are viable alternatives for their massive data volume handling.</p>
+
+    <h3>Route Requests</h3>
+    <ul>
+      <li>Assume 10% of DAU request a route per day: 100M route requests/day ≈ <strong>~1,200 route QPS</strong> average, with a 5× peak → <strong>~6,000 route QPS</strong>.</li>
+      <li>Each route request may fan out to 3–5 alternative routes, so the routing engine handles ~30K sub-queries per second at peak.</li>
+    </ul>
+
+    <h3>Location Pings (Active Navigation)</h3>
+    <ul>
+      <li>Assume 50M users are navigating simultaneously at peak (commute hours).</li>
+      <li>Each navigator sends a GPS ping every 5 seconds: 50M / 5 = <strong>10M location writes/sec</strong>.</li>
+      <li>Each ping is ~100 bytes: 10M × 100B = <strong>~1 GB/sec of inbound location data</strong> — must be absorbed by a horizontally partitioned message queue.</li>
+    </ul>
+
+    <h3>Map Data Storage</h3>
+    <ul>
+      <li>Road network graph: ~50M nodes (intersections) × 200B + ~100M edges × 100B ≈ <strong>~20 GB</strong> for the raw graph (fits in memory on a large machine, enabling in-memory routing).</li>
+      <li>Place/POI data: ~500M places × ~500B ≈ <strong>~250 GB</strong> in the place database.</li>
+      <li>Traffic data: streaming, retained for 30 days → roughly <strong>~10 TB</strong> of historical traffic at compressed storage.</li>
+    </ul>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Expose clean REST endpoints through the API gateway. The three most important surfaces for interview purposes are tile serving, routing, and nearby search.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Map tiles — zoom/x/y follows the standard slippy map scheme</span>
+<span class="kw">GET</span>  <span class="str">/tiles/{zoom}/{x}/{y}.png</span>
+     <span class="cm">→ 200 image/png  (served from CDN edge, TTL ~7d)</span>
+
+<span class="cm"># Route calculation</span>
+<span class="kw">POST</span> <span class="str">/api/route</span>
+     { origin: {lat, lng}, destination: {lat, lng},
+       mode: "driving"|"walking"|"transit",
+       alternatives: true }
+     <span class="cm">→ { routes: [{ polyline, distance_m, duration_s, eta }] }</span>
+
+<span class="cm"># Nearby search (radius in meters)</span>
+<span class="kw">GET</span>  <span class="str">/api/places/nearby?lat=37.7&lng=-122.4&radius=500&type=restaurant</span>
+     <span class="cm">→ { places: [{ place_id, name, lat, lng, rating }] }</span>
+
+<span class="cm"># Geocoding (address → coordinates)</span>
+<span class="kw">GET</span>  <span class="str">/api/geocode?address=1600+Amphitheatre+Pkwy</span>
+
+<span class="cm"># Reverse geocoding (coordinates → address)</span>
+<span class="kw">GET</span>  <span class="str">/api/reverse-geocode?lat=37.42&lng=-122.08</span>
+
+<span class="cm"># Navigation session (WebSocket upgrade)</span>
+<span class="kw">GET</span>  <span class="str">/ws/navigate?route_id=abc123</span>
+     <span class="cm">→ WS stream: { type: "update", eta_s, next_maneuver, reroute? }</span></code></pre>
+    </div>
+
+    <p>Two design choices worth calling out: the tile endpoint uses the <strong>slippy map (XYZ) scheme</strong> so that tile URLs are deterministic and maximally cacheable — the same tile URL can be cached globally without any query-string variance. The navigation endpoint upgrades to a WebSocket so the server can push ETA updates and rerouting instructions without the client polling.</p>
+
+    <h2>Step 4 — Map Data: Ingestion and Storage</h2>
+    <p>Initial map data is sourced from government municipal maps (e.g., USGS, Ordnance Survey), satellite imagery providers (Planet, Maxar), street-level imagery vehicles, and third-party geographic data providers. Continuous updates arrive via user-submitted feedback, business submissions, and ongoing satellite refreshes. OpenStreetMap volunteers contribute corrections at massive scale.</p>
+    <p>All map modifications are processed through Kafka via <strong>Change Data Capture (CDC)</strong>, enabling downstream consumers — search indexers, route pre-computers, tile renderers, analytics services — to react to map changes asynchronously without coupling the ingestion path to downstream write latency.</p>
+
+    <h3>Data Model: Road Network Graph</h3>
+    <p>The road network is modeled as a directed weighted graph. Every intersection is a node; every road segment between two intersections is a directed edge with attributes including distance, speed limit, average travel time, road class (motorway, arterial, local), and turn restrictions.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> nodes (
+  node_id       <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  lat           <span class="ty">DOUBLE</span> <span class="kw">NOT NULL</span>,
+  lng           <span class="ty">DOUBLE</span> <span class="kw">NOT NULL</span>,
+  geohash       <span class="ty">VARCHAR</span>(<span class="num">12</span>),          <span class="cm">-- pre-computed, indexed</span>
+  node_type     <span class="ty">VARCHAR</span>(<span class="num">20</span>)           <span class="cm">-- intersection | endpoint | poi</span>
+);
+
+<span class="kw">CREATE TABLE</span> edges (
+  edge_id       <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  from_node     <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> nodes(node_id),
+  to_node       <span class="ty">BIGINT</span> <span class="kw">REFERENCES</span> nodes(node_id),
+  distance_m    <span class="ty">INT</span>   <span class="kw">NOT NULL</span>,
+  speed_limit   <span class="ty">SMALLINT</span>,            <span class="cm">-- km/h</span>
+  road_class    <span class="ty">SMALLINT</span>,            <span class="cm">-- 0=motorway .. 5=local</span>
+  base_weight   <span class="ty">FLOAT</span>,               <span class="cm">-- static travel time seconds</span>
+  current_weight <span class="ty">FLOAT</span>               <span class="cm">-- traffic-adjusted, refreshed ~5 min</span>
+);
+
+<span class="kw">CREATE TABLE</span> places (
+  place_id      <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  name          <span class="ty">VARCHAR</span>(<span class="num">255</span>),
+  lat           <span class="ty">DOUBLE</span>,
+  lng           <span class="ty">DOUBLE</span>,
+  geohash       <span class="ty">VARCHAR</span>(<span class="num">12</span>),
+  category      <span class="ty">VARCHAR</span>(<span class="num">64</span>),
+  rating        <span class="ty">FLOAT</span>,
+  address       <span class="ty">TEXT</span>
+);</code></pre>
+    </div>
+
+    <h2>Step 5 — Spatial Indexing: Geohash, Quadtree, and S2</h2>
+    <p>The core spatial indexing challenge is answering "give me all road nodes / places within this bounding box" efficiently at database scale. Three complementary structures power geospatial queries in modern map systems:</p>
+
+    <h3>Geohash</h3>
+    <p>Geohash encodes a 2D (lat, lng) coordinate into a 1D sortable Base32 string. Each additional character approximately quadruples the precision: a 6-character geohash covers ~1.2 km × 0.6 km; a 9-character hash covers ~5 m × 5 m. The key insight is that <strong>nearby locations share a common prefix</strong> — so a range scan on the geohash column retrieves spatially nearby records without any special spatial database extension. This makes it compatible with any key-value store (BigTable, DynamoDB, Cassandra) that supports efficient prefix queries.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Nearby places query using geohash prefix</span>
+<span class="kw">FUNCTION</span> <span class="fn">nearby_places</span>(lat, lng, radius_m):
+  precision = <span class="fn">geohash_precision_for_radius</span>(radius_m)  <span class="cm">-- e.g. 6 chars for 1km</span>
+  center_hash = <span class="fn">geohash_encode</span>(lat, lng, precision)
+  neighbor_hashes = <span class="fn">geohash_neighbors</span>(center_hash)    <span class="cm">-- 8 adjacent cells</span>
+  candidates = <span class="kw">SELECT</span> * <span class="kw">FROM</span> places
+               <span class="kw">WHERE</span> geohash <span class="kw">LIKE</span> ANY(center_hash, neighbor_hashes)
+  <span class="kw">RETURN</span> <span class="fn">filter_by_haversine_distance</span>(candidates, lat, lng, radius_m)</code></pre>
+    </div>
+
+    <p>The neighbor query is critical: a search radius can straddle geohash cell boundaries, so you must always query the center cell plus its 8 immediate neighbors, then apply a precise Haversine distance filter to the candidates.</p>
+
+    <h3>Quadtree</h3>
+    <p>A quadtree recursively subdivides the map into four quadrants until each leaf cell contains fewer than a threshold number of objects (typically 50–100). It is ideal for <strong>dynamic density-adaptive indexing</strong>: a rural county and downtown Manhattan end up at very different subdivision depths. Quadtrees are used to power zoom-level-aware rendering — at low zoom, a node represents an entire region; at high zoom it resolves to an individual road or building. The quadtree is typically kept in memory on the tile servers and rebuilt periodically from the underlying database.</p>
+
+    <h3>Google S2 Geometry</h3>
+    <p>S2 maps the sphere onto the faces of a cube, then uses Hilbert curve indexing to produce a space-filling 1D cell hierarchy. Like geohash, S2 cells can be stored in any ordered key-value store; unlike geohash, S2 cells have more uniform area at each level and work correctly at the poles. Google Maps internally relies on S2 for many of its spatial operations — it is worth mentioning as the production-grade alternative to geohash if asked.</p>
 
     <figure class="article-figure">
       <img src="/assets/img/map-webapp-2.jpg" alt="Quadtree spatial indexing structure" loading="lazy">
       <figcaption>Quadtree spatial indexing structure</figcaption>
     </figure>
 
-    <h2>Routing Algorithm</h2>
-    <p>Standard graph traversal (BFS) does not work for routing because road segments have variable weights (distance, speed limit, traffic). The correct algorithm for single-source shortest path is <strong>Dijkstra</strong> (or <strong>A*</strong> with a heuristic for faster convergence), which handles weighted edges. Floyd-Warshall computes all-pairs shortest paths in O(V³) and is suited for offline pre-computation of small subgraphs, not real-time queries. However, running Dijkstra across the full global road graph in real time has time complexity of O((V+E)logV) — far too expensive for 3 billion concurrent users.</p>
+    <h2>Step 6 — Map Tile Rendering and Delivery</h2>
+    <p>Map tiles are the visual layer of the platform. A <strong>tile</strong> is a 256×256 (or 512×512 on retina) image representing a fixed geographic bounding box at a specific zoom level. The slippy map XYZ scheme defines tile coordinates: zoom level z, column x, row y — making every tile URL globally unique and deterministic, which is the key property enabling aggressive CDN caching.</p>
 
-    <h3>Pre-Computation Strategy</h3>
-    <p>The solution is to <strong>sacrifice storage for speed</strong>: routes between sampled nodes within each geographic section are pre-computed and stored. Navigation then resolves to a lookup across sections rather than a live graph traversal. Only the final unmapped micro-segment requires on-the-fly computation.</p>
-    <p>When a traffic incident causes a significant ETA change, the impact <strong>bubbles up recursively</strong> through the section hierarchy, updating only the affected route segments rather than recomputing globally.</p>
-
-    <h2>Real-Time Navigation</h2>
-    <p>Navigation sessions require bidirectional, low-latency communication between server and client — WebSockets are the right protocol here. A <strong>WebSocket Manager</strong> maintains a key-value mapping of connected users to their WebSocket server and port, enabling the Navigation Tracking Service to reach any active session.</p>
-
-    <p>Three events trigger a navigation update:</p>
+    <h3>Tile Generation Pipeline</h3>
     <ul>
-      <li><strong>Route deviation</strong> — user strays from the planned path; recalculate</li>
-      <li><strong>Significant ETA delay</strong> — a new incident on the route exceeds a threshold; notify user</li>
-      <li><strong>Better route available</strong> — proactively reroute if a faster path opens up</li>
-    </ul>
-
-    <h2>User Location Tracking</h2>
-    <p>Active users transmit their GPS location <strong>every 5 seconds</strong> (when location sharing is enabled). These packets flow into a message queue that decouples producers from consumers. The delivery guarantee is <strong>at-most-once</strong>: a single lost location packet is acceptable because the next one arrives 5 seconds later, and the cost of guaranteed delivery would outweigh the benefit for this use case.</p>
-
-    <table class="compare-table">
-      <thead>
-        <tr><th>Design Decision</th><th>Choice</th><th>Rationale</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>Route computation</td><td class="col-a">Pre-compute + store</td><td>Real-time Dijkstra is O((V+E)logV) — too slow at 3B users</td></tr>
-        <tr><td>Location delivery</td><td class="col-a">At-most-once</td><td>Single lost packet is non-critical; next arrives in 5s</td></tr>
-        <tr><td>Spatial indexing</td><td class="col-a">Geohash over quadtree alone</td><td>Enables efficient 1D range queries on 2D geographic data</td></tr>
-        <tr><td>Map data consistency</td><td class="col-b">CDC-based eventual consistency</td><td>Acceptable for map data; real-time map updates are not critical</td></tr>
-      </tbody>
-    </table>
-
-    <h2>Search and Discovery</h2>
-    <p>Place name search is powered by an <strong>Elasticsearch cluster</strong> supporting fuzzy matching and type-ahead. The index is populated from two streams: direct place name data and map CDC events. Map browsing displays nodes with priority-based filtering that adapts to zoom level — zooming out shows only major landmarks, zooming in reveals fine-grained detail.</p>
-
-    <h2>ML and Analysis Service</h2>
-    <p>The Analysis Service consumes location and behavioral data to power several advanced features:</p>
-    <ul>
-      <li><strong>User profiling</strong> — driving habits, typical speed patterns, home/office location prediction</li>
-      <li><strong>ETA refinement</strong> — percentile-based accuracy ranges using aggregated historical trip data</li>
-      <li><strong>Proactive trip planning</strong> — departure reminders tied to calendar appointments or flight times</li>
-      <li><strong>Data source scoring</strong> — reliability weighting for user-submitted incidents vs. third-party providers</li>
-      <li><strong>Road discovery</strong> — identifying unmapped roads through aggregate user travel patterns</li>
-      <li><strong>Hotspot prediction</strong> — forecasting congestion zones and surfacing alternative routes before congestion hits</li>
+      <li><strong>Vector data</strong> — the tile generator reads road, boundary, and POI data from the map database, renders it into raster images using a rendering engine (Mapnik or equivalent), and stores the results in distributed object storage (GCS/S3).</li>
+      <li><strong>Zoom level strategy</strong> — the full tile pyramid has ~4.5 trillion tiles. Only zoom levels 0–14 (global to city block) are pre-rendered in full; zoom levels 15–22 (building-scale) are rendered on demand and cached aggressively.</li>
+      <li><strong>Differential re-rendering</strong> — when map data changes (a new road, a renamed street), the CDC event triggers re-rendering of only the affected tiles by computing which XYZ cells intersect the modified geographic region. Bulk global re-render runs periodically as a batch job.</li>
+      <li><strong>CDN distribution</strong> — pre-rendered tiles are pushed to CDN edge nodes geographically close to users. A tile served from a CDN edge takes &lt;5 ms; a cache miss that hits the origin object store takes ~50 ms. The cache hit rate for popular zoom levels exceeds 99%.</li>
     </ul>
 
     <div class="callout">
+      <div class="callout-label">why tiles beat vector streaming</div>
+      <p>Serving pre-rendered raster tiles is the highest-leverage caching decision in a map system. A tile for downtown Manhattan gets requested millions of times per day — render it once, cache it everywhere. Vector tile streaming (sending raw geographic data for client-side rendering) reduces bandwidth and enables dynamic styling, but at the cost of client-side compute and reduced cacheability. Google Maps uses a hybrid: vector tiles for high zoom levels (street detail) and raster for lower zooms.</p>
+    </div>
+
+    <h2>Step 7 — Routing Algorithm Deep Dive</h2>
+    <p>Standard graph traversal (BFS) does not work for routing because road segments have variable weights (distance, speed limit, traffic). The correct algorithm for single-source shortest path is <strong>Dijkstra</strong> (or <strong>A*</strong> with a heuristic for faster convergence). However, running Dijkstra across the full global road graph at query time has time complexity of O((V+E)logV) — far too expensive for billions of concurrent users. The production answer is a layered pre-computation strategy.</p>
+
+    <h3>Algorithm Comparison</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Algorithm</th><th>Complexity</th><th>Use case</th><th>Verdict</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">BFS</td><td>O(V+E)</td><td>Unweighted graphs</td><td>Wrong — ignores road weights</td></tr>
+        <tr><td class="col-a">Dijkstra</td><td>O((V+E)logV)</td><td>Single-source shortest path</td><td>Correct but too slow at global scale</td></tr>
+        <tr><td class="col-a">A*</td><td>O((V+E)logV) best-case faster</td><td>Heuristic-guided single-pair</td><td>Good for local routing, not global</td></tr>
+        <tr><td class="col-b">Floyd-Warshall</td><td>O(V³)</td><td>All-pairs shortest paths</td><td>Offline pre-computation for small subgraphs only</td></tr>
+        <tr><td class="col-a">Contraction Hierarchies</td><td>O(V log V) preprocessing; O(√V) query</td><td>Road networks</td><td>Production choice — 1000× faster than Dijkstra</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Contraction Hierarchies (CH)</h3>
+    <p>Contraction Hierarchies is the dominant algorithm in production map routing. The core idea: assign each node an <strong>importance rank</strong> offline (based on edge difference, number of shortcuts needed, and road class), then iteratively "contract" the least-important nodes by replacing their incident edge pairs with direct shortcut edges that preserve shortest-path distances. The preprocessing produces a hierarchical graph where highway nodes have the highest ranks.</p>
+
+    <p>At query time, bidirectional Dijkstra runs simultaneously from source and destination, but each search only relaxes edges going <em>upward</em> in the hierarchy — skipping low-importance nodes entirely. This pruning reduces the search space from millions of nodes to thousands, delivering query times under 10 ms on continental-scale road networks.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- CH bidirectional query (simplified)</span>
+<span class="kw">FUNCTION</span> <span class="fn">ch_route</span>(source, target):
+  forward_dist  = {source: <span class="num">0</span>, all others: ∞}
+  backward_dist = {target: <span class="num">0</span>, all others: ∞}
+  forward_pq    = MinHeap([(0, source)])
+  backward_pq   = MinHeap([(0, target)])
+  best = ∞
+
+  <span class="kw">WHILE</span> either queue non-empty:
+    <span class="cm">-- Expand from whichever direction has smaller tentative distance</span>
+    <span class="kw">IF</span> forward_pq.min() &lt;= backward_pq.min():
+      (d, u) = forward_pq.pop()
+      <span class="kw">FOR</span> edge (u → v) <span class="kw">WHERE</span> rank(v) &gt; rank(u):  <span class="cm">-- upward only</span>
+        <span class="kw">IF</span> forward_dist[u] + w(u,v) &lt; forward_dist[v]:
+          forward_dist[v] = forward_dist[u] + w(u,v)
+          forward_pq.push((forward_dist[v], v))
+        best = min(best, forward_dist[v] + backward_dist[v])
+    <span class="kw">ELSE</span>:
+      <span class="cm">-- Symmetric backward expansion</span>
+      ...
+  <span class="kw">RETURN</span> best</code></pre>
+    </div>
+
+    <h3>Pre-Computation Strategy</h3>
+    <p>Beyond CH, the system also sacrifices storage for speed at a geographic level: routes between sampled <strong>section boundary nodes</strong> (think: on-ramps and off-ramps for highway sections, or neighborhood entry points for urban areas) are fully pre-computed and stored in the key-value routing store. Navigation then resolves to a table lookup across sections rather than a live graph traversal for the bulk of the route. Only the first and last micro-segments (neighborhood-level) require on-the-fly Dijkstra/A*.</p>
+
+    <p>When a traffic incident causes a significant ETA change, the impact <strong>bubbles up recursively</strong> through the section hierarchy, updating only the affected route segments rather than recomputing globally. A change on a local road updates that road's section cache; only if the section's best-path changes does the update propagate to the next section tier.</p>
+
+    <h2>Step 8 — Real-Time Navigation</h2>
+    <p>Navigation sessions require bidirectional, low-latency communication between server and client — WebSockets are the right protocol here. A <strong>WebSocket Manager</strong> maintains a key-value mapping of connected users to their WebSocket server and port, enabling the Navigation Tracking Service to reach any active session regardless of which WebSocket server hosts it.</p>
+
+    <p>Three events trigger a navigation update:</p>
+    <ul>
+      <li><strong>Route deviation</strong> — user strays from the planned path; recalculate using the pre-computed route cache from the new position.</li>
+      <li><strong>Significant ETA delay</strong> — a new incident on the route exceeds a threshold (e.g., +5 minutes); notify user and offer alternatives.</li>
+      <li><strong>Better route available</strong> — proactively reroute if a faster path opens up (e.g., traffic clears on a parallel highway).</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>User starts navigation
+  → Navigation Service assigns route_id, opens WS connection
+  → WebSocket Manager records: user_id → ws_server:port
+
+Every 5 seconds:
+  Client sends: { user_id, lat, lng, speed, heading }
+    → Location Queue (Kafka, at-most-once)
+      ├── Traffic Aggregator: update road segment weights
+      └── Navigation Tracker: detect deviation / ETA change
+
+On deviation detected:
+  Navigation Tracker → Routing Service (CH query from new position)
+    → Result pushed back via WebSocket Manager → client WS
+      { type: "reroute", new_polyline, new_eta_s }</code></pre>
+    </div>
+
+    <h2>Step 9 — User Location Tracking</h2>
+    <p>Active users transmit their GPS location <strong>every 5 seconds</strong> (when location sharing is enabled). These packets flow into a Kafka message queue that decouples producers from consumers. The delivery guarantee is <strong>at-most-once</strong>: a single lost location packet is acceptable because the next one arrives 5 seconds later, and the cost of guaranteed delivery (retransmission, ACKs, deduplication) would far outweigh the benefit for this use case.</p>
+
+    <p>The location stream serves multiple downstream consumers in parallel:</p>
+    <ul>
+      <li><strong>Traffic Aggregator</strong> — aggregates speed readings across a road segment to compute real-time travel times; feeds back into the edge weight store that routing queries use.</li>
+      <li><strong>Navigation Tracker</strong> — per-user session state; detects deviations and triggers rerouting.</li>
+      <li><strong>Analysis Service</strong> — batch processing for ETA refinement, road discovery, and hotspot prediction.</li>
+      <li><strong>Ride-share / Third-party API consumers</strong> — external partners who subscribe to anonymized, aggregated traffic data.</li>
+    </ul>
+
+    <h3>Traffic Data Fusion</h3>
+    <p>Raw GPS pings are noisy and sparse. The Traffic Aggregator applies a <strong>map-matching</strong> step: projecting the raw GPS coordinate onto the most likely road segment using Hidden Markov Models (the GPS reading is a "noisy observation" of the true position on the road network). Matched readings are then averaged over a 5-minute window per road segment to produce a reliable current travel time. These averages are written back to the <code>current_weight</code> field on the edges table, which the Contraction Hierarchy query engine reads at query time.</p>
+
+    <h2>Step 10 — Search and Discovery</h2>
+    <p>Place name search is powered by an <strong>Elasticsearch cluster</strong> supporting fuzzy matching and type-ahead. The index is populated from two streams: direct place name data and map CDC events. Map browsing displays nodes with priority-based filtering that adapts to zoom level — zooming out shows only major landmarks; zooming in reveals fine-grained detail.</p>
+
+    <h3>Geocoding Pipeline</h3>
+    <p>Geocoding (address string → lat/lng) is a multi-stage NLP pipeline:</p>
+    <ol>
+      <li><strong>Parsing</strong> — tokenize the address into components (house number, street, city, postal code, country).</li>
+      <li><strong>Normalization</strong> — "St." → "Street", "Ave" → "Avenue"; handle abbreviations and international formats.</li>
+      <li><strong>Candidate retrieval</strong> — query Elasticsearch for matching street + city combinations using fuzzy matching to handle typos.</li>
+      <li><strong>Ranking</strong> — score candidates by match quality, popularity (how often this address is queried), and geographic context (prefer results near the user's current location).</li>
+      <li><strong>Interpolation</strong> — derive the house number position by linearly interpolating along the matched street segment.</li>
+    </ol>
+
+    <p>Reverse geocoding (lat/lng → address) runs the pipeline in reverse: find the closest road segment using geohash lookup, then determine the nearest address via interpolation.</p>
+
+    <h2>Step 11 — Scaling: Caching, Sharding, and CDN</h2>
+
+    <h3>Tile Caching</h3>
+    <p>Map tiles are the single most cacheable object in the system. The cache hierarchy works outward from the client:</p>
+    <ul>
+      <li><strong>Browser cache</strong> — tile images cached with long Cache-Control max-age (7 days); ~80% of tile requests are served from the browser cache on return visits.</li>
+      <li><strong>CDN edge</strong> — geographically distributed nodes; a tile for any given XYZ triple is the same for all users, so the CDN hit rate exceeds 99% for popular zoom levels.</li>
+      <li><strong>Origin object store</strong> — GCS/S3 serves the remaining cache misses; pre-rendered tiles are organized in a bucket hierarchy matching the XYZ tile scheme.</li>
+    </ul>
+
+    <h3>Routing Cache</h3>
+    <p>Pre-computed section-to-section route results are stored in a distributed key-value store (Redis cluster or BigTable), keyed by <code>(section_node_a, section_node_b, mode)</code>. A route request from San Francisco to Los Angeles resolves to a handful of section lookups rather than a live CH query. The cache is invalidated when traffic data changes the shortest-path cost for a given section pair beyond a threshold.</p>
+
+    <h3>Database Sharding</h3>
+    <ul>
+      <li><strong>Node/edge graph</strong> — partitioned by geographic region (continent → country → state). Most routing queries are regional, so intra-region lookups stay on one shard. Cross-region routes join at section boundaries.</li>
+      <li><strong>Place data</strong> — sharded by geohash prefix, so "nearby search" queries land on a single shard or a small set of adjacent shards.</li>
+      <li><strong>Location ping stream</strong> — Kafka partitions by geohash cell, keeping pings for nearby road segments on the same partition for efficient aggregation.</li>
+    </ul>
+
+    <h2>Step 12 — Fault Tolerance</h2>
+    <ul>
+      <li><strong>Routing fallback</strong> — if the pre-computed route cache is unavailable, fall back to a live CH query against the in-memory graph; if that times out, fall back to a cached "last good" route. Never return an error when a stale route is better than nothing.</li>
+      <li><strong>CDN multi-origin</strong> — tile CDN is configured with two origin object store buckets in different regions; if the primary origin is unreachable, the CDN fails over to the secondary automatically.</li>
+      <li><strong>Navigation session continuity</strong> — WebSocket Manager state is stored in Redis with replication; if a WebSocket server crashes, the reconnecting client is assigned to a new server which re-fetches its session state from Redis within &lt;1 second.</li>
+      <li><strong>Kafka replication</strong> — location ping topics are replicated across 3 brokers; consumer groups use offset commits so no ping is processed twice after a broker restart.</li>
+      <li><strong>Map data idempotency</strong> — each map edit carries a globally unique edit_id; idempotent write handlers ensure that a retried CDC event (e.g., after a consumer restart) does not apply the same road edit twice.</li>
+    </ul>
+
+    <h2>Step 13 — ML and Analysis Service</h2>
+    <p>The Analysis Service consumes location and behavioral data to power several advanced features:</p>
+    <ul>
+      <li><strong>ETA refinement</strong> — the base ETA from routing is computed from historical average speeds. The ML model adjusts it using real-time traffic speed, time-of-day patterns, weather, and historical trip duration percentiles for the specific O/D pair. The result is a probability distribution (e.g., "25 min with 80% confidence, 32 min at 95th percentile") rather than a point estimate.</li>
+      <li><strong>Hotspot prediction</strong> — forecasting congestion zones using temporal patterns (Friday evening at the bridge) and event data (concert ending times); surfaces alternative routes before congestion materializes.</li>
+      <li><strong>Road discovery</strong> — identifying unmapped roads or path changes through aggregate user travel patterns. If many users take a consistent off-graph path, the system flags it for human review and potential map update.</li>
+      <li><strong>User profiling</strong> — driving habits, typical speed patterns, home/office location prediction for proactive trip planning.</li>
+      <li><strong>Data source scoring</strong> — reliability weighting for user-submitted incidents vs. third-party providers vs. sensor data.</li>
+    </ul>
+
+    <h2>Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Route computation</td><td class="col-a">Pre-compute + CH + store</td><td>Large storage and preprocessing cost; routes slightly stale until traffic cache refreshes (~5 min)</td></tr>
+        <tr><td>Location delivery</td><td class="col-a">At-most-once (Kafka)</td><td>Single lost 5-second ping has negligible impact; saves substantial infrastructure complexity</td></tr>
+        <tr><td>Spatial indexing</td><td class="col-a">Geohash (primary) + quadtree (rendering)</td><td>Geohash cell boundary edge cases require querying 9 neighbor cells; minor post-filter needed</td></tr>
+        <tr><td>Map data consistency</td><td class="col-b">CDC eventual consistency</td><td>New road may take 30–60 sec to appear in search / routing; acceptable for map data</td></tr>
+        <tr><td>Tile strategy</td><td class="col-a">Pre-rendered raster tiles</td><td>Re-render cost on map changes; less flexible styling than vector tiles</td></tr>
+        <tr><td>Traffic freshness</td><td class="col-b">5-minute aggregate windows</td><td>Real-time speed less accurate than per-second; prevents write amplification on edge weights</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Map systems live or die on their spatial indexing and pre-computation strategy. Geohash bridges 2D geography to 1D key-value lookups; pre-computed routes bridge the gap between Dijkstra's correctness and real-time latency requirements. Everything else — CDC pipelines, WebSocket navigation, at-most-once location pings — is about keeping these pre-computed answers current and delivering them fast.</p>
+      <p>Map systems live or die on their spatial indexing and pre-computation strategy. Geohash bridges 2D geography to 1D key-value lookups; Contraction Hierarchies make routing queries 1000× faster than Dijkstra at the cost of offline preprocessing; pre-rendered tiles make the most cacheable objects in the system nearly free to serve. Everything else — CDC pipelines, WebSocket navigation, at-most-once location pings, traffic fusion — is about keeping these pre-computed answers current and delivering them fast.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Why not run Dijkstra in real time for every route request?</strong> O((V+E)logV) across a global road graph is infeasible at 3B users — pre-compute routes between sectional nodes and reduce navigation to a lookup plus a short on-the-fly micro-segment.<br>
-      <strong>Why geohash over a pure quadtree?</strong> Geohash encodes 2D coordinates into a 1D sortable string, enabling efficient range queries on standard key-value stores without special spatial index support.<br>
-      <strong>Why at-most-once for location pings?</strong> A single lost 5-second GPS packet has negligible impact; the overhead of guaranteed delivery (retries, ACKs) far outweighs the benefit at this frequency.</p>
+      <p><strong>Why not run Dijkstra in real time for every route request?</strong> O((V+E)logV) across a global road graph is infeasible at 3B users — use Contraction Hierarchies offline to preprocess a hierarchy, then bidirectional Dijkstra at query time explores only a tiny fraction of nodes and returns in &lt;10 ms.<br>
+      <strong>Why geohash over a pure quadtree?</strong> Geohash encodes 2D coordinates into a 1D sortable string, enabling efficient range queries on standard key-value stores without special spatial index support. Quadtrees are better for zoom-adaptive rendering density.<br>
+      <strong>Why at-most-once for location pings?</strong> A single lost 5-second GPS packet has negligible impact on navigation quality; the overhead of guaranteed delivery (retries, ACKs, deduplication) far outweighs the benefit at 10M writes/sec.<br>
+      <strong>How do you handle stale routing when traffic changes?</strong> The traffic aggregator refreshes road segment weights on 5-minute windows; the pre-computed section cache is invalidated when the shortest-path cost changes beyond a threshold, triggering a targeted recompute for affected section pairs only.<br>
+      <strong>How do map tiles stay fast?</strong> The XYZ slippy map scheme makes every tile URL deterministic, enabling near-100% CDN hit rates for popular zoom levels. Only cache misses touch the origin object store.</p>
     </div>
 
     <div class="article-nav">
@@ -309,7 +615,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

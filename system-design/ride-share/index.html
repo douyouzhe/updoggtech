@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,14 +170,14 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A ride-share platform like Uber or Lyft is a real-time two-sided marketplace: it must continuously ingest GPS streams from millions of drivers, match riders to drivers with low latency, and handle financial transactions across a global fleet — all at 150 million monthly active users and 15 million trips per day.</p>
+    <p>A ride-share platform like Uber or Lyft is a real-time two-sided marketplace: it must continuously ingest GPS streams from millions of drivers, match riders to drivers with low latency, and handle financial transactions across a global fleet — all at 150 million monthly active users and 15 million trips per day. The deceptively simple act of "hail a ride" hides a formidable distributed systems problem: you need a near-real-time geospatial index that can handle millions of concurrent moving objects, a matching algorithm that optimizes globally rather than greedily, a reliable state machine for the trip lifecycle, surge pricing that responds to supply-demand imbalances in seconds, and a payment pipeline that is financially correct without slowing down the booking experience.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -185,14 +185,17 @@
         <li><strong>GPS pipeline = at-most-once</strong> — one lost 5-second packet is negligible; guaranteed delivery overhead not worth it for location data.</li>
         <li><strong>In-memory index + Cassandra</strong> — in-memory spatial index for sub-millisecond matching lookups; Cassandra for durable location history, partitioned by city and product type.</li>
         <li><strong>Bipartite graph matching</strong> — batch incoming requests and solve globally for minimum average pickup time, not greedy nearest-driver per request.</li>
+        <li><strong>Geohash / S2 cells for geo-indexing</strong> — encode lat/lng into hierarchical cells; query nearby drivers by looking up cells at the right precision level.</li>
         <li><strong>Consistent hashing (Ringpop)</strong> — distributes driver location data evenly across nodes with automatic repartitioning.</li>
+        <li><strong>Trip state machine</strong> — explicit states (REQUESTED → ACCEPTED → EN_ROUTE → IN_TRIP → COMPLETED) prevent illegal transitions and make retries safe.</li>
+        <li><strong>Surge pricing via supply/demand ratio</strong> — computed per geohash cell every 60–120 s; multiplier caps prevent PR disasters.</li>
         <li><strong>Async payment</strong> — payment deduction and driver payout are off the critical trip-completion path to avoid processing delays degrading the booking experience.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>GPS packets flow every ~5s into a message queue (at-most-once delivery). An in-memory spatial index with Cassandra backing stores driver locations partitioned by city and product type. Matching uses batched bipartite graph optimization — not greedy nearest-driver — to minimize global average pickup time. Payment is handled asynchronously via a third-party payment processor.</p>
+      <p>GPS packets flow every ~5s into a message queue (at-most-once delivery). An in-memory spatial index backed by Cassandra stores driver locations partitioned by city and product type. Matching uses batched bipartite graph optimization — not greedy nearest-driver — to minimize global average pickup time. Geohash or Google S2 cells enable O(1) radius queries. The trip is an explicit state machine. Surge pricing is a ratio computed per geohash cell. Payment is handled asynchronously via a third-party payment processor.</p>
     </div>
 
     <figure class="article-figure">
@@ -200,33 +203,174 @@
       <figcaption>High-level ride-share app architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Before diving in, scope the problem explicitly. Ride-share is broad — define exactly what you will and won't design.</p>
 
-    <h3>Functional</h3>
+    <h3>Functional requirements</h3>
     <ul>
-      <li>Display available driver locations on a map</li>
-      <li>ETA and pricing calculations</li>
-      <li>Book and view trips</li>
-      <li>Real-time location tracking during a trip</li>
-      <li>Driver earnings reports</li>
+      <li>Display available driver locations on a map in real time.</li>
+      <li>Rider requests a trip — system matches them to a nearby available driver.</li>
+      <li>ETA and upfront price estimate displayed before booking.</li>
+      <li>Real-time location tracking during the trip (rider sees driver moving).</li>
+      <li>Trip completion: fare calculation, payment, receipt.</li>
+      <li>Driver earnings dashboard and trip history.</li>
+      <li>Driver onboarding with background check.</li>
     </ul>
 
-    <h3>Non-Functional</h3>
+    <h3>Non-functional requirements</h3>
     <ul>
-      <li><strong>Low latency</strong> — matching and ETA updates must feel real-time</li>
-      <li><strong>High availability</strong> — the marketplace must be reachable even under partial failures</li>
-      <li><strong>Global scale</strong> — 150 million monthly active users, 15 million trips per day</li>
+      <li><strong>Low latency</strong> — driver location updates visible within ~5 s; matching response under 2 s.</li>
+      <li><strong>High availability</strong> — the marketplace must be reachable even under partial failures; a down matching service means zero revenue.</li>
+      <li><strong>Consistency</strong> — a driver must not be double-matched; a trip must have exactly one driver.</li>
+      <li><strong>Global scale</strong> — 150 million monthly active users, 15 million trips per day across hundreds of cities.</li>
+      <li><strong>Geo-awareness</strong> — queries are inherently spatial; the system must index and search by location efficiently.</li>
     </ul>
 
-    <h2>Driver and Rider Registration</h2>
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>State out of scope explicitly: fraud detection, driver incentive programs, split fares, scheduled rides. This lets you focus the interview time on the genuinely hard parts — GPS pipeline, matching, and the trip state machine.</p>
+    </div>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Back-of-the-envelope math anchors your architecture choices. Assume the Uber scale: <strong>150M MAU, 15M trips/day</strong>.</p>
+
+    <h3>GPS write load</h3>
+    <ul>
+      <li>Active drivers at peak: assume 1M concurrent drivers globally during evening rush.</li>
+      <li>Each driver sends a GPS packet every 5 s → <strong>1M ÷ 5 = 200,000 location writes/sec</strong> at peak.</li>
+      <li>Each packet is ~100 bytes (driver_id, lat, lng, timestamp, heading) → <strong>~20 MB/s of GPS ingestion</strong>.</li>
+      <li>This is a bursty stream — a message queue is mandatory to absorb spikes.</li>
+    </ul>
+
+    <h3>Trip and matching load</h3>
+    <ul>
+      <li>15M trips/day ÷ 86,400 s ≈ <strong>~174 trips/sec average</strong>; peak (Friday 6 pm) 3–5× → <strong>~700 trip requests/sec</strong>.</li>
+      <li>Each trip request triggers one matching computation, one ETA query, and at least two location reads (rider + drivers in radius).</li>
+      <li>Matching is CPU-bound; plan for dedicated matching service instances, not shared with GPS ingestion.</li>
+    </ul>
+
+    <h3>Storage</h3>
+    <ul>
+      <li>GPS history: 200K writes/sec × 100 bytes × 86,400 s ≈ <strong>~1.7 TB of raw location data per day</strong>. Only the last known position needs to be in memory; history goes to Cassandra.</li>
+      <li>Trip records: 15M trips × ~1 KB (trip metadata, fare, route summary) ≈ <strong>~15 GB/day</strong>, totally manageable in SQL.</li>
+      <li>In-memory spatial index: 1M concurrent drivers × 200 bytes per entry ≈ <strong>~200 MB</strong> — trivially fits on a single node but is sharded for availability.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>The GPS write load (200K/s) is the dominant data-plane concern. The trip request rate (700/s) is comparatively modest. Your architecture must handle the former without letting it starve the latter.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Key REST endpoints across the ride-share services:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Driver — location update (high-frequency, at-most-once)</span>
+<span class="kw">POST</span> <span class="str">/driver/location</span>
+     { driver_id, lat, lng, heading, timestamp }
+
+<span class="cm"># Rider — request a trip</span>
+<span class="kw">POST</span> <span class="str">/trips</span>
+     { rider_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, product_type }
+     → returns { trip_id, estimated_eta_s, estimated_fare, driver_info }
+
+<span class="cm"># Trip status (polled or WebSocket push)</span>
+<span class="kw">GET</span>  <span class="str">/trips/{trip_id}</span>
+     → { status, driver_location, eta_s, fare_cents }
+
+<span class="cm"># Driver — accept/decline a match</span>
+<span class="kw">POST</span> <span class="str">/trips/{trip_id}/accept</span>   { driver_id }
+<span class="kw">POST</span> <span class="str">/trips/{trip_id}/decline</span>  { driver_id }
+
+<span class="cm"># Driver — trip lifecycle events</span>
+<span class="kw">POST</span> <span class="str">/trips/{trip_id}/arrived</span>    <span class="cm"># driver at pickup</span>
+<span class="kw">POST</span> <span class="str">/trips/{trip_id}/start</span>      <span class="cm"># trip begins</span>
+<span class="kw">POST</span> <span class="str">/trips/{trip_id}/complete</span>   <span class="cm"># trip ends, triggers fare + payment</span></code></pre>
+    </div>
+
+    <p>The <code>POST /driver/location</code> endpoint is called at very high frequency and uses <strong>at-most-once</strong> delivery — the server accepts and moves on; no acknowledgement retry. The trip lifecycle endpoints are idempotent — calling <code>/complete</code> twice on an already-completed trip is a no-op at the state machine level.</p>
+
+    <h2>Step 4 — Driver and Rider Registration</h2>
     <p>The User Service handles authentication and profile management for both sides of the marketplace. Driver onboarding involves an additional <strong>Background Checker</strong> that validates accident history, license validity, SSN, and vehicle status before a driver is activated. Frequently accessed user profiles are cached in Redis to reduce database load on high-traffic lookup paths.</p>
+    <p>Driver profiles carry additional state beyond what a rider profile needs: vehicle details (make, model, license plate, color), current availability status (<code>OFFLINE</code> / <code>AVAILABLE</code> / <code>IN_TRIP</code>), and product type eligibility (UberX, Comfort, Black, Pool). This eligibility is stored in SQL and cached; the matching service reads it to filter the driver pool before running the assignment algorithm.</p>
 
-    <h2>GPS Ingestion Pipeline</h2>
-    <p>Every active driver transmits a GPS packet approximately every <strong>5 seconds</strong>, containing their <code>user_id</code>, current location, and a timestamp. At 15 million trips per day, this is a high-volume, bursty write stream. A <strong>message queue</strong> decouples the GPS producers from the location processing consumers, absorbing variability in QPS.</p>
-    <p>The delivery guarantee is <strong>at-most-once</strong>. A single lost GPS packet is acceptable because the next one arrives 5 seconds later — the cost of guaranteed delivery would add complexity and latency for a negligible benefit. Incoming GPS data is filtered to remove outliers and off-road points (GPS sensors have 3–5m accuracy; raw readings don't land on roads). Critically, <strong>driver locations</strong> are the high-volume tracked stream — drivers broadcast continuously while available, and their position is shown to riders during a trip. Rider location tracking is used only for pickup matching.</p>
+    <h2>Step 5 — GPS Ingestion Pipeline</h2>
+    <p>Every active driver transmits a GPS packet approximately every <strong>5 seconds</strong>, containing their <code>user_id</code>, current location, and a timestamp. At 15 million trips per day and assuming ~1M concurrent active drivers at peak, this produces ~200,000 writes per second — a high-volume, bursty write stream that a synchronous HTTP endpoint cannot absorb without being a bottleneck.</p>
 
-    <h2>Location Storage and Spatial Indexing</h2>
-    <p>Driver location data requires both high-speed lookup for matching and durable storage for trip history:</p>
+    <p>A <strong>message queue</strong> (Kafka or a purpose-built low-latency alternative) decouples the GPS producers from the location processing consumers, absorbing variability in QPS. Drivers write to the queue without waiting for confirmation; the consumers — the location update workers — drain the queue and update the in-memory spatial index and Cassandra asynchronously.</p>
+
+    <p>The delivery guarantee is <strong>at-most-once</strong>. A single lost GPS packet is acceptable because the next one arrives 5 seconds later — the cost of guaranteed delivery (retry loops, deduplication, higher latency) adds complexity for a negligible benefit. The contrast with payments is instructive: payment events use at-least-once because losing a payment message has real financial consequences.</p>
+
+    <h3>GPS data pre-processing</h3>
+    <p>Raw GPS readings are noisy — consumer-grade sensors have 3–5 m accuracy, and satellites occasionally produce wildly incorrect fixes. Before updating the spatial index, the location workers apply:</p>
+    <ul>
+      <li><strong>Outlier rejection</strong> — discard readings that imply impossible speed (e.g., >200 km/h between two consecutive packets).</li>
+      <li><strong>Map matching</strong> — snap the lat/lng to the nearest road segment via the map service API, so the driver icon appears on the road rather than floating 10 m into a building.</li>
+      <li><strong>Kalman filtering</strong> (optional, higher fidelity) — smooth the GPS trace using a Kalman filter to reduce jitter on the rider's live-tracking map.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">why not WebSocket for GPS ingestion?</div>
+      <p>WebSockets maintain persistent connections — great for pushing data <em>to</em> clients, but 1M persistent inbound connections from driver apps would saturate connection table memory on a single gateway. The GPS write pattern (fire-and-forget every 5 s) is better served by short HTTP POSTs that a load balancer can distribute across stateless ingestion workers.</p>
+    </div>
+
+    <h2>Step 6 — Geospatial Indexing</h2>
+    <p>The core spatial operation is: <em>"given a rider at (lat, lng), find all available drivers within radius R."</em> Doing this efficiently at scale requires a purpose-built geospatial index rather than a brute-force scan of all driver records.</p>
+
+    <h3>Geohash</h3>
+    <p>Geohash encodes a (lat, lng) pair into a short alphanumeric string by recursively bisecting the world into a 2D grid. Each additional character halves the cell size. A 6-character geohash represents a ~1.2 km × 0.6 km cell. To find nearby drivers, you look up the target cell plus the 8 adjacent cells at the appropriate precision — nine lookups return all candidates within roughly 1–2 km.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">concept</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Geohash precision table</span>
+length  cell width  cell height  use case
+  4     ~39 km      ~20 km       city-level
+  5     ~4.9 km     ~4.9 km      neighborhood
+  6     ~1.2 km     ~0.61 km     block-level (good for driver search)
+  7     ~153 m      ~153 m       fine-grained ETA
+
+<span class="cm">-- Finding nearby drivers: look up target cell + 8 neighbors</span>
+<span class="fn">nearby_cells</span> = <span class="fn">geohash_neighbors</span>(rider_geohash, precision=<span class="num">6</span>)
+<span class="cm">-- returns 9 cells; query in-memory index for AVAILABLE drivers in those cells</span></code></pre>
+    </div>
+
+    <h3>Google S2 cells</h3>
+    <p>Google S2 maps the sphere onto a cube, then uses a Hilbert curve to produce hierarchical cell IDs with excellent spatial locality. S2 cells at level 13 are roughly 1.3 km², similar to a 6-char geohash. S2 is what Uber uses internally (via their H3 library, a hexagonal variant); it handles polar distortions better than geohash and supports efficient cap/polygon queries. For an interview, either is acceptable — geohash is simpler to explain, S2/H3 is more production-correct.</p>
+
+    <h3>QuadTree</h3>
+    <p>A QuadTree recursively subdivides the 2D plane into four quadrants. Nodes that contain too many objects are split. QuadTrees adapt naturally to non-uniform distributions — dense urban cores get fine granularity, sparse rural areas stay coarse. The downside is that updates (a driver moving between cells) require tree restructuring, which is expensive compared to the hash-lookup approach of geohash. QuadTrees are more commonly seen in gaming spatial indexing than in ride-share production systems, but are a valid interview answer with the right caveats.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Index Type</th><th>Strengths</th><th>Weaknesses</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Geohash</td><td>Simple string prefix lookup; Redis native support; easy to shard by prefix</td><td>Cell boundary artifacts; non-uniform cell shapes at high latitudes</td></tr>
+        <tr><td class="col-a">Google S2 / H3</td><td>Uniform cell areas; excellent spatial locality; polygon/cap queries</td><td>More complex library; less widely understood</td></tr>
+        <tr><td class="col-b">QuadTree</td><td>Adaptive to density; hierarchical aggregation</td><td>Expensive updates; complex tree balancing; in-memory only</td></tr>
+        <tr><td class="col-b">R-Tree (PostGIS)</td><td>Mature SQL integration; handles polygons natively</td><td>SQL DB is too slow for 200K GPS writes/sec; not suitable for hot path</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Step 7 — Location Storage Architecture</h2>
+    <p>Driver location data requires both high-speed lookup for matching and durable storage for trip history. These are two different access patterns that demand two different storage tiers:</p>
 
     <table class="compare-table">
       <thead>
@@ -241,12 +385,16 @@
       </tbody>
     </table>
 
+    <p>The in-memory index is partitioned by geohash prefix (or S2 cell ID prefix). Each shard is owned by a set of worker nodes determined by consistent hashing — Uber's Ringpop library implements this ring, allowing nodes to be added or removed without reshuffling all data. When a driver sends a location update, the ingestion worker hashes the driver's current geohash to find the owning shard, then updates that shard's in-memory map.</p>
+
+    <p>Cassandra is chosen for the persistent tier because it handles <strong>high write throughput</strong> with eventual consistency — the exact profile of GPS history. The partition key is <code>(driver_id, date_hour_bucket)</code> so all location records for a driver in a time window are co-located on one node, making "reconstruct this driver's route during trip X" a single partition read.</p>
+
     <figure class="article-figure">
       <img src="/assets/img/ride-share-2.jpg" alt="Pickup time optimization and driver matching" loading="lazy">
       <figcaption>Pickup time optimization and driver matching</figcaption>
     </figure>
 
-    <h2>The Matching Algorithm</h2>
+    <h2>Step 8 — The Matching Algorithm</h2>
     <p>The intuitive approach — assign each incoming rider request to the nearest available driver — is <strong>greedy and globally suboptimal</strong>. If two riders are close to the same driver, the greedy approach gives the driver to the first requester, potentially leaving the second rider stranded with a much farther driver.</p>
     <p>The correct framing is a <strong>bipartite graph matching</strong> problem: riders on one side, available drivers on the other, with edge weights representing pickup time. The system batches incoming requests within a short window and solves for the assignment that minimizes <strong>global average pickup time</strong> across all riders in the batch — not just the first rider in queue.</p>
 
@@ -268,7 +416,25 @@ avg pickup = 5 min
 <span class="cm">-- Bipartite matching (optimal):</span>
 rider_A → driver D2          (4 min)
 rider_B → driver D1          (4 min)
-avg pickup = 4 min</code></pre>
+avg pickup = 4 min
+
+<span class="cm">-- Algorithm: Hungarian algorithm or min-cost flow</span>
+<span class="cm">-- Batch window: typically 2–5 seconds</span>
+<span class="cm">-- Edge weights: ETA from routing API (not Euclidean distance)</span></code></pre>
+    </div>
+
+    <h3>Matching pipeline in detail</h3>
+    <ol>
+      <li><strong>Geo lookup</strong> — query the in-memory spatial index for all <code>AVAILABLE</code> drivers within a search radius (e.g., 3 km) of the rider's pickup point. Filter by product type (UberX, Comfort, etc.).</li>
+      <li><strong>ETA scoring</strong> — for each candidate driver, call the routing service (or use a lightweight straight-line estimate with a road factor) to get a realistic pickup ETA. Actual road ETA beats Euclidean distance significantly in grid-heavy cities like Manhattan.</li>
+      <li><strong>Batch solve</strong> — collect all pending rider requests in the current batch window. Build the bipartite graph with ETA as edge weights. Solve using the Hungarian algorithm (O(n³)) or a min-cost flow approximation for large batches.</li>
+      <li><strong>Offer dispatch</strong> — send a match offer to the assigned driver. If the driver declines or doesn't respond within ~15 s, the rider is re-queued for the next batch. Drivers who repeatedly decline are deprioritized in future batches.</li>
+      <li><strong>Lock the driver</strong> — once a driver accepts, atomically flip their status from <code>AVAILABLE</code> to <code>IN_TRIP</code> in the spatial index to prevent double-matching.</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">why ETA over distance?</div>
+      <p>A driver 0.5 km away on the wrong side of a river may take 15 minutes; a driver 1.5 km away with a clear road takes 3 minutes. Using straight-line distance as the edge weight produces systematically wrong matches in real cities. Routing API calls are expensive — cache frequent city pairs or use pre-computed road factor heuristics for the scoring phase, then confirm with a full routing call after a match is found.</p>
     </div>
 
     <figure class="article-figure">
@@ -276,28 +442,229 @@ avg pickup = 4 min</code></pre>
       <figcaption>Time-series GPS data storage schema</figcaption>
     </figure>
 
-    <h2>Map Services</h2>
-    <p>Rather than building a proprietary mapping stack, ride-share platforms partner with external map providers (Google Maps, MapBox, OpenStreetMap) for road graph data, routing, and ETA calculation. A critical challenge is that <strong>GPS coordinates have no concept of roads</strong> — raw latitude/longitude must be snapped to the nearest road segment via map-matching before displaying a vehicle icon on-screen.</p>
+    <h2>Step 9 — Trip State Machine</h2>
+    <p>A trip is best modeled as an explicit state machine. Each state transition is triggered by an event — from driver or rider app, or from an internal timeout — and must be idempotent so that replaying a network-retried event does not advance the state incorrectly.</p>
 
-    <h2>Payment Processing</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">states</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>REQUESTED
+  │ match found (bipartite algorithm)
+  ▼
+DRIVER_ASSIGNED
+  │ driver accepts
+  ▼
+DRIVER_EN_ROUTE         ← driver heading to pickup
+  │ driver arrives
+  ▼
+DRIVER_ARRIVED          ← driver waiting at pickup
+  │ rider enters vehicle / driver taps "start"
+  ▼
+IN_TRIP                 ← ride in progress
+  │ driver taps "complete" at destination
+  ▼
+COMPLETED               ← fare computed, payment triggered
+
+  From any pre-COMPLETED state:
+  REQUESTED / DRIVER_ASSIGNED → CANCELLED_BY_RIDER / NO_DRIVER_FOUND
+  DRIVER_EN_ROUTE / DRIVER_ARRIVED → CANCELLED_BY_DRIVER / CANCELLED_BY_RIDER</code></pre>
+    </div>
+
+    <p>Storing the state in a SQL row guarded by an application-level transition check prevents illegal hops (e.g., moving directly from <code>REQUESTED</code> to <code>IN_TRIP</code>). Each transition also publishes an event to Kafka so that downstream services — notification service (send "driver arriving" push), analytics service (record event), payment service (trigger charge on <code>COMPLETED</code>) — can react without being coupled to the trip service directly.</p>
+
+    <h3>Timeout handling</h3>
+    <ul>
+      <li>If a driver does not accept within ~15 s of being offered a match, the trip service re-queues the rider and marks the driver as deprioritized for the next matching cycle.</li>
+      <li>If no driver is found after N retries over ~2 min, the trip moves to <code>NO_DRIVER_FOUND</code> and the rider is notified to try again later.</li>
+      <li>A distributed scheduler (e.g., Celery beat or a simple Kafka delayed message) drives these timeout transitions without a polling loop on the hot database.</li>
+    </ul>
+
+    <h2>Step 10 — ETA and Routing</h2>
+    <p>Rather than building a proprietary mapping stack, ride-share platforms partner with external map providers (Google Maps, MapBox, OpenStreetMap) for road graph data, routing, and ETA calculation. A critical challenge is that <strong>GPS coordinates have no concept of roads</strong> — raw latitude/longitude must be snapped to the nearest road segment via map-matching before displaying a vehicle icon on-screen or computing ETA.</p>
+
+    <h3>ETA computation layers</h3>
+    <ul>
+      <li><strong>Road graph</strong> — a weighted directed graph where nodes are road intersections and edges are road segments with travel-time weights derived from historical speed data and real-time traffic.</li>
+      <li><strong>Dijkstra / A*</strong> — shortest-path algorithms over the road graph; A* uses a geographic heuristic to prune the search space and run faster than Dijkstra in practice.</li>
+      <li><strong>Traffic adjustment</strong> — real-time traffic feeds (Google Traffic, HERE) modulate edge weights continuously; a road that takes 2 min at noon may take 12 min at 5 pm.</li>
+      <li><strong>ETA caching</strong> — popular city-pair ETAs are cached with short TTLs (30–60 s) since traffic changes frequently. Exact per-driver ETAs are computed fresh but use the cached road graph.</li>
+    </ul>
+
+    <p>The matching service uses a <strong>lightweight ETA approximation</strong> (straight-line distance × road factor) for the scoring phase to avoid N routing API calls per batch. Once a match is confirmed, the full routing API computes the accurate ETA shown to the rider.</p>
+
+    <h2>Step 11 — Surge Pricing</h2>
+    <p>When demand exceeds supply in a geographic area, surge pricing raises fares to attract more drivers to the area and reduce demand from price-sensitive riders, rebalancing the market. Implementing surge pricing is a real-time data pipeline problem:</p>
+
+    <h3>Computing the surge multiplier</h3>
+    <ol>
+      <li>Every 60–120 seconds, the pricing service reads from the spatial index: for each geohash cell at precision 5–6 (neighborhood level), count <code>pending_requests</code> (riders waiting) and <code>available_drivers</code> (AVAILABLE status).</li>
+      <li>Compute the supply/demand ratio: <code>ratio = pending_requests / max(available_drivers, 1)</code>.</li>
+      <li>Map the ratio to a multiplier via a lookup table (e.g., ratio &lt; 0.5 → 1.0×; 0.5–1.0 → 1.2×; 1.0–2.0 → 1.5×; >2.0 → 2.0×). Cap the multiplier (e.g., 3.0×) to avoid PR disasters during emergencies.</li>
+      <li>Write the multiplier to a Redis key per geohash cell with a short TTL (120 s). All pricing lookups hit Redis, not the spatial index.</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">edge case</div>
+      <p>What happens at geohash cell borders? A rider near the edge of a high-surge cell might be a few meters from a zero-surge cell. The system should aggregate multipliers from the rider's cell plus neighbors and take the weighted average, or simply use the rider's cell. The exact boundary behavior is a product policy decision — disclose surge clearly to riders regardless.</p>
+    </div>
+
+    <h3>Upfront fare estimation</h3>
+    <p>The fare shown before the rider books is an estimate based on: <code>base_fare + (distance_km × per_km_rate + duration_min × per_min_rate) × surge_multiplier</code>. The final fare uses actual GPS-tracked distance and time. If the actual fare significantly exceeds the estimate (e.g., detour by driver), rider protections cap the overage.</p>
+
+    <h2>Step 12 — Map Services</h2>
+    <p>Map services provide three critical functions: road graph data for routing, ETA computation, and the map tiles displayed in the app UI. Ride-share platforms partner with external providers rather than build these in-house — the investment required to maintain a global road graph (OpenStreetMap editing, traffic data partnerships, map rendering pipeline) is enormous and not a core competency.</p>
+
+    <p>Key integration points:</p>
+    <ul>
+      <li><strong>Geocoding / reverse geocoding</strong> — convert human-readable addresses ("Pier 39, San Francisco") to (lat, lng) and back. Used for pickup/dropoff entry in the rider app.</li>
+      <li><strong>Directions API</strong> — given origin and destination, return turn-by-turn directions and ETA. Called once per confirmed match to show the driver their navigation route.</li>
+      <li><strong>Map matching API</strong> — snap raw GPS traces to road segments. Called by the GPS pre-processing pipeline and by the map display layer to show a smooth driver icon.</li>
+      <li><strong>Map tiles</strong> — raster or vector tiles for the app background map. Served via CDN from the map provider; the ride-share app does not re-host tiles.</li>
+    </ul>
+
+    <h2>Step 13 — Data Model</h2>
+    <p>Key tables stored in SQL (trip records, user accounts) and in Cassandra (location history):</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> trips (
+  id              <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  rider_id        <span class="ty">BIGINT</span> <span class="kw">NOT NULL</span>,
+  driver_id       <span class="ty">BIGINT</span>,
+  status          <span class="ty">VARCHAR</span>(<span class="num">32</span>),   <span class="cm">-- REQUESTED|DRIVER_ASSIGNED|...</span>
+  pickup_lat      <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  pickup_lng      <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  dropoff_lat     <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  dropoff_lng     <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  product_type    <span class="ty">VARCHAR</span>(<span class="num">16</span>),   <span class="cm">-- UBERX|COMFORT|BLACK|POOL</span>
+  surge_multiplier <span class="ty">DECIMAL</span>(<span class="num">4</span>,<span class="num">2</span>),
+  estimated_fare_cents <span class="ty">INT</span>,
+  actual_fare_cents    <span class="ty">INT</span>,
+  requested_at    <span class="ty">TIMESTAMP</span>,
+  completed_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="kw">CREATE TABLE</span> drivers (
+  id              <span class="ty">BIGINT</span> <span class="kw">PRIMARY KEY</span>,
+  availability    <span class="ty">VARCHAR</span>(<span class="num">16</span>),  <span class="cm">-- OFFLINE|AVAILABLE|IN_TRIP</span>
+  product_types   <span class="ty">TEXT</span>,          <span class="cm">-- comma-separated eligible types</span>
+  vehicle_plate   <span class="ty">VARCHAR</span>(<span class="num">16</span>),
+  rating          <span class="ty">DECIMAL</span>(<span class="num">3</span>,<span class="num">2</span>),
+  last_lat        <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  last_lng        <span class="ty">DECIMAL</span>(<span class="num">9</span>,<span class="num">6</span>),
+  last_geohash    <span class="ty">VARCHAR</span>(<span class="num">12</span>),
+  updated_at      <span class="ty">TIMESTAMP</span>
+);</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Cassandra CQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- GPS location history (write-heavy, time-series)</span>
+<span class="kw">CREATE TABLE</span> driver_location_history (
+  driver_id   <span class="ty">UUID</span>,
+  time_bucket <span class="ty">TEXT</span>,    <span class="cm">-- e.g. '2024-05-24-18' (hourly bucket)</span>
+  recorded_at <span class="ty">TIMESTAMP</span>,
+  lat         <span class="ty">DOUBLE</span>,
+  lng         <span class="ty">DOUBLE</span>,
+  heading     <span class="ty">SMALLINT</span>,
+  <span class="kw">PRIMARY KEY</span> ((driver_id, time_bucket), recorded_at)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (recorded_at <span class="kw">DESC</span>);
+<span class="cm">-- Partition = one driver × one hour; query = "all GPS for driver D in hour H"</span></code></pre>
+    </div>
+
+    <h2>Step 14 — Payment Processing</h2>
     <p>Three architectural options exist for payment:</p>
     <ul>
-      <li><strong>Proprietary payment system</strong> — full control, high build cost and regulatory burden</li>
-      <li><strong>Direct third-party integration</strong> (PayPal, Block) — simpler, but tied to one provider</li>
-      <li><strong>Unbranded payment gateway via processor partner</strong> — Uber's initial approach with Braintree; enables multi-provider flexibility and regional payment processor support without exposing the payment brand</li>
+      <li><strong>Proprietary payment system</strong> — full control, high build cost and regulatory burden (PCI-DSS Level 1).</li>
+      <li><strong>Direct third-party integration</strong> (PayPal, Block/Square) — simpler, but tied to one provider.</li>
+      <li><strong>Unbranded payment gateway via processor partner</strong> — Uber's initial approach with Braintree; enables multi-provider flexibility and regional payment processor support without exposing the payment brand.</li>
     </ul>
-    <p>Payment deductions and driver payout calculations are handled <strong>asynchronously</strong> to keep them off the critical trip-completion path. This prevents payment processing delays from degrading the core booking and navigation experience.</p>
+    <p>Payment deductions and driver payout calculations are handled <strong>asynchronously</strong> to keep them off the critical trip-completion path. When a trip reaches <code>COMPLETED</code>, the trip service publishes a <code>TripCompleted</code> event to Kafka. The payment service consumes this event, computes the final fare (actual distance × actual duration × surge multiplier), charges the rider's saved payment method via the processor API, and triggers driver payout (typically daily batch settlement rather than per-trip to reduce transfer fees).</p>
+
+    <h3>Payment idempotency</h3>
+    <p>The payment service passes a unique <strong>idempotency key</strong> (e.g., <code>trip_id + "charge"</code>) to the payment processor on every charge call. If the network drops after the charge succeeds but before the response arrives, the retry with the same key is a no-op at the processor — the rider is not double-charged. A webhook from the processor confirms success or failure, which updates the trip record's payment status. A nightly reconciliation job catches any discrepancies between trip records and processor settlements.</p>
+
+    <div class="callout">
+      <div class="callout-label">edge case</div>
+      <p>What if the <code>TripCompleted</code> Kafka event is delivered twice (at-least-once semantics)? The payment service must dedup on <code>trip_id</code> — if a charge record already exists for the trip, skip the charge and return the existing result. This is the idempotent consumer pattern: every event consumer must handle re-delivery without side effects.</p>
+    </div>
+
+    <h2>Step 15 — Scaling and Fault Tolerance</h2>
+    <p>A global ride-share platform must survive regional outages, handle millions of concurrent connections, and route traffic intelligently across a distributed fleet of services.</p>
+
+    <h3>Sharding the location index</h3>
+    <p>The in-memory spatial index is sharded by city and product type — UberX in San Francisco is a completely separate data set from Comfort in London. Within a city, consistent hashing (Ringpop) distributes geohash prefixes across worker nodes. A driver moving between geohash cells triggers a location update that the hash ring routes to the correct shard automatically. When a node is added or removed, only the keys on the affected arc of the ring are remapped — minimizing data movement compared to naive modulo partitioning.</p>
+
+    <h3>Multi-region deployment</h3>
+    <p>Each major metro area runs its own matching, GPS ingestion, and spatial index cluster — a rider in Chicago never needs data from London. Cross-region communication is limited to user profile reads (cached aggressively) and global analytics pipelines. This geographic isolation keeps latency low, failure blast radius small, and regulatory data-residency requirements satisfied.</p>
+
+    <h3>Circuit breakers and graceful degradation</h3>
+    <ul>
+      <li>If the routing API (Google Maps) is slow, the matching service falls back to Euclidean-distance estimates. Matches are slightly less accurate but still dispatched.</li>
+      <li>If the surge pricing service is down, fall back to a cached multiplier (or 1.0× as a safe default). Trips continue; pricing accuracy degrades temporarily.</li>
+      <li>If Cassandra is unavailable, the GPS pipeline buffers in Kafka and catches up when the store recovers. Only the historical record is delayed — the in-memory index is unaffected.</li>
+    </ul>
+
+    <h3>WebSocket for real-time tracking</h3>
+    <p>During an active trip, the rider's app displays the driver's position moving in real time. This requires a <strong>push channel</strong>, not polling — polling at 1 s intervals from millions of active trips would generate ~millions of HTTP requests per second for position data. The solution:</p>
+    <ul>
+      <li>A WebSocket gateway maintains persistent connections to active rider and driver apps.</li>
+      <li>When the GPS pipeline processes a location update for a driver currently in trip, it publishes the new position to a per-trip Pub/Sub channel.</li>
+      <li>The WebSocket gateway subscribes to that channel and pushes the update to the rider's connection.</li>
+      <li>The gateway is stateless except for the connection table; it can be horizontally scaled behind a load balancer that supports sticky sessions (or a distributed pub/sub mesh like Redis Pub/Sub).</li>
+    </ul>
+
+    <h2>Step 16 — Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>GPS delivery guarantee</td><td class="col-a">At-most-once</td><td>Occasional missed packets; next update arrives in 5 s — negligible impact</td></tr>
+        <tr><td>Spatial index</td><td class="col-a">In-memory + geohash</td><td>Memory cost; must be replicated; not durable — but speed is paramount for matching</td></tr>
+        <tr><td>Matching algorithm</td><td class="col-a">Bipartite batch solve</td><td>Introduces 2–5 s batch window latency; globally better outcomes vs. greedy</td></tr>
+        <tr><td>Location persistence</td><td class="col-b">Cassandra (eventual)</td><td>History is eventually consistent — acceptable; correctness needed for trip records (SQL)</td></tr>
+        <tr><td>Payment</td><td class="col-a">Async (Kafka + processor)</td><td>Payment confirmed after trip; rare failure requires reconciliation job to catch</td></tr>
+        <tr><td>Map services</td><td class="col-b">External provider</td><td>Cost per API call; dependency risk — but avoids enormous proprietary mapping investment</td></tr>
+        <tr><td>Surge computation</td><td class="col-a">Periodic batch (60–120 s)</td><td>Up to 2-min lag on multiplier updates; acceptable given human decision timescales</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Ride-share design is dominated by two insights: GPS is just a high-volume time-series stream (at-most-once, message queue + in-memory index), and matching is a global optimization problem (bipartite graph), not a per-request greedy lookup. Everything else — consistent hashing for location data, async payments, map snapping — follows from handling those two constraints at scale.</p>
+      <p>Ride-share design is dominated by two insights: GPS is a high-volume time-series stream (at-most-once, message queue + in-memory geohash index), and matching is a global optimization problem (bipartite graph), not a per-request greedy lookup. The trip state machine keeps lifecycle transitions correct and idempotent. Surge pricing is a periodic batch computation per geohash cell. Payment is intentionally async to keep it off the critical path. Everything else — consistent hashing, Cassandra, multi-region isolation — follows from handling those constraints at 200K GPS writes per second.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
       <p><strong>Why bipartite graph matching instead of greedy nearest-driver?</strong> Greedy assigns each rider to their nearest driver independently, which is locally optimal but globally suboptimal — it can leave nearby riders with much farther drivers. Batching requests and solving the bipartite assignment minimizes average pickup time across all riders.<br>
-      <strong>Why at-most-once for GPS vs. at-least-once for payments?</strong> A dropped GPS packet has negligible impact (next arrives in 5s); a dropped payment event has real financial consequences. Delivery guarantees should match the business cost of a lost message.<br>
-      <strong>Why partition driver location data by city and product type?</strong> UberX and UberPool draw from separate driver pools; cross-city supply is irrelevant. Partitioning isolates load by market and makes matching queries fast within each segment.</p>
+      <strong>Why at-most-once for GPS vs. at-least-once for payments?</strong> A dropped GPS packet has negligible impact (next arrives in 5 s); a dropped payment event has real financial consequences. Delivery guarantees should match the business cost of a lost message.<br>
+      <strong>Why partition driver location data by city and product type?</strong> UberX and UberPool draw from separate driver pools; cross-city supply is irrelevant. Partitioning isolates load by market and makes matching queries fast within each segment.<br>
+      <strong>How do you prevent a driver from being double-matched?</strong> The matching service atomically flips the driver's status from AVAILABLE to IN_TRIP in the spatial index before sending the offer. Any concurrent match attempt reads the updated status and skips that driver.<br>
+      <strong>How does the surge multiplier get computed?</strong> Every 60–120 s, count pending_requests and available_drivers per geohash cell; compute their ratio; map to a multiplier table; write to Redis with a short TTL. Pricing reads are Redis hits — never a direct spatial index query.</p>
     </div>
 
     <div class="article-nav">
@@ -318,7 +685,7 @@ avg pickup = 4 min</code></pre>
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

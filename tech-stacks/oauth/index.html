@@ -129,7 +129,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -148,14 +148,14 @@
     <div class="article-meta">
       <span>Jun 17, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>OAuth 2.0 is an <strong>authorization framework</strong> that allows third-party applications to obtain limited access to a user's resources on a web service, without needing to know the user's login credentials. Before OAuth, the only way to give a third-party app access to your data was to hand over your username and password — a serious security risk. OAuth solves this by introducing a delegated-access model built around scoped, expiring tokens.</p>
+    <p>OAuth 2.0 is an <strong>authorization framework</strong> that allows third-party applications to obtain limited access to a user's resources on a web service, without needing to know the user's login credentials. Before OAuth, the only way to give a third-party app access to your data was to hand over your username and password — a serious security risk. OAuth solves this by introducing a delegated-access model built around scoped, expiring tokens. Published as RFC 6749 in 2012, it has since become the de facto authorization standard across the web, underpinning "Login with Google," API authorization, microservice-to-microservice auth, and device authorization flows for TVs and IoT devices alike. Understanding the full protocol — all four grant types, PKCE, token lifecycle, scopes, and the boundary with OpenID Connect — is essential for any engineer building or securing modern APIs.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -185,31 +185,47 @@
         <tr><th>Role</th><th>Responsibility</th></tr>
       </thead>
       <tbody>
-        <tr><td><strong>Resource Owner</strong></td><td>The end-user who owns the protected resource and grants permission for a client to access it.</td></tr>
-        <tr><td><strong>Client</strong></td><td>The application requesting access (web app, mobile app, CLI tool, backend service).</td></tr>
-        <tr><td><strong>Authorization Server</strong></td><td>Authenticates the resource owner, obtains consent, and issues access tokens and refresh tokens.</td></tr>
-        <tr><td><strong>Resource Server</strong></td><td>Hosts the protected resources (e.g., a REST API). Validates access tokens on every request before serving data.</td></tr>
-        <tr><td><strong>Access Token</strong></td><td>A credential representing the granted authorization. Contains scope and expiration. Opaque strings or JWTs.</td></tr>
+        <tr><td><strong>Resource Owner</strong></td><td>The end-user who owns the protected resource and grants permission for a client to access it on their behalf.</td></tr>
+        <tr><td><strong>Client</strong></td><td>The application requesting access (web app, mobile app, CLI tool, backend service). Can be "confidential" (can keep a secret) or "public" (cannot, e.g. SPA/mobile).</td></tr>
+        <tr><td><strong>Authorization Server</strong></td><td>Authenticates the resource owner, obtains consent, and issues access tokens and refresh tokens. Often separate from the resource server (e.g., Google's auth server vs. the Calendar API).</td></tr>
+        <tr><td><strong>Resource Server</strong></td><td>Hosts the protected resources (e.g., a REST API). Validates access tokens on every request before serving data — by introspecting them or verifying their JWT signature.</td></tr>
+        <tr><td><strong>Access Token</strong></td><td>A short-lived credential representing the granted authorization. Contains scope and expiration. Can be opaque strings (require introspection) or self-contained JWTs (verified locally).</td></tr>
+        <tr><td><strong>Refresh Token</strong></td><td>A long-lived credential used to obtain new access tokens without user re-authentication. Must be stored securely server-side and rotated on each use.</td></tr>
       </tbody>
     </table>
 
-    <h2>OAuth 2.0 vs. Authentication</h2>
-    <p>A common interview mistake: confusing OAuth with authentication. <strong>OAuth 2.0 is purely about authorization</strong> — granting a client permission to perform actions on behalf of a user. It does not tell you <em>who</em> the user is. <strong>OpenID Connect (OIDC)</strong> is the authentication layer built on top of OAuth 2.0 — it adds an ID token (a JWT) that carries identity claims like name and email. When you click "Login with Google," you are using OIDC (identity) over OAuth (authorization).</p>
+    <h2>OAuth 2.0 vs. Authentication — The Critical Distinction</h2>
+    <p>A common interview mistake: confusing OAuth with authentication. <strong>OAuth 2.0 is purely about authorization</strong> — granting a client permission to perform actions on behalf of a user. It does not tell you <em>who</em> the user is. An access token says "this client is allowed to read your calendar," not "this is Alice." <strong>OpenID Connect (OIDC)</strong> is the authentication layer built on top of OAuth 2.0 — it adds an ID token (a JWT) that carries identity claims like <code>sub</code> (subject identifier), <code>name</code>, <code>email</code>, and <code>email_verified</code>. When you click "Login with Google," you are using OIDC (identity) over OAuth (authorization). The Google API server is both the OAuth authorization server and the OIDC identity provider.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Question</th><th class="col-a">OAuth 2.0</th><th class="col-b">OpenID Connect</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>What problem does it solve?</td><td class="col-a">Authorization — can this app access your data?</td><td class="col-b">Authentication — who is this user?</td></tr>
+        <tr><td>What does it issue?</td><td class="col-a">Access token (+ optional refresh token)</td><td class="col-b">ID token (JWT with identity claims) + access token</td></tr>
+        <tr><td>Scope used?</td><td class="col-a">Resource-level scopes (read:calendar, write:orders)</td><td class="col-b"><code>openid</code> scope required; <code>profile</code>, <code>email</code> optional</td></tr>
+        <tr><td>Token validates?</td><td class="col-a">What the client is allowed to do</td><td class="col-b">Who the user is (sub, name, email, etc.)</td></tr>
+        <tr><td>Spec</td><td class="col-a">RFC 6749</td><td class="col-b">OIDC Core 1.0 (built on OAuth 2.0)</td></tr>
+      </tbody>
+    </table>
 
       <figure class="article-figure">
         <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 authorization flow overview" loading="lazy">
         <figcaption>OAuth 2.0 authorization flow overview</figcaption>
       </figure>
 
-    <h2>Authorization Grant Types</h2>
+    <h2>Authorization Grant Types — All Four in Depth</h2>
+    <p>A "grant" is the method by which a client obtains authorization. OAuth 2.0 defines four grants for different client types and use cases. Picking the wrong one is a security vulnerability, not just a design smell.</p>
 
-    <h3>Authorization Code (Recommended for Server-Side Apps)</h3>
-    <p>The most secure flow. The client never sees the user's credentials. A short-lived authorization code is exchanged server-to-server (with the client secret) for tokens, keeping the actual tokens out of the browser.</p>
+    <h3>1. Authorization Code — The Secure Default for User-Facing Flows</h3>
+    <p>The most secure flow for any client that involves a human user. The key insight: a short-lived, single-use authorization <em>code</em> is returned via the browser redirect, then immediately exchanged server-to-server for the actual tokens. The tokens never touch the browser URL bar, browser history, or the JavaScript environment. The client's backend does the code exchange using its secret — the code alone is useless to an attacker who intercepts the redirect.</p>
     <ol>
-      <li>User clicks "Login with X" — client redirects user to the authorization server with <code>response_type=code</code>, <code>scope</code>, and a <code>state</code> parameter (CSRF protection).</li>
-      <li>User authenticates and consents — authorization server redirects back to the client's <code>redirect_uri</code> with a short-lived <code>code</code>.</li>
-      <li>Client's backend exchanges the code for tokens — POST to the token endpoint with <code>code</code>, <code>client_id</code>, and <code>client_secret</code>.</li>
-      <li>Authorization server returns <code>access_token</code> and optionally <code>refresh_token</code>.</li>
+      <li>User clicks "Login with X" — client redirects user to the authorization server with <code>response_type=code</code>, <code>scope</code>, <code>redirect_uri</code>, and a <code>state</code> parameter (CSRF protection — a random nonce).</li>
+      <li>User authenticates and consents on the authorization server's UI — user never enters credentials on the client's site.</li>
+      <li>Authorization server redirects back to the client's <code>redirect_uri</code> with a short-lived <code>code</code> and the original <code>state</code> value.</li>
+      <li>Client verifies <code>state</code> matches what it sent (CSRF check), then the client's <strong>backend</strong> exchanges the code for tokens via a POST to the token endpoint — with <code>client_secret</code>.</li>
+      <li>Authorization server returns <code>access_token</code>, expiry, and optionally <code>refresh_token</code>.</li>
     </ol>
 
     <div class="code-block">
@@ -228,9 +244,12 @@ GET https://auth.example.com/authorize
   &client_id=<span class="str">my-app</span>
   &redirect_uri=<span class="str">https://myapp.com/callback</span>
   &scope=<span class="str">read:profile email</span>
-  &state=<span class="str">random-csrf-token</span>
+  &state=<span class="str">xK9mN2pQ</span>              <span class="cm"># random nonce, stored in session</span>
 
-<span class="cm"># Step 3 — exchange code for tokens (server-side)</span>
+<span class="cm"># Step 3 — auth server redirects back with code</span>
+GET https://myapp.com/callback?code=<span class="str">SplxlOBeZQQYbYS6WxSbIA</span>&state=<span class="str">xK9mN2pQ</span>
+
+<span class="cm"># Step 4 — server exchanges code for tokens (never in browser)</span>
 POST https://auth.example.com/token
 Content-Type: application/x-www-form-urlencoded
 
@@ -238,7 +257,16 @@ grant_type=<span class="str">authorization_code</span>
 &code=<span class="str">SplxlOBeZQQYbYS6WxSbIA</span>
 &redirect_uri=<span class="str">https://myapp.com/callback</span>
 &client_id=<span class="str">my-app</span>
-&client_secret=<span class="str">my-secret</span></code></pre>
+&client_secret=<span class="str">my-secret</span>
+
+<span class="cm"># Response</span>
+{
+  <span class="str">"access_token"</span>:  <span class="str">"eyJhbGci..."</span>,
+  <span class="str">"token_type"</span>:    <span class="str">"Bearer"</span>,
+  <span class="str">"expires_in"</span>:    <span class="num">3600</span>,
+  <span class="str">"refresh_token"</span>: <span class="str">"def50200..."</span>,
+  <span class="str">"scope"</span>:         <span class="str">"read:profile email"</span>
+}</code></pre>
     </div>
 
       <figure class="article-figure">
@@ -246,54 +274,295 @@ grant_type=<span class="str">authorization_code</span>
         <figcaption>OAuth 2.0 Authorization Code grant flow diagram</figcaption>
       </figure>
 
-    <h3>Client Credentials (Machine-to-Machine)</h3>
-    <p>Used when there is no human user involved — a backend service authenticating directly as itself. The client sends its <code>client_id</code> and <code>client_secret</code> to the token endpoint and receives an access token. Common for microservice-to-microservice calls, cron jobs, and CI pipelines accessing APIs.</p>
+    <h3>2. Client Credentials — Machine-to-Machine Authorization</h3>
+    <p>Used when there is no human user involved — a backend service authenticating directly as itself to call another service's API. The client sends its <code>client_id</code> and <code>client_secret</code> directly to the token endpoint and receives an access token. No redirect, no user consent screen, no authorization code. Common for: microservice-to-microservice calls, cron jobs, CI/CD pipelines accessing APIs, IoT device backends calling a fleet management API.</p>
+    <p>The key security consideration: the <code>client_secret</code> must be stored in a secrets manager (AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager) — never in source code or environment variables checked into version control. Rotate it regularly. A leaked client secret in a machine-to-machine flow gives the attacker unrestricted service-level access with no user to notice anomalous behavior.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Client Credentials — no user redirect needed</span>
+POST https://auth.example.com/token
+Content-Type: application/x-www-form-urlencoded
+Authorization: Basic <span class="str">base64(client_id:client_secret)</span>
+
+grant_type=<span class="str">client_credentials</span>
+&scope=<span class="str">internal:orders.read internal:inventory.write</span>
+
+<span class="cm"># Response: service-level access token</span>
+{
+  <span class="str">"access_token"</span>: <span class="str">"eyJhbGci..."</span>,
+  <span class="str">"token_type"</span>:  <span class="str">"Bearer"</span>,
+  <span class="str">"expires_in"</span>:  <span class="num">3600</span>
+  <span class="cm"># No refresh_token — just re-request when expired</span>
+}</code></pre>
+    </div>
 
       <figure class="article-figure">
         <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 Client Credentials grant flow diagram" loading="lazy">
         <figcaption>OAuth 2.0 Client Credentials grant flow diagram</figcaption>
       </figure>
 
-    <h3>Implicit (Deprecated)</h3>
-    <p>Designed for single-page apps before PKCE existed: the token is returned directly in the URL fragment, skipping the code exchange step. This exposes the token to browser history, referrer headers, and any JavaScript running on the page. <strong>Do not use for new applications</strong>. Replace with Authorization Code + PKCE.</p>
+    <h3>3. Device Authorization Grant — For Input-Constrained Devices</h3>
+    <p>Designed for devices where typing a URL is impractical — smart TVs, gaming consoles, CLI tools, IoT devices. The device displays a short code and a URL. The user visits the URL on a separate device (phone or laptop), enters the code, and authorizes. The device polls the token endpoint until authorization completes. Defined in RFC 8628.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Step 1 — device requests a device code</span>
+POST https://auth.example.com/device/code
+grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
+&client_id=<span class="str">my-tv-app</span>
+&scope=<span class="str">read:profile</span>
+
+<span class="cm"># Response — device displays user_code on screen</span>
+{
+  <span class="str">"device_code"</span>:  <span class="str">"GmRhm..."</span>,
+  <span class="str">"user_code"</span>:    <span class="str">"WDJB-MJHT"</span>,  <span class="cm"># shown on TV screen</span>
+  <span class="str">"verification_uri"</span>: <span class="str">"https://example.com/activate"</span>,
+  <span class="str">"expires_in"</span>:   <span class="num">1800</span>,
+  <span class="str">"interval"</span>:     <span class="num">5</span>             <span class="cm"># poll every 5 seconds</span>
+}
+
+<span class="cm"># Step 2 — device polls until user approves on their phone</span>
+POST https://auth.example.com/token
+grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
+&device_code=<span class="str">GmRhm...</span>
+&client_id=<span class="str">my-tv-app</span>
+<span class="cm"># → returns "authorization_pending" until user approves</span>
+<span class="cm"># → returns tokens once approved</span></code></pre>
+    </div>
+
+    <h3>4. Implicit (Deprecated) and Resource Owner Password (Avoid)</h3>
+    <p>The <strong>Implicit grant</strong> was designed for single-page apps before PKCE existed: the token is returned directly in the URL fragment (<code>#access_token=...</code>), skipping the code exchange step. This exposes the token to browser history, referrer headers, and any JavaScript running on the page — including third-party scripts from analytics or ads. The OAuth 2.1 draft formally removes it. <strong>Do not use for new applications.</strong> Replace with Authorization Code + PKCE.</p>
+    <p>The <strong>Resource Owner Password Credentials grant</strong> (ROPC) has the client collect the user's username and password directly and forward them to the authorization server. This completely defeats the purpose of OAuth — the user must trust the client with their raw credentials. It is only appropriate for highly trusted first-party clients during a legacy migration away from direct credential handling. The OAuth 2.1 draft removes this grant as well.</p>
 
       <figure class="article-figure">
         <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 Implicit grant flow diagram" loading="lazy">
-        <figcaption>OAuth 2.0 Implicit grant flow diagram (deprecated)</figcaption>
+        <figcaption>OAuth 2.0 Implicit grant flow diagram (deprecated — replaced by Auth Code + PKCE)</figcaption>
       </figure>
-
-    <h3>Resource Owner Password Credentials (Avoid)</h3>
-    <p>The client collects the user's username and password directly and sends them to the authorization server. Defeats the purpose of OAuth — the user has to trust the client with credentials. Only appropriate for highly trusted first-party clients during a legacy migration.</p>
 
       <figure class="article-figure">
         <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 Resource Owner Password Credentials flow diagram" loading="lazy">
         <figcaption>OAuth 2.0 Resource Owner Password Credentials flow (avoid for new systems)</figcaption>
       </figure>
 
-    <h3>Refresh Token</h3>
-    <p>Access tokens are short-lived (typically minutes to an hour) to limit the damage of token theft. A <strong>refresh token</strong> is a long-lived credential that the client can use to obtain a new access token without prompting the user again. Refresh tokens must be stored securely (server-side, never in localStorage) and should be rotated on each use.</p>
-
-    <h2>PKCE (Proof Key for Code Exchange)</h2>
-    <p>PKCE (pronounced "pixie") is an extension to the Authorization Code flow designed for public clients — mobile apps and SPAs that cannot safely store a client secret. The client generates a random <code>code_verifier</code>, hashes it into a <code>code_challenge</code>, and includes the challenge in the authorization request. When exchanging the code for a token, it sends the original <code>code_verifier</code>. The authorization server verifies the hash, proving the token request came from the same party that initiated the auth request — preventing authorization code interception attacks.</p>
-
-    <h2>Use Cases</h2>
+    <h3>Refresh Token — The Long-Lived Credential</h3>
+    <p>Access tokens are intentionally short-lived (typically 15 minutes to 1 hour) to limit the blast radius of token theft. A <strong>refresh token</strong> is a long-lived credential (days, weeks, or until revoked) that the client can use to obtain a new access token without prompting the user again. This enables seamless user sessions while keeping the attack window for any individual access token narrow.</p>
+    <p>Refresh token security practices that matter in production:</p>
     <ul>
-      <li><strong>Third-party app integration</strong> — "Connect your Google Calendar" — the app gets read access to calendar data without ever seeing your Google password.</li>
-      <li><strong>Single Sign-On (SSO)</strong> — authenticate once with an identity provider (Okta, Auth0, Google Workspace) and access multiple internal applications without re-logging in.</li>
-      <li><strong>API authorization</strong> — issue scoped tokens to API consumers so they can only access the endpoints they need (<code>scope=read:orders</code>), not your entire API surface.</li>
-      <li><strong>Federated identity</strong> — multiple services delegate identity management to a central identity provider, reducing each service's attack surface and credential management overhead.</li>
+      <li><strong>Refresh token rotation</strong> — on each use, the authorization server issues a new refresh token and invalidates the old one. If a stolen refresh token is used, the legitimate client's next refresh attempt will fail, triggering a re-auth flow. This is the recommended pattern per RFC 6819 and the OAuth 2.1 draft.</li>
+      <li><strong>Storage</strong> — server-side web apps: store in an HttpOnly, Secure, SameSite=Strict cookie or in the server session (never in localStorage). SPAs: use HttpOnly cookies only — JavaScript cannot read them. Mobile apps: use the platform's secure storage (Keychain on iOS, Keystore on Android).</li>
+      <li><strong>Revocation</strong> — implement a token revocation endpoint (RFC 7009) so users can log out and tokens are immediately invalidated, even if they haven't expired.</li>
+      <li><strong>Absolute expiry</strong> — refresh tokens should have a maximum lifetime independent of activity (e.g., 90 days), after which the user must re-authenticate. This limits the risk from refresh tokens stored in old backups.</li>
+    </ul>
+
+    <h2>PKCE — Proof Key for Code Exchange</h2>
+    <p>PKCE (RFC 7636, pronounced "pixie") is an extension to the Authorization Code flow designed for public clients — mobile apps and SPAs that cannot safely store a client secret. Without PKCE, if an attacker intercepts the authorization code in the redirect (via a malicious app registered for the same URI scheme, or a leaked referrer header), they can exchange it for tokens using their own client credentials. PKCE closes this gap cryptographically.</p>
+    <p>The mechanism: before the authorization request, the client generates a cryptographically random 32–96 byte <code>code_verifier</code>, then computes <code>code_challenge = BASE64URL(SHA256(code_verifier))</code>. The challenge is included in the authorization request. When the client later exchanges the code for tokens, it sends the original <code>code_verifier</code>. The authorization server recomputes the hash and verifies it matches — proving that whoever is exchanging the code is the same party that initiated the request, without a static client secret.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">javascript</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// PKCE implementation in a SPA (Web Crypto API)</span>
+<span class="kw">async function</span> <span class="fn">generatePKCE</span>() {
+  <span class="kw">const</span> verifier = <span class="fn">generateRandomString</span>(<span class="num">64</span>);  <span class="cm">// 64 random bytes, base64url encoded</span>
+  <span class="kw">const</span> encoder = <span class="kw">new</span> <span class="ty">TextEncoder</span>();
+  <span class="kw">const</span> data = encoder.<span class="fn">encode</span>(verifier);
+  <span class="kw">const</span> digest = <span class="kw">await</span> crypto.subtle.<span class="fn">digest</span>(<span class="str">'SHA-256'</span>, data);
+  <span class="kw">const</span> challenge = <span class="fn">base64urlEncode</span>(digest);
+  <span class="kw">return</span> { verifier, challenge };
+}
+
+<span class="cm">// Step 1 — include code_challenge in authorization request</span>
+<span class="kw">const</span> { verifier, challenge } = <span class="kw">await</span> <span class="fn">generatePKCE</span>();
+sessionStorage.<span class="fn">setItem</span>(<span class="str">'pkce_verifier'</span>, verifier);  <span class="cm">// store for later</span>
+
+<span class="kw">const</span> authUrl = <span class="str">`https://auth.example.com/authorize
+  ?response_type=code
+  &client_id=my-spa
+  &code_challenge=${challenge}
+  &code_challenge_method=S256
+  &redirect_uri=https://myapp.com/callback
+  &scope=read:profile
+  &state=xK9mN2pQ`</span>;
+
+<span class="cm">// Step 2 — exchange code, sending verifier (not a secret)</span>
+<span class="kw">const</span> tokenResponse = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'https://auth.example.com/token'</span>, {
+  method: <span class="str">'POST'</span>,
+  body: <span class="kw">new</span> <span class="ty">URLSearchParams</span>({
+    grant_type: <span class="str">'authorization_code'</span>,
+    code: authCode,
+    code_verifier: sessionStorage.<span class="fn">getItem</span>(<span class="str">'pkce_verifier'</span>),  <span class="cm">// verifier, not challenge</span>
+    redirect_uri: <span class="str">'https://myapp.com/callback'</span>,
+    client_id: <span class="str">'my-spa'</span>
+    <span class="cm">// no client_secret — public client</span>
+  })
+});</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">PKCE for confidential clients too</div>
+      <p>RFC 7636 originally targeted public clients, but the OAuth 2.1 draft mandates PKCE for <em>all</em> Authorization Code flows — including server-side confidential clients. The reason: PKCE defends against authorization code injection attacks even when a client secret exists. Adding PKCE to a confidential client adds no downside and closes an attack class for free.</p>
+    </div>
+
+    <h2>JWT Access Tokens — Structure and Validation</h2>
+    <p>Access tokens come in two flavors: <strong>opaque strings</strong> (random identifiers the resource server must look up at the authorization server via introspection) and <strong>JWTs</strong> (self-contained tokens the resource server can validate locally). JWTs are far more common in modern systems because they eliminate the introspection round-trip — every API call saves a network hop.</p>
+    <p>A JWT has three parts separated by dots: <code>header.payload.signature</code>, each base64url-encoded. The header identifies the algorithm; the payload carries claims; the signature is a cryptographic proof of integrity.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// JWT header — identifies signing algorithm</span>
+{
+  <span class="str">"alg"</span>: <span class="str">"RS256"</span>,   <span class="cm">// RSA-SHA256 asymmetric — authorization server signs,</span>
+  <span class="str">"typ"</span>: <span class="str">"JWT"</span>,    <span class="cm">// resource servers verify with public key (no secret sharing)</span>
+  <span class="str">"kid"</span>: <span class="str">"key-v2"</span>  <span class="cm">// key ID — enables key rotation without service downtime</span>
+}
+
+<span class="cm">// JWT payload — registered claims + custom</span>
+{
+  <span class="str">"iss"</span>: <span class="str">"https://auth.example.com"</span>,  <span class="cm">// issuer — must match expected value</span>
+  <span class="str">"sub"</span>: <span class="str">"user-42"</span>,                  <span class="cm">// subject — user or service identity</span>
+  <span class="str">"aud"</span>: <span class="str">"https://api.example.com"</span>,   <span class="cm">// audience — intended recipient</span>
+  <span class="str">"exp"</span>: <span class="num">1716553600</span>,                  <span class="cm">// expiry — UNIX timestamp, reject if past</span>
+  <span class="str">"iat"</span>: <span class="num">1716550000</span>,                  <span class="cm">// issued at</span>
+  <span class="str">"jti"</span>: <span class="str">"a1b2c3d4"</span>,                  <span class="cm">// JWT ID — for revocation and replay detection</span>
+  <span class="str">"scope"</span>: <span class="str">"read:orders write:cart"</span>,   <span class="cm">// granted scopes</span>
+  <span class="str">"roles"</span>: [<span class="str">"customer"</span>]               <span class="cm">// custom claim — app-specific authorization</span>
+}</code></pre>
+    </div>
+
+    <p>Resource server validation steps that must all pass before serving data:</p>
+    <ol>
+      <li>Verify the signature against the authorization server's public key (fetched from the JWKS endpoint at <code>/.well-known/jwks.json</code>).</li>
+      <li>Check <code>exp</code> is in the future (with a small clock-skew tolerance, e.g. 30 seconds).</li>
+      <li>Check <code>iss</code> matches the expected authorization server URL.</li>
+      <li>Check <code>aud</code> contains this resource server's identifier — prevents token reuse across services.</li>
+      <li>Check <code>scope</code> contains the permission required by the specific endpoint being called.</li>
+      <li>Optionally check <code>jti</code> against a short-lived revocation list for sensitive operations.</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">the algorithm confusion attack</div>
+      <p>Never accept the <code>alg</code> field in the JWT header as authoritative — validate it against an allowlist on the server. The classic attack: an attacker changes <code>alg</code> from <code>RS256</code> to <code>HS256</code>, then signs the token with the authorization server's <em>public</em> key as the HMAC secret (which is often available). A naive library that trusts the header's alg will verify successfully. Always pin the expected algorithm server-side.</p>
+    </div>
+
+    <h2>Scopes — Fine-Grained Authorization</h2>
+    <p>Scopes are space-separated strings that define the permissions a client is requesting. The authorization server includes them in the token; the resource server enforces them. Good scope design follows the principle of least privilege — a client should request only what it needs for the current operation, not a blanket "admin" scope.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">http</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Requesting specific scopes — follows resource:action naming convention</span>
+scope=<span class="str">orders:read orders:write profile:read</span>
+
+<span class="cm"># Resource server middleware: check scope before serving</span>
+<span class="cm"># (pseudo-code — works in Express, FastAPI, Spring Security, etc.)</span>
+<span class="kw">function</span> <span class="fn">requireScope</span>(scope) {
+  <span class="kw">return</span> (req, res, next) => {
+    <span class="kw">const</span> tokenScopes = req.auth.scope.<span class="fn">split</span>(<span class="str">' '</span>);
+    <span class="kw">if</span> (!tokenScopes.<span class="fn">includes</span>(scope)) {
+      <span class="kw">return</span> res.<span class="fn">status</span>(<span class="num">403</span>).<span class="fn">json</span>({ error: <span class="str">'insufficient_scope'</span> });
+    }
+    <span class="fn">next</span>();
+  };
+}
+
+<span class="cm"># Apply per route</span>
+app.<span class="fn">get</span>(<span class="str">'/orders'</span>, <span class="fn">requireScope</span>(<span class="str">'orders:read'</span>), ordersController);
+app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class="fn">requireScope</span>(<span class="str">'orders:write'</span>), ordersController);</code></pre>
+    </div>
+
+    <h2>The state Parameter and CSRF Protection</h2>
+    <p>The <code>state</code> parameter is not optional — it is the primary CSRF defense in the Authorization Code flow. Without it, an attacker can craft an authorization URL, complete the auth flow themselves, and then trick the victim into hitting the callback endpoint with the attacker's authorization code. The victim's session then becomes associated with the attacker's account (a login CSRF attack). The fix: generate a cryptographically random nonce, store it in the server-side session or a signed cookie, include it as <code>state</code> in the authorization request, and verify it strictly matches on callback before proceeding.</p>
+
+    <h2>Common Security Pitfalls and Token Theft Prevention</h2>
+
+    <h3>Open Redirect in redirect_uri</h3>
+    <p>If the authorization server does not validate <code>redirect_uri</code> strictly against a pre-registered allowlist, an attacker can craft a URL with <code>redirect_uri=https://attacker.com/steal</code>. The authorization code is redirected to the attacker's server. Mitigation: register exact redirect URIs (no wildcards) and validate them as exact string matches — not prefix matches — on the authorization server.</p>
+
+    <h3>Access Token Storage in SPAs</h3>
+    <p>Storing access tokens in <code>localStorage</code> or <code>sessionStorage</code> exposes them to XSS attacks — any injected script can read and exfiltrate them. The recommended pattern: keep tokens in memory only (a JavaScript variable or React state), and store the refresh token in an <strong>HttpOnly, Secure, SameSite=Strict cookie</strong>. An HttpOnly cookie cannot be read by JavaScript, so XSS cannot steal it. The token is sent automatically on same-origin requests. Pair this with a token refresh endpoint that is only callable from the same origin.</p>
+
+    <h3>Token Leakage via Referrer Headers</h3>
+    <p>If an access token appears in a URL (as it does in the deprecated Implicit flow, or if someone accidentally embeds it in a query string), the browser's Referrer header will expose it to any external resource the page loads — analytics scripts, CDN assets, embedded content. Never put tokens in URLs. Carry them only in HTTP headers: <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+
+    <h3>Refresh Token Theft and Detection</h3>
+    <p>If a refresh token is stolen, the attacker can silently maintain access indefinitely. Refresh token rotation provides detection: when the attacker uses the stolen refresh token, the authorization server issues a new one and invalidates the old. When the legitimate client next tries to refresh with the now-invalidated token, the server detects the reuse — an anomaly that indicates theft — and can invalidate the entire refresh token family, forcing re-authentication. This is the "refresh token family" detection pattern implemented by Auth0, Okta, and most modern IdPs.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Attack Vector</th><th>Mitigation</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>CSRF on callback endpoint</td><td>Validate <code>state</code> parameter (cryptographic nonce) on every callback</td></tr>
+        <tr><td>Authorization code interception</td><td>PKCE (all flows, even confidential clients per OAuth 2.1)</td></tr>
+        <tr><td>Open redirect</td><td>Exact URI matching against pre-registered allowlist on auth server</td></tr>
+        <tr><td>XSS token theft (SPA)</td><td>Store access token in memory only; refresh token in HttpOnly cookie</td></tr>
+        <tr><td>Refresh token theft</td><td>Rotation + family invalidation on reuse detection</td></tr>
+        <tr><td>Replay attack</td><td>Short access token TTL; <code>jti</code> claim + revocation list for sensitive ops</td></tr>
+        <tr><td>Algorithm confusion</td><td>Server-side algorithm allowlist; never trust JWT header's <code>alg</code></td></tr>
+        <tr><td>Audience confusion</td><td>Validate <code>aud</code> claim on every resource server; tokens from one service must not work on another</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Use Cases in Practice</h2>
+    <ul>
+      <li><strong>Third-party app integration</strong> — "Connect your Google Calendar" — the app gets read access to calendar data without ever seeing your Google password. The user can revoke access at any time from Google's account settings without changing their password.</li>
+      <li><strong>Single Sign-On (SSO)</strong> — authenticate once with an identity provider (Okta, Auth0, Google Workspace) and access multiple internal applications. The IdP issues short-lived access tokens and ID tokens; each application validates them locally without calling back to the IdP on every request.</li>
+      <li><strong>API authorization for third-party developers</strong> — issue scoped tokens to API consumers. A read-only integration partner gets <code>scope=read:products</code>; a logistics partner gets <code>scope=read:orders write:shipments</code>. A leaked partner token compromises only their scope, not the entire API.</li>
+      <li><strong>Microservice-to-microservice</strong> — the Order Service uses Client Credentials to obtain a token scoped to <code>internal:inventory.read</code> before calling the Inventory Service. Each service validates the token's <code>aud</code> and <code>scope</code> claims, so a compromised Order Service cannot call the Payment Service.</li>
+      <li><strong>CLI tools and developer workflows</strong> — the Device Authorization grant allows a CLI tool (<code>kubectl</code>, <code>gh</code>, Terraform Cloud) to get a user to authorize via their browser while the CLI polls for the token. No password is ever entered in the terminal.</li>
     </ul>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Use Authorization Code + PKCE for all user-facing flows — web and mobile alike. Use Client Credentials for service-to-service. Never use Implicit or Password grant for new systems. Keep access tokens short-lived, rotate refresh tokens, and always validate the <code>state</code> parameter to prevent CSRF. Remember: OAuth 2.0 is authorization — layer OpenID Connect on top if you need identity.</p>
+      <p>Use Authorization Code + PKCE for all user-facing flows — web and mobile alike, per OAuth 2.1. Use Client Credentials for service-to-service. Use Device Authorization for input-constrained clients. Never use Implicit or Password grant for new systems. Keep access tokens short-lived and in-memory, store refresh tokens in HttpOnly cookies or platform secure storage, rotate them on every use, and validate the <code>state</code> parameter to prevent CSRF. Remember: OAuth 2.0 is authorization — layer OpenID Connect on top for identity. Validate the JWT's signature, expiry, issuer, and audience on every resource server request.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>OAuth vs OpenID Connect — what's the difference?</strong> OAuth 2.0 is authorization (can this app access your calendar?). OIDC adds authentication on top — it issues an ID token (JWT) with identity claims like name and email. "Login with Google" uses OIDC over OAuth.<br>
-      <strong>Why is the Implicit grant deprecated?</strong> Tokens are returned in the URL fragment, exposing them to browser history, referrer headers, and any JavaScript on the page. Authorization Code + PKCE achieves the same goal for SPAs without this exposure.<br>
-      <strong>What does PKCE protect against?</strong> Authorization code interception attacks. The code_challenge proves the token exchange came from the same party that initiated the auth request, even without a client secret.</p>
+      <p><strong>OAuth vs OpenID Connect — what's the difference?</strong> OAuth 2.0 is authorization (can this app access your calendar?). OIDC adds authentication on top — it issues an ID token (JWT) with identity claims like name and email. "Login with Google" uses OIDC over OAuth. The ID token answers "who is this?"; the access token answers "what can this client do?"<br>
+      <strong>Why is the Implicit grant deprecated?</strong> Tokens are returned in the URL fragment, exposing them to browser history, referrer headers, and any JavaScript on the page including third-party scripts. Authorization Code + PKCE achieves the same goal for SPAs without this exposure — PKCE replaces the need for a client secret in public clients.<br>
+      <strong>What does PKCE protect against?</strong> Authorization code interception attacks. The <code>code_challenge</code> proves the token exchange came from the same party that initiated the auth request, even without a client secret. OAuth 2.1 mandates it for all Authorization Code flows.<br>
+      <strong>Where should SPAs store tokens?</strong> Access token in memory only (not localStorage — XSS can read it). Refresh token in an HttpOnly, Secure, SameSite=Strict cookie (JavaScript cannot read it, so XSS cannot steal it). Serve the refresh endpoint only from the same origin.<br>
+      <strong>How do you validate a JWT access token?</strong> Verify the RS256 signature against the auth server's public key from the JWKS endpoint, then check exp (not expired), iss (expected issuer), aud (this service's identifier), and scope (required permission for this endpoint). Never trust the header's alg field — pin it server-side.</p>
     </div>
 
     <div class="article-nav">
@@ -314,7 +583,7 @@ grant_type=<span class="str">authorization_code</span>
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

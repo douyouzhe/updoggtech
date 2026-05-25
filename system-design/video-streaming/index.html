@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,30 +170,32 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A video streaming platform like YouTube or Netflix must handle massive storage (hundreds of terabytes of daily uploads), complex multi-format transcoding, global CDN delivery with minimal buffering, and ML-driven recommendations that keep users engaged. The upload pipeline and the playback pipeline are effectively two separate systems with very different constraints.</p>
+    <p>A video streaming platform like YouTube or Netflix must handle massive storage (hundreds of terabytes of daily uploads), complex multi-format transcoding, global CDN delivery with minimal buffering, and ML-driven recommendations that keep users engaged. The upload pipeline and the playback pipeline are effectively two separate systems with very different constraints — upload is a throughput-optimized batch processing problem; playback is a latency-optimized read path problem. Getting the boundary between these two right is the central design challenge.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
       <ul>
         <li><strong>TCP over UDP for on-demand</strong> — retransmission eliminates packet-loss artifacts; UDP dominates live streaming where latency beats quality.</li>
         <li><strong>Upload pipeline via Kafka</strong> — raw video fans out to content filtering, classification, and multi-resolution transcoding in parallel before landing in blob storage.</li>
+        <li><strong>HLS/DASH for ABR</strong> — video is split into 2–10 second segments at multiple bitrates; the client's ABR algorithm picks the quality tier that matches available bandwidth in real time.</li>
         <li><strong>Blob storage (S3) + Cassandra</strong> — binary files in object storage; video metadata (fixed query patterns by ID) in Cassandra for high write throughput.</li>
         <li><strong>CDN + lazy segment loading</strong> — serve only the segments being watched; dramatically cuts bandwidth and startup latency.</li>
         <li><strong>Recommendations offline</strong> — pre-compute from Kafka-buffered watch signals; serve from key-value store at O(1) lookup.</li>
         <li><strong>Redis cache-aside for auth</strong> — load on first miss; lazy loading avoids caching data that is never requested.</li>
+        <li><strong>Signed URLs for playback auth</strong> — time-limited tokens in CDN URLs prevent hotlinking and enforce access control without touching the video bytes.</li>
       </ul>
     </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>Video uploads flow through a Kafka-backed pipeline of content filtering, classification, and multi-resolution transcoding before landing in blob storage and Cassandra metadata. Playback is served from geographically distributed CDNs. Recommendations are computed offline and stored in key-value NoSQL. TCP is chosen over UDP for reliability — no packet loss means no buffering artifacts.</p>
+      <p>Video uploads flow through a Kafka-backed pipeline of content filtering, classification, and multi-resolution transcoding before landing in blob storage and Cassandra metadata. Transcoded segments are served from geographically distributed CDNs using HLS/DASH adaptive bitrate streaming. Recommendations are computed offline and stored in key-value NoSQL. TCP is chosen over UDP for reliability — no packet loss means no buffering artifacts.</p>
     </div>
 
     <figure class="article-figure">
@@ -201,40 +203,123 @@
       <figcaption>High-level video streaming platform architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Video streaming covers a wide surface area. In an interview, scope explicitly to avoid spending 45 minutes on a system you can't finish.</p>
 
     <h3>Functional</h3>
     <ul>
-      <li>User authentication (register and login)</li>
-      <li>Video upload</li>
-      <li>Video playback</li>
-      <li>Homepage with content discovery</li>
-      <li>Multi-platform support: devices, formats, resolutions, quality levels, regions, and languages</li>
+      <li>User authentication (register and login).</li>
+      <li>Video upload by content creators.</li>
+      <li>Video processing: transcoding into multiple resolutions and formats.</li>
+      <li>Video playback with adaptive bitrate streaming.</li>
+      <li>Homepage with content discovery and personalized recommendations.</li>
+      <li>Multi-platform support: web, mobile, TV; multiple resolutions (360p–4K); multiple regions and languages.</li>
+      <li>Watch history and resume playback across devices.</li>
     </ul>
 
     <h3>Non-Functional</h3>
     <ul>
-      <li><strong>Low latency, high availability</strong> — minimal buffering is the primary user experience metric</li>
-      <li><strong>User engagement</strong> — high-quality recommendation content keeps watch time high</li>
+      <li><strong>Low latency, high availability</strong> — minimal buffering is the primary user experience metric; startup time under 2 seconds.</li>
+      <li><strong>High throughput storage</strong> — 100 TB of new video storage daily; petabyte-scale total library.</li>
+      <li><strong>Eventual consistency acceptable</strong> — a newly uploaded video appearing in search 30 seconds late is fine; a corrupted video is not.</li>
+      <li><strong>Durability</strong> — an uploaded video must never be silently lost after acknowledgement.</li>
     </ul>
 
-    <h3>Scale Estimates</h3>
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Assume a large platform in the YouTube tier: <strong>10 million daily active users (DAU)</strong>, each watching ~10 videos per day; 1% are content creators uploading ~2 videos per day each.</p>
+
+    <h3>Upload Volume</h3>
     <ul>
-      <li>10 million daily active users, each watching ~10 videos per day</li>
-      <li>1% are content creators uploading ~2 videos per day each</li>
-      <li>Average video size: 500 MB → approximately 100 TB of new storage daily</li>
+      <li>Creators: 10M × 1% × 2 videos = <strong>200,000 videos/day</strong> uploaded.</li>
+      <li>Average raw video size: 500 MB → 200K × 500 MB = <strong>~100 TB/day</strong> of raw ingest.</li>
+      <li>After transcoding into 5 quality tiers (360p/480p/720p/1080p/4K), storage roughly triples → <strong>~300 TB/day</strong> of processed segments added to the library.</li>
+      <li>Sustained ingest: 100 TB/day ÷ 86,400 sec ≈ <strong>~1.2 GB/sec</strong> of raw upload bandwidth to absorb.</li>
     </ul>
 
-    <h2>Protocol: TCP vs. UDP</h2>
-    <p>YouTube and Netflix adopted <strong>TCP</strong> as the transport protocol primarily to guarantee video quality — TCP's retransmission ensures zero packet loss, eliminating the pixelation or blocking artifacts that dropped UDP packets cause. Security is a secondary benefit. The tradeoff is slightly higher latency compared to UDP, which is acceptable for on-demand streaming. UDP remains dominant in live streaming where low latency matters more than perfect quality. Google's <strong>QUIC</strong> protocol is an emerging alternative that achieves TCP-like reliability over UDP.</p>
+    <h3>Playback Volume</h3>
+    <ul>
+      <li>10M DAU × 10 videos × avg 10 min = <strong>1 billion minutes/day</strong> of watch time.</li>
+      <li>Average streaming bitrate ~2 Mbps → 1B min × 2 Mbps ÷ 8 = <strong>~15 PB/day</strong> of video data served.</li>
+      <li>15 PB/day ÷ 86,400 sec ≈ <strong>~1.7 Tbps</strong> of sustained CDN egress bandwidth — entirely consistent with YouTube's real-world numbers.</li>
+    </ul>
+
+    <h3>Storage Growth</h3>
+    <ul>
+      <li>At 300 TB/day, the library grows by <strong>~110 PB/year</strong>.</li>
+      <li>Hot content (top 20% of videos) drives 80% of views — cache these at CDN edges; cold content serves from origin object store.</li>
+      <li>Metadata: 200K videos/day × 365 × ~5 KB per record ≈ <strong>~360 GB/year</strong> in Cassandra — trivially manageable.</li>
+    </ul>
+
+    <h2>Step 3 — API Design</h2>
+    <p>Two distinct API surfaces: the upload API (write-heavy, async processing) and the playback API (read-heavy, latency-sensitive).</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Upload: initiate a resumable upload</span>
+<span class="kw">POST</span> <span class="str">/api/videos/upload/init</span>
+     { title, description, file_size_bytes, content_type }
+     <span class="cm">→ { upload_id, upload_url }  (pre-signed S3 URL)</span>
+
+<span class="cm"># Upload: upload chunk (resumable, idempotent)</span>
+<span class="kw">PUT</span>  <span class="str">{upload_url}</span>
+     Content-Range: bytes 0-5242879/104857600
+     <span class="cm">→ 308 Resume Incomplete  |  200 OK (final chunk)</span>
+
+<span class="cm"># Check processing status</span>
+<span class="kw">GET</span>  <span class="str">/api/videos/{video_id}/status</span>
+     <span class="cm">→ { status: "processing"|"ready"|"failed", progress_pct }</span>
+
+<span class="cm"># Playback: get video manifest</span>
+<span class="kw">GET</span>  <span class="str">/api/videos/{video_id}/manifest</span>
+     <span class="cm">→ { hls_url, dash_url, thumbnail_url, duration_s, title }</span>
+
+<span class="cm"># Playback: HLS master playlist (served from CDN)</span>
+<span class="kw">GET</span>  <span class="str">https://cdn.example.com/v/{video_id}/master.m3u8</span>
+     <span class="cm">→ HLS playlist listing all quality variants with signed URLs</span>
+
+<span class="cm"># Watch history / resume</span>
+<span class="kw">POST</span> <span class="str">/api/videos/{video_id}/progress</span>
+     { user_id, position_s, event: "pause"|"seek"|"complete" }</span>
+
+<span class="cm"># Homepage feed</span>
+<span class="kw">GET</span>  <span class="str">/api/feed?user_id=123&page_token=abc</span>
+     <span class="cm">→ { videos: [...], next_page_token }</span></code></pre>
+    </div>
+
+    <p>Two design choices worth calling out: upload uses <strong>resumable chunked upload</strong> (equivalent to Google's resumable upload protocol or AWS S3 multipart upload) so a mobile creator on a flaky connection can resume mid-upload without restarting. Playback returns a <strong>signed CDN URL</strong> in the manifest — the video bytes are served directly from CDN edge nodes, never through application servers.</p>
+
+    <h2>Step 4 — Protocol: TCP vs. UDP vs. QUIC</h2>
+    <p>YouTube and Netflix adopted <strong>TCP</strong> as the transport protocol primarily to guarantee video quality — TCP's retransmission ensures zero packet loss, eliminating the pixelation or blocking artifacts that dropped UDP packets cause. Security is a secondary benefit. The tradeoff is slightly higher latency compared to UDP, which is acceptable for on-demand streaming where a 2–10 second buffer absorbs jitter.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Protocol</th><th>Latency</th><th>Reliability</th><th>Use case</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">TCP</td><td>Moderate</td><td>Guaranteed delivery, ordered</td><td>On-demand VOD streaming — quality beats latency</td></tr>
+        <tr><td class="col-b">UDP</td><td>Low</td><td>Best-effort, may drop packets</td><td>Live streaming, video calls — latency beats quality</td></tr>
+        <tr><td class="col-a">QUIC</td><td>Low (0-RTT)</td><td>Reliable over UDP, multiplexed streams</td><td>Emerging: YouTube uses it to reduce buffering on lossy networks</td></tr>
+        <tr><td class="col-b">WebRTC</td><td>Very low</td><td>UDP-based, browser-native</td><td>Real-time 1:1 or small group video (Zoom, Meets)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Google's <strong>QUIC</strong> protocol deserves a mention: it achieves TCP-like reliability over UDP, eliminates TCP head-of-line blocking across streams, and supports 0-RTT connection resumption. YouTube has been migrating to QUIC and reports measurable reductions in buffering events, especially on mobile networks with frequent IP address changes (handoffs between WiFi and cellular).</p>
 
     <figure class="article-figure">
       <img src="/assets/img/video-streaming-2.jpg" alt="Video upload pipeline flow" loading="lazy">
       <figcaption>Video upload pipeline flow</figcaption>
     </figure>
 
-    <h2>Upload Pipeline</h2>
-    <p>The upload path is the most complex flow in the system. A raw video file goes through multiple transformations before it is ready for viewers:</p>
+    <h2>Step 5 — Upload Pipeline</h2>
+    <p>The upload path is the most complex flow in the system. A raw video file goes through multiple transformations before it is ready for viewers. The key design principle is <strong>fan-out through a message queue</strong>: as soon as the raw file lands in staging storage, a Kafka event triggers all downstream processing steps in parallel, so content filtering, classification, and transcoding all run concurrently rather than sequentially.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -246,67 +331,276 @@
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code>Creator uploads raw video
+      <pre><code>Creator uploads raw video (chunked, resumable)
   → Content Onboarding Initializer Service
-  → Kafka message queue
-      ├── Multi-part Resolver: chunks file for parallel processing
+      - Validates file integrity (checksum)
+      - Writes PENDING record to Cassandra
+      - Moves raw file to staging S3 bucket
+  → Publishes VideoUploaded event to Kafka
+      ├── Multi-part Resolver: chunks file into ~5 min GOP segments
       ├── Content Filter: screens for illegal/inappropriate material
-      ├── Classifier & Tagger: generates tags, ratings, categories
-      └── Transcoder: produces multiple resolutions, formats, bitrates
-            └── Blob storage (S3)
-                └── Elasticsearch indexing
-                    └── Content Service → Cassandra (metadata)</code></pre>
+      │     └── On violation: mark REJECTED, notify creator
+      ├── Classifier & Tagger: generates tags, categories, language
+      │     └── ML model: visual + audio + transcript signals
+      └── Transcoder (parallel workers):
+            ├── 360p  H.264  ~400 Kbps
+            ├── 480p  H.264  ~800 Kbps
+            ├── 720p  H.264  ~2.5 Mbps
+            ├── 1080p H.264  ~5 Mbps
+            └── 4K   HEVC   ~15 Mbps
+                  └── Each resolution → segment files in S3
+                        └── Content Service writes metadata to Cassandra
+                              → Elasticsearch indexing
+                                    → Status: READY</code></pre>
     </div>
 
-    <p>Chunking the upload into parallel parts through the <strong>Multi-part Resolver</strong> dramatically reduces total processing time for large files. Each chunk can be processed independently and re-uploaded on failure without restarting the entire transfer.</p>
+    <p>Chunking the upload into parallel parts through the <strong>Multi-part Resolver</strong> dramatically reduces total processing time for large files. Each GOP (Group of Pictures) segment can be transcoded independently and in parallel across a fleet of transcoding workers. A 2-hour movie that takes 6 hours to transcode sequentially can be completed in under 30 minutes with enough parallel workers — critical for YouTube's promise of near-instant availability after upload.</p>
 
-    <h2>Storage Architecture</h2>
+    <h3>Resumable Upload Implementation</h3>
+    <p>On mobile networks, a 500 MB upload will almost certainly be interrupted. The resumable upload protocol uses pre-signed chunk URLs from S3 and tracks which chunks are confirmed in a Redis bitmap (indexed by chunk number). On reconnect, the client queries which chunks are already received and resumes from the first missing chunk. The server-side chunking state is stored in Redis with a TTL of 24 hours — after which an incomplete upload is abandoned.</p>
 
+    <h2>Step 6 — Transcoding and ABR Streaming</h2>
+    <p>Transcoding is the most resource-intensive step in the pipeline. The goal is to produce multiple quality representations of each video, split into short segments, formatted for adaptive bitrate (ABR) delivery.</p>
+
+    <h3>HLS vs. DASH</h3>
     <table class="compare-table">
       <thead>
-        <tr><th>Data Type</th><th>Storage</th><th>Rationale</th></tr>
+        <tr><th>Protocol</th><th>Segment format</th><th>Manifest</th><th>Support</th></tr>
       </thead>
       <tbody>
-        <tr><td>User accounts</td><td class="col-a">SQL (RDBMS)</td><td>ACID compliance for authentication and billing data</td></tr>
-        <tr><td>Video metadata</td><td class="col-b">Cassandra (NoSQL)</td><td>High write throughput; fixed query patterns (by video ID)</td></tr>
-        <tr><td>Video files</td><td class="col-a">Blob storage (S3)</td><td>Object store purpose-built for large binary content</td></tr>
-        <tr><td>Recommendations</td><td class="col-a">Key-value NoSQL</td><td>Fast point lookups by user ID; updated via offline batch jobs</td></tr>
-        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text and fuzzy search with type-ahead</td></tr>
+        <tr><td class="col-a">HLS (HTTP Live Streaming)</td><td>MPEG-TS or fMP4</td><td>.m3u8 playlist</td><td>Native on iOS/macOS/Safari; widely supported</td></tr>
+        <tr><td class="col-a">DASH (Dynamic Adaptive Streaming)</td><td>MP4 fragments (fMP4)</td><td>MPD XML manifest</td><td>Android, Chrome, smart TVs; not native on iOS</td></tr>
       </tbody>
     </table>
+
+    <p>In practice, large platforms transcode into both HLS and DASH to cover all client types. The segment files themselves (fMP4 chunks) can often be shared between HLS and DASH since both support fragmented MP4 — only the manifest files differ. Segment duration is typically <strong>2–6 seconds</strong>: shorter segments allow faster quality switches but increase manifest overhead and the number of HTTP requests per minute of video.</p>
+
+    <h3>ABR Algorithm</h3>
+    <p>The client player implements an ABR (Adaptive Bitrate) algorithm that continuously monitors available bandwidth and buffer occupancy to select the optimal quality segment to fetch next. The two dominant approaches:</p>
+    <ul>
+      <li><strong>Throughput-based ABR</strong> — measure the download speed of the last N segments; select the highest bitrate that fits within observed throughput with some headroom (e.g., 80% of measured bandwidth). Simple and widely deployed (HLS default).</li>
+      <li><strong>Buffer-based ABR (BBA)</strong> — select quality based purely on current buffer level: if the buffer is &gt;30 seconds, step up quality; if &lt;10 seconds, step down. More stable under bursty network conditions.</li>
+      <li><strong>Model Predictive Control (MPC)</strong> — Netflix's production algorithm; combines throughput prediction with buffer occupancy and optimizes over a horizon of future segments to minimize rebuffering probability while maximizing quality.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Buffer-based ABR (simplified)</span>
+<span class="kw">FUNCTION</span> <span class="fn">select_next_quality</span>(buffer_s, available_bitrates):
+  <span class="kw">IF</span> buffer_s &gt; <span class="num">30</span>:
+    <span class="kw">RETURN</span> <span class="fn">step_up</span>(current_quality, available_bitrates)
+  <span class="kw">ELIF</span> buffer_s &lt; <span class="num">10</span>:
+    <span class="kw">RETURN</span> <span class="fn">step_down</span>(current_quality, available_bitrates)
+  <span class="kw">ELSE</span>:
+    <span class="kw">RETURN</span> current_quality  <span class="cm">-- stable zone, hold current</span>
+
+<span class="cm">-- Segment fetch loop</span>
+<span class="kw">WHILE</span> playing:
+  quality = <span class="fn">select_next_quality</span>(buffer.seconds_remaining(), bitrates)
+  segment_url = manifest.<span class="fn">segment_url</span>(next_segment_idx, quality)
+  <span class="fn">fetch_async</span>(segment_url)  <span class="cm">-- from CDN edge</span>
+  next_segment_idx += <span class="num">1</span></code></pre>
+    </div>
 
     <figure class="article-figure">
       <img src="/assets/img/video-streaming-3.jpg" alt="Transcoding pipeline and multi-resolution output" loading="lazy">
       <figcaption>Transcoding pipeline and multi-resolution output</figcaption>
     </figure>
 
-    <h2>User Authentication</h2>
-    <p>The authentication flow uses a standard RESTful API service backed by a SQL database for ACID guarantees. A <strong>Redis cache with Cache-Aside (lazy loading)</strong> pattern sits in front of the SQL database: data is loaded into cache on first miss and served from cache on subsequent reads. Lazy loading is preferred over write-through here because it avoids caching data that is never actually requested.</p>
+    <h2>Step 7 — Data Model and Storage Architecture</h2>
+    <p>Storage selection is driven by access patterns. Video streaming has a particularly sharp split: binary video segments belong in object storage; structured metadata belongs in a database.</p>
 
-    <h2>Content Delivery</h2>
-    <p>Video files are served through a globally distributed CDN network. A <strong>Host Optimizer</strong> service directs each client to the nearest CDN node based on geographic proximity and current server load. <strong>Lazy loading</strong> is applied at the CDN layer — only the segments the user is currently watching are fetched, rather than the full video file, reducing bandwidth costs and startup latency.</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Data Type</th><th>Storage</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>User accounts, billing</td><td class="col-a">SQL (RDBMS)</td><td>ACID compliance for authentication and financial data</td></tr>
+        <tr><td>Video metadata</td><td class="col-b">Cassandra (NoSQL)</td><td>High write throughput; fixed query patterns (by video ID, by creator)</td></tr>
+        <tr><td>Video segments</td><td class="col-a">Blob storage (S3/GCS)</td><td>Object store purpose-built for large binary content at petabyte scale</td></tr>
+        <tr><td>Recommendations</td><td class="col-a">Key-value NoSQL (DynamoDB/Redis)</td><td>Fast point lookups by user ID; updated via offline batch jobs</td></tr>
+        <tr><td>Search index</td><td class="col-a">Elasticsearch</td><td>Full-text and fuzzy search with type-ahead</td></tr>
+        <tr><td>Watch progress</td><td class="col-b">Cassandra</td><td>High write throughput (continuous position updates); keyed by (user_id, video_id)</td></tr>
+        <tr><td>Upload chunk state</td><td class="col-a">Redis (TTL 24h)</td><td>Temporary, fast bitmap for tracking which chunks are confirmed</td></tr>
+      </tbody>
+    </table>
 
-    <h2>Homepage and Search</h2>
+    <h3>Cassandra Data Model for Video Metadata</h3>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">CQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">CREATE TABLE</span> videos (
+  video_id      <span class="ty">UUID</span> <span class="kw">PRIMARY KEY</span>,
+  creator_id    <span class="ty">UUID</span>,
+  title         <span class="ty">TEXT</span>,
+  description   <span class="ty">TEXT</span>,
+  status        <span class="ty">TEXT</span>,          <span class="cm">-- PENDING|PROCESSING|READY|FAILED</span>
+  duration_s    <span class="ty">INT</span>,
+  s3_prefix     <span class="ty">TEXT</span>,          <span class="cm">-- base path in S3 for all segments</span>
+  hls_manifest  <span class="ty">TEXT</span>,          <span class="cm">-- CDN URL to master.m3u8</span>
+  dash_manifest <span class="ty">TEXT</span>,          <span class="cm">-- CDN URL to manifest.mpd</span>
+  thumbnail_url <span class="ty">TEXT</span>,
+  tags          <span class="ty">LIST&lt;TEXT&gt;</span>,
+  created_at    <span class="ty">TIMESTAMP</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>
+);
+
+<span class="cm">-- Watch progress: (user, video) → last known position</span>
+<span class="kw">CREATE TABLE</span> watch_progress (
+  user_id       <span class="ty">UUID</span>,
+  video_id      <span class="ty">UUID</span>,
+  position_s    <span class="ty">INT</span>,
+  updated_at    <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>   (user_id, video_id)
+);</code></pre>
+    </div>
+
+    <h2>Step 8 — User Authentication</h2>
+    <p>The authentication flow uses a standard RESTful API service backed by a SQL database for ACID guarantees. A <strong>Redis cache with Cache-Aside (lazy loading)</strong> pattern sits in front of the SQL database: data is loaded into cache on first miss and served from cache on subsequent reads. Lazy loading is preferred over write-through here because it avoids caching data that is never actually requested — most user accounts are never queried after registration; only active session tokens matter for the hot path.</p>
+
+    <p>Session tokens are short-lived JWTs (15-minute access tokens + 7-day refresh tokens). On token refresh, the refresh token is validated against Redis (where active refresh tokens are stored) and a new access token is issued without touching the SQL database. This keeps the auth hot path entirely in Redis.</p>
+
+    <h2>Step 9 — Content Delivery and Playback Authorization</h2>
+    <p>Video files are served through a globally distributed CDN network. A <strong>Host Optimizer</strong> service directs each client to the nearest CDN node based on geographic proximity and current server load. The CDN layer applies <strong>lazy segment loading</strong> — only the segments the user is currently watching are fetched, rather than the full video file, reducing bandwidth costs and startup latency.</p>
+
+    <h3>Playback Authorization with Signed URLs</h3>
+    <p>Access control for video playback cannot rely on the CDN checking tokens on every segment request — that would saturate the application servers. Instead, the solution is <strong>CDN-signed URLs</strong>:</p>
+    <ol>
+      <li>Client authenticates to the application server and requests a video manifest.</li>
+      <li>Application server generates a short-lived signed token (signed with a CDN-shared secret), embeds it in the manifest's segment URLs, and returns the manifest.</li>
+      <li>Client fetches segments directly from CDN. The CDN validates the signature without any application server involvement — zero overhead on the hot path.</li>
+      <li>Tokens expire after ~1 hour, preventing hotlinking and enforcing subscription validity.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">pseudocode</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Server-side: generate signed URL for a segment</span>
+<span class="kw">FUNCTION</span> <span class="fn">sign_cdn_url</span>(base_url, user_id, expires_at, secret):
+  policy = {
+    <span class="str">"url"</span>: base_url,
+    <span class="str">"user_id"</span>: user_id,
+    <span class="str">"exp"</span>: expires_at
+  }
+  signature = <span class="fn">hmac_sha256</span>(<span class="fn">json_encode</span>(policy), secret)
+  <span class="kw">RETURN</span> base_url + <span class="str">"?token="</span> + <span class="fn">base64url</span>(policy) + <span class="str">"&sig="</span> + signature
+
+<span class="cm">-- CDN edge: validate on each segment request</span>
+<span class="kw">FUNCTION</span> <span class="fn">validate_cdn_request</span>(request, secret):
+  policy, sig = <span class="fn">parse_token</span>(request.query.token, request.query.sig)
+  <span class="kw">IF</span> policy.exp &lt; <span class="fn">now</span>():  <span class="kw">RETURN</span> <span class="num">401</span>
+  expected = <span class="fn">hmac_sha256</span>(<span class="fn">json_encode</span>(policy), secret)
+  <span class="kw">IF</span> sig != expected:       <span class="kw">RETURN</span> <span class="num">403</span>
+  <span class="kw">RETURN</span> <span class="num">200</span>               <span class="cm">-- serve the segment</span></code></pre>
+    </div>
+
+    <h2>Step 10 — Homepage, Search, and Recommendations</h2>
     <p>The homepage combines two data sources:</p>
     <ul>
-      <li><strong>Search Service</strong> — an Elasticsearch cluster with fuzzy search and type-ahead for active queries</li>
-      <li><strong>Recommendations</strong> — pre-computed ML predictions stored in a key-value NoSQL database, keyed by user ID for O(1) lookup</li>
+      <li><strong>Search Service</strong> — an Elasticsearch cluster with fuzzy search and type-ahead for active queries.</li>
+      <li><strong>Recommendations</strong> — pre-computed ML predictions stored in a key-value NoSQL database, keyed by user ID for O(1) lookup.</li>
     </ul>
-    <p>Recommendations are computed <strong>offline</strong> from watch history, watch duration, and interaction signals (likes, shares, re-watches). These signals are fed into Kafka from the playback service and used to train recommendation models in batch.</p>
 
-    <h2>Playback Tracking</h2>
-    <p>During playback, the client continuously logs watch status and duration. This data flows into Kafka and drives two downstream consumers: the recommendation model training pipeline (offline) and the watch history service (near real-time). Continuous logging also enables resuming playback from the correct position across devices.</p>
+    <h3>Recommendation Architecture</h3>
+    <p>Recommendations are computed <strong>offline</strong> from watch history, watch duration, and interaction signals (likes, shares, re-watches, skips). These signals are fed into Kafka from the playback service and used to train recommendation models in batch. The architecture has two components:</p>
+    <ul>
+      <li><strong>Candidate generation</strong> — a two-tower neural network retrieves ~hundreds of candidate videos from a pool of millions, based on user embedding similarity. The user tower encodes watch history; the video tower encodes video features. Fast approximate nearest-neighbor search (FAISS or ScaNN) retrieves top candidates.</li>
+      <li><strong>Ranking</strong> — a pointwise or pairwise ranking model (gradient boosted trees or a DNN) re-scores the candidates using richer features (context, time of day, device type, recency of video) to produce the final ranked list.</li>
+    </ul>
+    <p>Pre-computed recommendations for each user are stored in DynamoDB keyed by <code>user_id</code> and refreshed every 1–6 hours by the offline batch pipeline. This gives O(1) lookup at serve time with no inference latency on the critical homepage path.</p>
+
+    <h2>Step 11 — Playback Tracking</h2>
+    <p>During playback, the client continuously logs watch status and position. This data flows into Kafka and drives multiple downstream consumers:</p>
+    <ul>
+      <li><strong>Watch progress service</strong> — writes the current position to Cassandra so the user can resume from any device. Writes happen on pause, seek, and every 10 seconds during playback.</li>
+      <li><strong>Recommendation pipeline</strong> — offline processing of watch sessions to update user and video embeddings.</li>
+      <li><strong>Analytics service</strong> — real-time view counts, completion rates, and revenue attribution (for ad-supported content).</li>
+      <li><strong>CDN feedback loop</strong> — rebuffering events and segment download latencies are aggregated to identify CDN nodes with degraded performance and trigger rerouting.</li>
+    </ul>
+
+    <h2>Step 12 — Scaling, Fault Tolerance, and Live Streaming</h2>
+
+    <h3>Scaling the Transcoding Pipeline</h3>
+    <p>Transcoding is CPU-intensive and naturally parallelizable. At 100 TB/day of ingest, the transcoding fleet must be elastic:</p>
+    <ul>
+      <li>Transcoding workers are stateless containers that pull jobs from a Kafka topic. Adding workers increases throughput linearly.</li>
+      <li>Autoscaling is triggered by Kafka consumer lag — if the queue grows, spin up more workers; if it drains, scale back.</li>
+      <li>GPU-accelerated transcoding (NVENC) can be 5–10× faster than CPU-only for H.264/HEVC; GPU instances are used for high-priority or high-resolution jobs.</li>
+      <li>Each transcoding job is idempotent: a failed worker can be retried on a different node without duplicate output, because the output is keyed by <code>(video_id, quality, segment_index)</code> and S3 puts are atomic.</li>
+    </ul>
+
+    <h3>CDN Fault Tolerance</h3>
+    <ul>
+      <li>Manifest files include multiple CDN origin entries; the client player fails over to the next entry if a segment fetch times out.</li>
+      <li>The Host Optimizer monitors CDN node health and removes degraded nodes from the selection pool.</li>
+      <li>Origin shield: a tiered CDN architecture where a regional shield cache sits between edge nodes and the S3 origin, reducing origin load and single-region outage blast radius.</li>
+    </ul>
+
+    <h3>Live Streaming vs. VOD</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>VOD (on-demand)</th><th>Live streaming</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Protocol</td><td class="col-a">TCP (HLS/DASH)</td><td class="col-b">UDP or QUIC (WebRTC for ultra-low latency)</td></tr>
+        <tr><td>Segment availability</td><td class="col-a">All segments pre-generated</td><td class="col-b">Segments generated in real time; manifest is rolling</td></tr>
+        <tr><td>CDN caching</td><td class="col-a">High cache hit rate (same segments served many times)</td><td class="col-b">Each segment is unique and expires after a few minutes</td></tr>
+        <tr><td>Transcoding</td><td class="col-a">Offline, parallel, retryable</td><td class="col-b">Real-time, single pass, must finish before segment deadline</td></tr>
+        <tr><td>Latency target</td><td class="col-a">2–10 sec startup OK</td><td class="col-b">&lt;3 sec for sports/events; &lt;30 sec for standard live</td></tr>
+      </tbody>
+    </table>
+
+    <p>For live streaming, the transcoding path must process each GOP segment in real time with a strict deadline. A dedicated real-time transcoding cluster (distinct from the VOD fleet) handles live streams, using lower-latency encoding presets (faster but slightly lower quality) to meet the deadline. The rolling manifest is a special HLS/DASH variant (low-latency HLS) that publishes new segments every 0.5–2 seconds instead of the standard 2–6 seconds.</p>
+
+    <h2>Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Transport protocol (VOD)</td><td class="col-a">TCP (HLS/DASH)</td><td>Higher latency than UDP; acceptable because 2–10s buffer absorbs jitter</td></tr>
+        <tr><td>Recommendations</td><td class="col-b">Offline pre-compute</td><td>Recommendations are 1–6 hours stale; catches most behavior changes</td></tr>
+        <tr><td>Video metadata store</td><td class="col-a">Cassandra</td><td>No relational joins; query patterns must be known at schema design time</td></tr>
+        <tr><td>ABR segment length</td><td class="col-a">4–6 seconds</td><td>Shorter = faster quality switches but more HTTP requests and manifest overhead</td></tr>
+        <tr><td>Playback auth</td><td class="col-b">CDN signed URLs</td><td>Token expiry means brief re-auth on very long sessions; app server not on hot path</td></tr>
+        <tr><td>Transcoding parallelism</td><td class="col-a">GOP-parallel workers</td><td>Must ensure GOP boundaries align; slight overhead versus per-file sequential</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Video streaming is two systems: upload (complex multi-stage pipeline optimized for throughput) and playback (optimized for latency via CDN and lazy loading). TCP's no-packet-loss guarantee is worth the latency tradeoff for on-demand streaming. Recommendations belong offline — pre-compute once, serve fast from key-value store, retrain continuously from Kafka-buffered behavior signals.</p>
+      <p>Video streaming is two systems: upload (complex multi-stage pipeline optimized for throughput, correctness, and parallel processing) and playback (optimized for latency via CDN, ABR, and lazy segment loading). TCP's no-packet-loss guarantee is worth the latency tradeoff for on-demand streaming. Recommendations belong offline — pre-compute once, serve fast from key-value store, retrain continuously from Kafka-buffered behavior signals. CDN signed URLs are the right way to enforce playback auth without application servers on the hot path.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Why TCP over UDP for on-demand video?</strong> TCP retransmission eliminates dropped-packet artifacts (pixelation, blocking); the slight latency increase is acceptable for buffered on-demand content. UDP is preferred for live streaming where low latency matters more than perfect quality.<br>
+      <p><strong>Why TCP over UDP for on-demand video?</strong> TCP retransmission eliminates dropped-packet artifacts (pixelation, blocking); the slight latency increase is acceptable for buffered on-demand content because the player maintains a 2–10 second buffer. UDP is preferred for live streaming where low latency matters more than perfect quality.<br>
       <strong>Why store recommendations in a key-value store rather than computing them on-the-fly?</strong> Recommendation models are expensive to run; pre-computing offline and serving from a key-value store by user ID gives O(1) lookup with no inference latency on the critical path.<br>
-      <strong>Why use Cassandra for video metadata?</strong> Queries are fixed-pattern (by video ID), write throughput is high, and there are no relational joins needed — Cassandra's wide-column model is ideal.</p>
+      <strong>Why use Cassandra for video metadata?</strong> Queries are fixed-pattern (by video ID, by creator), write throughput is high (status updates, view count increments), and there are no relational joins needed — Cassandra's wide-column model is ideal.<br>
+      <strong>How does ABR work?</strong> Video is split into 2–6 second segments at multiple bitrates. The client's ABR algorithm monitors buffer occupancy and measured throughput, selecting the highest quality tier that can be downloaded without rebuffering.<br>
+      <strong>How do you authorize video playback without overloading application servers?</strong> Use CDN-signed URLs embedded in the manifest. The CDN validates the HMAC signature at the edge without any application server involvement — auth happens once at manifest fetch time, not on every segment.</p>
     </div>
 
     <div class="article-nav">
@@ -327,7 +621,7 @@
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

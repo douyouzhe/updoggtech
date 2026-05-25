@@ -125,7 +125,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -144,14 +144,14 @@
     <div class="article-meta">
       <span>Jul 15, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>Joins are among the most expensive operations in distributed data processing. In Apache Spark, the choice of join strategy determines whether a job runs in minutes or hours. Spark's Catalyst optimizer selects a strategy automatically based on dataset size and available statistics, but understanding each strategy — and when to override the optimizer — is a core data engineering interview skill.</p>
+    <p>Joins are among the most expensive operations in distributed data processing. In Apache Spark, the choice of join strategy determines whether a job runs in minutes or hours — or whether it crashes the cluster with an out-of-memory error or a runaway shuffle. Spark's Catalyst optimizer selects a strategy automatically based on dataset size and available statistics, but understanding each strategy's mechanics, the true cost of a shuffle, how data skew can silently destroy a well-chosen strategy, and how Adaptive Query Execution changes the game at runtime — these are the skills that separate senior data engineers from those who just call <code>df.join()</code> and hope for the best.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -169,14 +169,43 @@
       <p>Use Broadcast Join when one side is small enough to fit in memory — it eliminates network shuffling entirely. Use Sort-Merge Join for large-large joins; it is Spark's robust default for that case. Shuffle Hash Join is fast for large datasets when the build side fits in a hash table. Avoid Cartesian Join unless you explicitly need a cross product. Bucketing pre-partitions data to eliminate shuffle in repeated joins.</p>
     </div>
 
-    <h2>Why Join Strategy Matters</h2>
-    <p>In a distributed cluster, the main cost of a join is moving data across the network — called a <strong>shuffle</strong>. A shuffle forces Spark to serialize data, write it to disk, send it over the network to the correct executor, and deserialize it on the receiving end. For large datasets this can dominate total job runtime. The goal of every join optimization is to minimize unnecessary shuffling.</p>
+    <h2>Spark's Execution Model — Stages and Shuffles</h2>
+    <p>Before understanding join strategies, you must understand how Spark executes a query. Spark translates a logical plan into a directed acyclic graph (DAG) of <strong>stages</strong>. Each stage is a set of tasks that can run in parallel on different partitions of the same data — no data movement between tasks in a stage. Stages are separated by <strong>shuffle boundaries</strong>: points where data must be redistributed across partitions.</p>
+    <p>A shuffle is the most expensive operation in Spark's execution model. It involves: (1) the map side writing shuffle data to local disk, sorted by destination partition; (2) the reduce side reading that data over the network from all map tasks; (3) deserializing and re-partitioning the data. For a dataset of 1 TB, a shuffle means 1 TB written to disk, 1 TB sent over the network, and 1 TB read from the network — 3 TB of I/O for a single operation. This is why every join optimization is fundamentally about reducing shuffle volume or eliminating shuffles entirely.</p>
 
-    <h2>Broadcast Join</h2>
-    <p>When one of the two datasets is small enough to fit in the memory of every worker, Spark <strong>broadcasts</strong> (replicates) the smaller dataset to all executor nodes. Each executor then performs the join locally against its partition of the larger dataset — no shuffle required for the large side.</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Reading the physical plan — always the first diagnostic step</span>
+df.<span class="fn">explain</span>(mode=<span class="str">"extended"</span>)  <span class="cm"># shows logical, optimized, and physical plan</span>
+
+<span class="cm"># Key physical plan nodes to look for:</span>
+<span class="cm"># BroadcastHashJoin  → broadcast join selected (no large-side shuffle)</span>
+<span class="cm"># ShuffledHashJoin   → shuffle hash join (both sides shuffled, hash built)</span>
+<span class="cm"># SortMergeJoin      → sort-merge join (both sides shuffled and sorted)</span>
+<span class="cm"># CartesianProduct   → cross join (danger: O(M×N) output)</span>
+<span class="cm"># Exchange           → shuffle boundary (each Exchange = one shuffle)</span>
+
+<span class="cm"># Count the Exchange nodes: 0 = no shuffle, 1 = one-side shuffle (broadcast), 2 = full shuffle</span></code></pre>
+    </div>
+
+    <p>The DAG Visualizer in the Spark UI maps stages to the execution plan. Each stage boundary corresponds to a shuffle. A Sort-Merge Join between two large datasets produces two Exchange nodes (one per side) and is split into at least three stages: read both sides (stage 1 and 2), shuffle+sort both sides (stage 3), merge (stage 4). A Broadcast Join produces zero Exchange nodes on the large side — it typically fits in two stages.</p>
+
+    <h2>Why Join Strategy Matters</h2>
+    <p>In a distributed cluster, the main cost of a join is moving data across the network — called a <strong>shuffle</strong>. A shuffle forces Spark to serialize data, write it to disk, send it over the network to the correct executor, and deserialize it on the receiving end. For large datasets this can dominate total job runtime by an order of magnitude. The goal of every join optimization is to minimize unnecessary shuffling — either by eliminating shuffles entirely (Broadcast Join, Bucketing) or by choosing the most efficient strategy when shuffles are unavoidable (Sort-Merge vs Shuffle Hash depending on whether the build side fits in memory).</p>
+
+    <h2>Broadcast Join — Eliminating Shuffle on the Large Side</h2>
+    <p>When one of the two datasets is small enough to fit in the memory of every worker, Spark <strong>broadcasts</strong> (replicates) the smaller dataset to all executor nodes. Each executor then performs the join locally against its partition of the larger dataset — no shuffle required for the large side. The large table never moves. The small table is sent once per executor via a BitTorrent-like peer-to-peer broadcast protocol (not from the driver to every executor individually, which would bottleneck the driver).</p>
     <ul>
-      <li><strong>Advantage:</strong> Eliminates network shuffle for the large dataset entirely. Direct in-memory access, no disk I/O. Best-case performance for small-large joins.</li>
-      <li><strong>Limitation:</strong> The broadcast dataset must fit in executor memory. If it is too large, the broadcast itself causes out-of-memory errors across all workers. The broadcast threshold is configurable.</li>
+      <li><strong>Advantage:</strong> Eliminates network shuffle for the large dataset entirely. Direct in-memory hash lookup per row, no disk I/O. Best-case performance for small-large joins — often 10–100× faster than Sort-Merge on the same data.</li>
+      <li><strong>Limitation:</strong> The broadcast dataset must fit in executor memory. If it exceeds the threshold, the broadcast itself causes out-of-memory errors across all workers simultaneously. The default threshold is 10 MB — conservative for modern clusters; 100–500 MB is often safe if executor heap is sized appropriately.</li>
     </ul>
 
     <div class="code-block">
@@ -191,56 +220,39 @@
       </div>
       <pre><code><span class="kw">from</span> pyspark.sql <span class="kw">import</span> functions <span class="kw">as</span> F
 
-<span class="cm"># auto broadcast: threshold default is 10 MB</span>
-spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">10485760</span>)
+<span class="cm"># Raise broadcast threshold — safe if executors have enough heap</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">104857600</span>)  <span class="cm"># 100 MB</span>
 
-<span class="cm"># manual broadcast hint — forces broadcast regardless of size</span>
+<span class="cm"># Manual broadcast hint — forces broadcast regardless of size estimate</span>
+<span class="cm"># Use when you know the table is small but Catalyst doesn't (stale stats)</span>
 result = orders.<span class="fn">join</span>(
-    F.<span class="fn">broadcast</span>(country_codes),   <span class="cm"># broadcast the small lookup table</span>
+    F.<span class="fn">broadcast</span>(country_codes),   <span class="cm"># replicate country_codes to every executor</span>
     on=<span class="str">"country_code"</span>,
     how=<span class="str">"left"</span>
 )
 
-<span class="cm"># disable auto broadcast (for testing other strategies)</span>
+<span class="cm"># SQL hint syntax (equivalent)</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ BROADCAST(c) */ o.*, c.country_name
+  FROM orders o
+  JOIN country_codes c ON o.country_code = c.code
+"""</span>)
+
+<span class="cm"># Disable auto broadcast — forces Sort-Merge for testing</span>
 spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">-1</span>)</code></pre>
     </div>
 
-    <h2>Shuffle Hash Join</h2>
-    <p>Both datasets are repartitioned by the join key via a network shuffle, so all rows with the same key land on the same executor. Spark then builds a hash table in memory from one side (the "build" side, usually the smaller one) and probes it with each row from the other side.</p>
+    <div class="callout">
+      <div class="callout-label">when broadcast goes wrong</div>
+      <p>Broadcasting a dataset larger than executor memory causes OOM errors on every worker simultaneously — a cluster-wide crash. Watch for this when a table that was small last month has grown. Check the Spark UI's "Input" size for the broadcast stage. If it is approaching executor heap size (typically executor heap is 60–70% of total executor memory after overhead), either increase executor memory or switch to Sort-Merge with <code>autoBroadcastJoinThreshold=-1</code>.</p>
+    </div>
+
+    <h2>Shuffle Hash Join — Hash-Table Join After Full Shuffle</h2>
+    <p>Both datasets are repartitioned by the join key via a network shuffle, so all rows with the same key land on the same executor. Spark then builds an in-memory hash table from one side (the "build" side, chosen as the smaller partition set) and probes it with each row from the other side (the "probe" side). The hash lookup is O(1) per row on the probe side — faster than the sequential merge scan in Sort-Merge join.</p>
     <ul>
-      <li><strong>Advantage:</strong> Handles large datasets that exceed the broadcast threshold. Tolerates skewed distributions via fault-tolerant RDD lineage recovery. Good for cases where both datasets are large but the build side still fits in a hash table.</li>
-      <li><strong>Limitation:</strong> Requires a full network shuffle — high I/O. If the build side does not fit in memory, Spark spills to disk, degrading performance significantly.</li>
+      <li><strong>Advantage:</strong> Faster than Sort-Merge when the build side fits entirely in memory on each executor — no sorting overhead, direct hash lookup. Well-suited when both datasets are large but the build side per partition is manageable.</li>
+      <li><strong>Limitation:</strong> Requires a full network shuffle on both sides (two Exchange nodes in the plan). If the build side does not fit in the executor's memory partition, Spark spills to disk — performance degrades significantly and approaches or exceeds Sort-Merge costs. Spark disables Shuffle Hash Join by default in favor of Sort-Merge because of this spill risk.</li>
     </ul>
-
-    <h2>Sort-Merge Join</h2>
-    <p>Spark's default strategy for large-large joins. Both sides are shuffled by the join key and then sorted. The sorted partitions are merged sequentially — records are matched by scanning forward through both sorted streams simultaneously, which requires only constant memory regardless of dataset size.</p>
-    <ul>
-      <li><strong>Advantage:</strong> Can handle datasets that exceed total available memory — sorting and merging happen in bounded chunks. Efficient for high-cardinality keys and skewed distributions. The most general-purpose Spark join strategy.</li>
-      <li><strong>Limitation:</strong> Sorting adds CPU overhead. Multiple shuffle read/write cycles increase disk I/O. Not as fast as broadcast join for small-large scenarios.</li>
-    </ul>
-
-    <h2>Cartesian (Cross) Join</h2>
-    <p>Pairs every row from the left dataset with every row from the right dataset, producing an M×N result. No join key is required. The output size grows quadratically — even moderately large inputs produce unmanageably large outputs.</p>
-    <ul>
-      <li><strong>Appropriate uses:</strong> Generating all pairwise combinations for small datasets, certain ML feature cross-product computations.</li>
-      <li><strong>Warning:</strong> Accidentally triggering a cartesian join on large tables (e.g., by omitting a join condition) is a common cause of Spark job failures and runaway cluster costs.</li>
-    </ul>
-
-    <h2>Strategy Comparison</h2>
-    <table class="compare-table">
-      <thead>
-        <tr><th>Strategy</th><th>Best For</th><th>Network Shuffle</th><th>Memory Pressure</th></tr>
-      </thead>
-      <tbody>
-        <tr><td><strong>Broadcast Join</strong></td><td>Small (&lt; threshold) × Large</td><td>Small side only</td><td>Low (if small side fits)</td></tr>
-        <tr><td><strong>Shuffle Hash Join</strong></td><td>Medium × Large (build side fits in hash table)</td><td>Both sides</td><td>Medium–High</td></tr>
-        <tr><td><strong>Sort-Merge Join</strong></td><td>Large × Large (default)</td><td>Both sides + sort</td><td>Low (streaming merge)</td></tr>
-        <tr><td><strong>Cartesian Join</strong></td><td>Cross product (tiny datasets only)</td><td>All data to one node</td><td>Extreme</td></tr>
-      </tbody>
-    </table>
-
-    <h2>Bucketing: Eliminating Shuffle on Repeated Joins</h2>
-    <p><strong>Bucketing</strong> pre-partitions a table by the join key when it is written to storage. If both sides of a join are bucketed on the same key with the same number of buckets, Spark can skip the shuffle entirely — the data is already co-located by key. This is a one-time write cost that pays dividends on every subsequent join over that table.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -252,38 +264,288 @@ spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str"
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm"># write orders bucketed by customer_id — one-time cost</span>
+      <pre><code><span class="cm"># Enable Shuffle Hash Join — disabled by default</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.join.preferSortMergeJoin"</span>, <span class="kw">False</span>)
+
+<span class="cm"># SQL hint to force Shuffle Hash Join on a specific query</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ SHUFFLE_HASH(orders) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># When is this worth it?</span>
+<span class="cm"># Build side (smaller table) per partition fits in executor memory</span>
+<span class="cm"># AND the join key has high cardinality (no skew)</span>
+<span class="cm"># AND you want to avoid the sort overhead of Sort-Merge</span></code></pre>
+    </div>
+
+    <h2>Sort-Merge Join — Spark's Robust Default for Large-Large Joins</h2>
+    <p>Spark's default strategy for large-large joins when broadcast is impossible. Both sides are shuffled by the join key (two Exchange nodes), then sorted within each partition. The sorted partitions are merged sequentially — a single linear scan through both sorted streams simultaneously, matching records by advancing through both streams in lockstep. This is the same algorithm as the merge phase in external merge sort, and it works in constant memory regardless of partition size: it never needs to hold the full partition in RAM, only one record from each side at a time.</p>
+    <ul>
+      <li><strong>Advantage:</strong> Handles datasets that exceed total available memory — sorting and merging are streaming operations on bounded chunks. Correct for high-cardinality keys. The most general-purpose and production-safe Spark join strategy. Skew-resistant: even if one key has many more rows than others, the merge scan handles it without building a hash table that might OOM.</li>
+      <li><strong>Limitation:</strong> Two full shuffles (expensive) plus sorting both sides (CPU overhead). Total I/O is roughly 3× the combined dataset size (write shuffle data, read shuffle data, write sorted output). Not as fast as Broadcast for small-large scenarios or as fast as Shuffle Hash when the hash table fits.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Sort-Merge is Spark's default — no configuration needed</span>
+<span class="cm"># SQL hint to force Sort-Merge explicitly</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ MERGE(orders, transactions) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># Tuning Sort-Merge: shuffle partition count</span>
+<span class="cm"># Default is 200 — often too few for large data, too many for small</span>
+<span class="cm"># Rule of thumb: shuffle partition size should be ~128–256 MB each</span>
+<span class="cm"># total_data_size_GB * 1024 / 200 MB_per_partition → target partition count</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.shuffle.partitions"</span>, <span class="num">2000</span>)  <span class="cm"># for ~400 GB of shuffled data</span>
+
+<span class="cm"># With AQE enabled (Spark 3.0+), this is auto-tuned — see AQE section below</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)</code></pre>
+    </div>
+
+    <h2>Cartesian (Cross) Join — O(M×N) — Use With Extreme Care</h2>
+    <p>Pairs every row from the left dataset with every row from the right dataset, producing an M×N result. No join key is required. The output size grows quadratically — even moderately large inputs produce unmanageably large outputs. A 1M-row table crossed with a 1M-row table produces 1 trillion rows. Spark requires an explicit <code>crossJoin()</code> call or <code>spark.sql.crossJoin.enabled=true</code> to prevent accidental cross joins.</p>
+    <ul>
+      <li><strong>Appropriate uses:</strong> Generating all pairwise combinations for small datasets (e.g., all possible A/B test variant combinations), ML feature cross-product computations on small feature vectors, "explode a single row across all partitions" patterns.</li>
+      <li><strong>Warning:</strong> Accidentally triggering a cartesian join on large tables — typically by omitting a join condition or writing a broken SQL query — is a common cause of Spark job failures. Always check <code>explain()</code> for <code>CartesianProduct</code> nodes before submitting large jobs.</li>
+    </ul>
+
+    <h2>Strategy Comparison</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Strategy</th><th>Best For</th><th>Network Shuffle</th><th>Memory Pressure</th><th>Trigger Condition</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Broadcast Join</strong></td><td>Small (&lt; threshold) × Large</td><td>Small side only (once)</td><td>Low (if small side fits)</td><td>One side &lt; autoBroadcastJoinThreshold or BROADCAST hint</td></tr>
+        <tr><td><strong>Shuffle Hash Join</strong></td><td>Medium × Large (build fits in hash)</td><td>Both sides fully</td><td>Medium–High (hash table)</td><td>preferSortMergeJoin=false; build side fits in memory</td></tr>
+        <tr><td><strong>Sort-Merge Join</strong></td><td>Large × Large (default)</td><td>Both sides fully + sort</td><td>Low (streaming merge)</td><td>Default when broadcast threshold exceeded</td></tr>
+        <tr><td><strong>Cartesian Join</strong></td><td>Cross product (tiny datasets only)</td><td>All data redistributed</td><td>Extreme (O(M×N) output)</td><td>No join key; crossJoin.enabled=true required</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Data Skew — The Silent Performance Killer</h2>
+    <p>Data skew occurs when rows are unevenly distributed across join key values. If one key has 10M rows and all others have 1K rows, one executor's task will process 10,000× more data than its peers while the rest sit idle. This is the most common cause of Spark jobs that hang at "99% complete" for hours — one straggler task holding up the entire stage.</p>
+
+    <h3>Detecting Skew</h3>
+    <p>Check the Spark UI's Stage detail page. Sort tasks by Duration or Input Size. If a handful of tasks (or just one) take dramatically longer than the median, you have skew. In code, validate with:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Profile key distribution before joining</span>
+df.<span class="fn">groupBy</span>(<span class="str">"join_key"</span>) \
+  .<span class="fn">count</span>() \
+  .<span class="fn">orderBy</span>(F.<span class="fn">col</span>(<span class="str">"count"</span>).<span class="fn">desc</span>()) \
+  .<span class="fn">show</span>(<span class="num">20</span>)
+
+<span class="cm"># If the top 5 keys contain > 50% of all rows: you have skew</span>
+
+<span class="cm"># Technique 1: Salting — artificially distribute the hot key</span>
+<span class="cm"># Append a random salt (0-9) to the skewed key on BOTH sides</span>
+<span class="kw">import</span> pyspark.sql.functions <span class="kw">as</span> F
+
+<span class="cm"># Hot-key table: replicate each row for all salt values</span>
+hot_keys = F.<span class="fn">broadcast</span>(
+    small_dimension.<span class="fn">crossJoin</span>(
+        spark.<span class="fn">range</span>(<span class="num">10</span>).<span class="fn">toDF</span>(<span class="str">"salt"</span>)  <span class="cm"># 10 salt values</span>
+    ).<span class="fn">withColumn</span>(<span class="str">"salted_key"</span>,
+        F.<span class="fn">concat</span>(F.<span class="fn">col</span>(<span class="str">"join_key"</span>), F.<span class="fn">lit</span>(<span class="str">"_"</span>), F.<span class="fn">col</span>(<span class="str">"salt"</span>)))
+)
+
+<span class="cm"># Large table: randomly assign a salt to each row</span>
+salted_large = large_fact.<span class="fn">withColumn</span>(
+    <span class="str">"salted_key"</span>,
+    F.<span class="fn">concat</span>(F.<span class="fn">col</span>(<span class="str">"join_key"</span>),
+             F.<span class="fn">lit</span>(<span class="str">"_"</span>),
+             (F.<span class="fn">rand</span>() * <span class="num">10</span>).<span class="fn">cast</span>(<span class="str">"int"</span>).<span class="fn">cast</span>(<span class="str">"string"</span>))
+)
+
+<span class="cm"># Join on salted key — skew distributed across 10x more partitions</span>
+result = salted_large.<span class="fn">join</span>(hot_keys, on=<span class="str">"salted_key"</span>)</code></pre>
+    </div>
+
+    <h3>Skew Join Hint (Spark 3.0+)</h3>
+    <p>Spark 3.0 introduced the <code>SKEW_JOIN</code> hint that tells the Catalyst optimizer to split skewed partitions into smaller sub-partitions and join them independently, without requiring manual salting:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># SQL skew hint — tells Catalyst which table is skewed</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ SKEW_JOIN(orders) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># AQE-based automatic skew handling (Spark 3.2+)</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># Skew threshold: a partition is considered skewed if</span>
+<span class="cm"># its size > skewFactor × median partition size AND > skewedPartitionThresholdInBytes</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionFactor"</span>, <span class="num">5</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes"</span>, <span class="str">"256MB"</span>)</code></pre>
+    </div>
+
+    <h2>Bucketing — Eliminating Shuffle on Repeated Joins</h2>
+    <p><strong>Bucketing</strong> pre-partitions a table by the join key when it is written to storage. If both sides of a join are bucketed on the same key with the same number of buckets, Spark can skip the shuffle entirely — the data is already co-located by key. Each bucket in table A is joined with the corresponding bucket in table B on the same executor, with zero network transfer. This is a one-time write cost that pays dividends on every subsequent join over that table for the lifetime of the dataset.</p>
+    <p>The catch: bucket count must match exactly on both sides, and bucketing only works when reading from a Hive Metastore-backed table format (Parquet/ORC via <code>saveAsTable</code>) — not from raw file reads. The optimal bucket count is a function of your data size: target ~128–256 MB per bucket file so files are neither too small (too many tasks) nor too large (straggler tasks). For a 1 TB table, 4,000–8,000 buckets is a reasonable starting point.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Write orders bucketed by customer_id — one-time cost</span>
 orders.<span class="fn">write</span> \
-    .<span class="fn">bucketBy</span>(<span class="num">64</span>, <span class="str">"customer_id"</span>) \
-    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \
+    .<span class="fn">bucketBy</span>(<span class="num">256</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \     <span class="cm"># sort within buckets for Sort-Merge without re-sort</span>
     .<span class="fn">saveAsTable</span>(<span class="str">"orders_bucketed"</span>)
 
-<span class="cm"># write customers with same bucket count + key</span>
+<span class="cm"># Write customers with SAME bucket count + key — critical requirement</span>
 customers.<span class="fn">write</span> \
-    .<span class="fn">bucketBy</span>(<span class="num">64</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">bucketBy</span>(<span class="num">256</span>, <span class="str">"customer_id"</span>) \
     .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \
     .<span class="fn">saveAsTable</span>(<span class="str">"customers_bucketed"</span>)
 
-<span class="cm"># join is now shuffle-free — Catalyst detects co-location</span>
+<span class="cm"># Join is now shuffle-free — Catalyst detects bucket co-location</span>
+<span class="cm"># The physical plan will show SortMergeJoin WITHOUT preceding Exchange nodes</span>
 result = spark.<span class="fn">table</span>(<span class="str">"orders_bucketed"</span>).<span class="fn">join</span>(
     spark.<span class="fn">table</span>(<span class="str">"customers_bucketed"</span>),
     on=<span class="str">"customer_id"</span>
-)</code></pre>
+)
+
+<span class="cm"># Verify: check explain() — no Exchange nodes = shuffle eliminated</span>
+result.<span class="fn">explain</span>()</code></pre>
     </div>
 
-    <h2>Reading the Query Plan</h2>
-    <p>Use <code>df.explain()</code> (or <code>explain(mode='extended')</code>) to inspect which join strategy Spark selected. Look for the physical plan node: <code>BroadcastHashJoin</code>, <code>ShuffledHashJoin</code>, <code>SortMergeJoin</code>, or <code>CartesianProduct</code>. If Spark picked the wrong strategy — common when table statistics are stale — use hint annotations (<code>broadcast()</code>, <code>/*+ SHUFFLE_HASH */</code>, <code>/*+ MERGE */</code>) or run <code>ANALYZE TABLE</code> to refresh statistics.</p>
+    <div class="callout">
+      <div class="callout-label">bucketing pitfalls</div>
+      <p>Bucketing is fragile in practice. If you add a partition to one table (re-bucket with a different count), the co-location guarantee breaks and Spark silently falls back to a full shuffle. Always confirm with <code>explain()</code> after schema or partition changes. Also: bucketing is only recognized when using <code>spark.table("name")</code> to read, not when reading Parquet files directly with <code>spark.read.parquet("path")</code>.</p>
+    </div>
+
+    <h2>Adaptive Query Execution (AQE) — Spark 3.0+</h2>
+    <p>AQE fundamentally changes the join optimization game by allowing Spark to make plan decisions at <em>runtime</em>, using actual shuffle statistics rather than pre-execution estimates. Three capabilities that directly affect join performance:</p>
+
+    <h3>1. Dynamic Join Strategy Switching</h3>
+    <p>If a dataset was estimated to be large (so Sort-Merge was planned), but after the first shuffle stage the actual data is much smaller than expected, AQE can switch to a Broadcast Join mid-execution — without restarting the query. This catches the common case where statistics are stale or non-existent, and the optimizer was overly conservative.</p>
+
+    <h3>2. Dynamic Coalescing of Shuffle Partitions</h3>
+    <p>The default shuffle partition count of 200 is arbitrary and often wrong: too many for small datasets (creates thousands of tiny tasks), too few for large datasets (causes straggler tasks with oversized partitions). AQE measures actual partition sizes after shuffle and coalesces adjacent small partitions into fewer, larger ones — automatically right-sizing the parallelism for the actual data distribution.</p>
+
+    <h3>3. Automatic Skew Handling</h3>
+    <p>AQE detects skewed partitions (those significantly larger than the median) and automatically splits them into sub-partitions, duplicating the matching non-skewed partition from the other side to join against each sub-partition. This eliminates the straggler task without manual salting — the most impactful AQE feature for production pipelines with real-world skewed data.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Enable AQE — default True in Spark 3.2+, must be set in 3.0/3.1</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># Dynamic join strategy switching</span>
+<span class="cm"># AQE will switch Sort-Merge → Broadcast if runtime size < threshold</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.localShuffleReader.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># Dynamic partition coalescing</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.coalescePartitions.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.advisoryPartitionSizeInBytes"</span>, <span class="str">"128MB"</span>)
+
+<span class="cm"># Automatic skew join handling</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionFactor"</span>, <span class="num">5</span>)  <span class="cm"># 5× median = skewed</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes"</span>, <span class="str">"256MB"</span>)</code></pre>
+    </div>
+
+    <h2>Reading the Query Plan and Diagnosing Issues</h2>
+    <p>Use <code>df.explain(mode='extended')</code> (or just <code>df.explain(True)</code>) to inspect which join strategy Spark selected. The physical plan is what actually executes — focus on that. Key nodes to look for:</p>
+    <ul>
+      <li><code>BroadcastHashJoin</code> — broadcast join; look for <code>BuildRight</code> or <code>BuildLeft</code> to see which side was broadcast.</li>
+      <li><code>ShuffledHashJoin</code> — shuffle hash join; one side builds a hash table.</li>
+      <li><code>SortMergeJoin</code> — sort-merge join; both sides are sorted.</li>
+      <li><code>CartesianProduct</code> — cross join; a red flag if unexpected.</li>
+      <li><code>Exchange</code> — a shuffle boundary; count these to understand total shuffle cost.</li>
+      <li><code>BroadcastExchange</code> vs <code>ShuffleExchange</code> — broadcast sends data once to all executors; shuffle redistributes by key.</li>
+    </ul>
+    <p>If Spark picked the wrong strategy — common when table statistics are stale — use hint annotations or run <code>ANALYZE TABLE &lt;name&gt; COMPUTE STATISTICS FOR ALL COLUMNS</code> to refresh statistics and let Catalyst re-plan. With AQE enabled, stale statistics are less of a problem because the plan is re-optimized at each shuffle stage boundary using actual runtime sizes.</p>
+
+    <h2>Key Tuning Parameters</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Parameter</th><th>Default</th><th>What It Controls</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>spark.sql.autoBroadcastJoinThreshold</code></td><td>10 MB</td><td>Max size of a dataset to auto-broadcast. Raise to 100–512 MB for large-executor clusters.</td></tr>
+        <tr><td><code>spark.sql.shuffle.partitions</code></td><td>200</td><td>Number of shuffle partitions for Sort-Merge/Shuffle Hash. With AQE, this becomes a max ceiling; actual is auto-coalesced.</td></tr>
+        <tr><td><code>spark.sql.join.preferSortMergeJoin</code></td><td>true</td><td>Set false to allow Shuffle Hash Join when build side fits in memory.</td></tr>
+        <tr><td><code>spark.sql.adaptive.enabled</code></td><td>true (3.2+)</td><td>Master switch for Adaptive Query Execution.</td></tr>
+        <tr><td><code>spark.sql.adaptive.advisoryPartitionSizeInBytes</code></td><td>64 MB</td><td>Target partition size AQE coalesces toward. 128–256 MB is usually optimal.</td></tr>
+        <tr><td><code>spark.sql.adaptive.skewJoin.skewedPartitionFactor</code></td><td>5</td><td>Partition must be this many times larger than median to be considered skewed.</td></tr>
+        <tr><td><code>spark.executor.memory</code></td><td>1g</td><td>Total executor heap. Broadcast joins need the small table to fit here. Shuffle Hash needs the build-side partition to fit.</td></tr>
+        <tr><td><code>spark.memory.fraction</code></td><td>0.6</td><td>Fraction of executor heap for execution + storage (vs JVM overhead). Raise to 0.7–0.75 for memory-heavy join workloads.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Join Decision Tree — When to Use What</h2>
+    <p>In practice, apply this decision tree before submitting any join-heavy Spark job:</p>
+    <ol>
+      <li><strong>Check if one side is small enough to broadcast</strong> — run <code>df.count()</code> and estimate uncompressed size. If it fits in executor memory (accounting for compression ratio, typically 3–5× for Parquet), use Broadcast. Raise <code>autoBroadcastJoinThreshold</code> or use the hint.</li>
+      <li><strong>If both sides are large, check for skew</strong> — profile key distribution. If skewed, enable AQE skew join handling or apply manual salting before choosing a strategy.</li>
+      <li><strong>If the join is repeated on the same key</strong> — consider bucketing both tables at write time. One-time cost, permanent shuffle elimination.</li>
+      <li><strong>If AQE is enabled (Spark 3.2+)</strong> — Sort-Merge with AQE handles most cases adaptively. Trust it unless profiling shows a specific issue.</li>
+      <li><strong>Enable Shuffle Hash Join only when</strong> the build side per partition clearly fits in executor memory (measured, not estimated) and sorting overhead is a measured bottleneck.</li>
+      <li><strong>Always verify with <code>explain()</code></strong> — confirm the physical plan matches your intent before running on production data.</li>
+    </ol>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Always check the physical plan first — let Spark's optimizer do its job, and only override when you have evidence it chose wrong. The decision tree: small side fits in memory → Broadcast; both sides are large but build side fits in hash table → Shuffle Hash; both sides are truly large → Sort-Merge. Bucket frequently-joined large tables at write time to eliminate shuffle permanently on those join paths.</p>
+      <p>Always check the physical plan first — let Spark's optimizer do its job, and only override when you have evidence it chose wrong. The decision tree: one side fits in memory → Broadcast (eliminates the large-side shuffle entirely); both sides are large but build side fits in a hash table → Shuffle Hash; both sides are truly large → Sort-Merge (constant-memory merge, Spark's safe default). Detect and handle skew before it makes a good strategy irrelevant. Bucket frequently-joined large tables at write time to eliminate shuffle permanently. Enable AQE in Spark 3.0+ to get adaptive strategy switching, partition coalescing, and automatic skew handling — it solves most issues that previously required manual tuning.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>Why is shuffle the enemy in Spark joins?</strong> A shuffle forces serialization, disk write, network transfer, and deserialization — for large datasets this dominates total job runtime. Every join optimization aims to minimize unnecessary shuffling.<br>
-      <strong>Broadcast vs Sort-Merge — when does each win?</strong> Broadcast wins when one side fits in executor memory (eliminates all large-side network traffic); Sort-Merge wins for large-large joins because it merges in bounded memory via sequential scan, handling datasets that exceed total available RAM.<br>
-      <strong>How does bucketing eliminate shuffle?</strong> If both tables are pre-bucketed on the same join key with the same bucket count, Spark's Catalyst optimizer detects that matching rows are already co-located and skips the shuffle stage entirely.</p>
+      <p><strong>Why is shuffle the enemy in Spark joins?</strong> A shuffle forces serialization, disk write, network transfer, and deserialization — for a 1 TB dataset that is 3 TB of I/O for one operation. Every join optimization aims to minimize unnecessary shuffling: Broadcast eliminates it on the large side, Bucketing eliminates it entirely, and Sort-Merge minimizes extra work by doing it once and merging in-stream.<br>
+      <strong>Broadcast vs Sort-Merge — when does each win?</strong> Broadcast wins when one side fits in executor memory — it eliminates all large-side network traffic, often giving 10–100× speedup. Sort-Merge wins for large-large joins because it merges in bounded constant memory via sequential scan, handling datasets that exceed total available RAM without OOM risk.<br>
+      <strong>How does bucketing eliminate shuffle?</strong> Both tables are pre-partitioned by the same join key with the same bucket count at write time. Spark's Catalyst optimizer detects that matching rows are already co-located on the same executor and skips the shuffle Exchange node entirely — confirmed by no Exchange in the physical plan.<br>
+      <strong>What is data skew and how do you fix it?</strong> Skew is when some join key values have vastly more rows than others, causing one executor task to process 1000× more data than its peers — one straggler holds up the entire stage. Fix: (1) AQE's automatic skew join handling (Spark 3.0+), which splits skewed partitions; (2) manual salting — append a random suffix to the skewed key on both sides, replicating the dimension side for all salt values; (3) broadcast the skewed small dimension if it fits in memory.<br>
+      <strong>What does AQE do for joins?</strong> AQE (Spark 3.0+) re-optimizes the plan at each shuffle boundary using actual runtime statistics: it can switch a Sort-Merge to a Broadcast if the actual data is smaller than estimated, coalesce shuffle partitions to right-size parallelism, and automatically split skewed partitions into sub-partitions for balanced execution.</p>
     </div>
 
     <div class="article-nav">
@@ -304,7 +566,7 @@ result = spark.<span class="fn">table</span>(<span class="str">"orders_bucketed"
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>

@@ -151,7 +151,7 @@
     <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <a href="/contact/" class="nav-cta">Mock Interview →</a>
@@ -170,14 +170,14 @@
     <div class="article-meta">
       <span>Apr 01, 2023</span>
       <span class="separator">·</span>
-      <span>11 min read</span>
+      <span>30 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">System Design</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p>A chat application sits at one of the most demanding intersections of system design: it must handle billions of users, hundreds of billions of messages per day, sub-second delivery latency, reliable offline queuing, and complex group semantics — all while maintaining end-to-end encryption and accurate presence information.</p>
+    <p>A chat application sits at one of the most demanding intersections of system design: it must handle billions of users, hundreds of billions of messages per day, sub-second delivery latency, reliable offline queuing, and complex group semantics — all while maintaining end-to-end encryption and accurate presence information. The central challenge is that every message must be delivered to a specific device, not just a database record — which means the system must track live connection state across thousands of servers and route messages to exactly the right server in real time.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -186,6 +186,7 @@
         <li><strong>WebSocket Manager (Redis KV)</strong> — maps user_id → websocket_server:port; enables any service to route a message to the right server across 65K+ ports.</li>
         <li><strong>Snowflake IDs</strong> — 64-bit: 41-bit ms timestamp + 10-bit machine ID + 12-bit sequence; distributed unique IDs with built-in time ordering for message display.</li>
         <li><strong>Online vs. offline delivery</strong> — online: direct WebSocket delivery; offline: Pending status + push notification (APNs/FCM) until reconnect.</li>
+        <li><strong>Write fanout vs. read fanout</strong> — write fanout copies messages to each recipient's mailbox at send time; read fanout queries a shared message store at read time. Write fanout wins for small groups; read fanout wins for large ones.</li>
         <li><strong>Group size cap</strong> — bounded fan-out cost (WeChat 500-user ceiling); each group message requires one delivery per member.</li>
         <li><strong>Last seen sampling</strong> — poll presence ~1 min intervals; minor accuracy loss accepted to avoid write storm at 4B users.</li>
       </ul>
@@ -193,7 +194,7 @@
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>Use WebSockets for full-duplex, persistent client-server connections. Route messages through a WebSocket Manager (key-value store) that maps user IDs to servers. Generate message IDs with Snowflake (time-ordered, distributed, 64-bit). Queue messages as "pending" for offline users and deliver via push notification. Cap group size to bound fan-out cost.</p>
+      <p>Use WebSockets for full-duplex, persistent client-server connections. Route messages through a WebSocket Manager (key-value store) that maps user IDs to servers. Generate message IDs with Snowflake (time-ordered, distributed, 64-bit). Queue messages as "pending" for offline users and deliver via push notification. Use write fanout for 1:1 and small groups; switch to read fanout (shared message log) for large groups. Cap group size to bound worst-case fan-out cost.</p>
     </div>
 
     <figure class="article-figure">
@@ -201,31 +202,99 @@
       <figcaption>High-level chat app architecture</figcaption>
     </figure>
 
-    <h2>Requirements</h2>
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>Chat applications range from simple 1:1 SMS-style messaging to real-time collaborative workspaces. Scope the problem before drawing any diagrams.</p>
 
     <h3>Functional</h3>
     <ul>
-      <li>User registration and authentication</li>
-      <li>One-to-one messaging</li>
-      <li>Group chat</li>
-      <li>Media support: text, images, audio, video</li>
-      <li>Read receipts</li>
-      <li>Last seen / online status tracking</li>
+      <li>User registration and authentication.</li>
+      <li>One-to-one messaging with reliable delivery.</li>
+      <li>Group chat (bounded size — e.g., 500 members max).</li>
+      <li>Media support: text, images, audio, video clips.</li>
+      <li>Read receipts (sent / delivered / read indicators).</li>
+      <li>Last seen / online status tracking.</li>
+      <li>Message history and search.</li>
     </ul>
 
     <h3>Non-Functional</h3>
     <ul>
-      <li><strong>Low latency</strong> — real-time feel is the core product promise</li>
-      <li><strong>High availability</strong> — dropped connections or missed messages destroy trust</li>
-      <li><strong>Massive scale</strong> — 4 billion users, 100 billion messages daily</li>
+      <li><strong>Low latency</strong> — real-time feel is the core product promise; &lt;100 ms p99 delivery to online recipients.</li>
+      <li><strong>High availability</strong> — dropped connections or missed messages destroy trust; target 99.99%.</li>
+      <li><strong>Massive scale</strong> — 4 billion users, 100 billion messages daily.</li>
+      <li><strong>Message ordering</strong> — messages within a conversation must appear in send order on all devices.</li>
+      <li><strong>Exactly-once delivery guarantee at the application level</strong> — no duplicate messages, even on retry.</li>
     </ul>
 
-    <figure class="article-figure">
-      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket connection management and message routing" loading="lazy">
-      <figcaption>WebSocket connection management and message routing</figcaption>
-    </figure>
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>WhatsApp / WeChat scale: <strong>4 billion users</strong>, with roughly <strong>1 billion daily active (DAU)</strong>. Each DAU sends ~100 messages/day.</p>
 
-    <h2>Protocol Selection: Why WebSockets</h2>
+    <h3>Message Volume</h3>
+    <ul>
+      <li>1B DAU × 100 messages/day = <strong>100 billion messages/day</strong>.</li>
+      <li>100B ÷ 86,400 sec = <strong>~1.15 million messages/sec</strong> average; with a 3× peak factor → <strong>~3.5M msg/sec</strong>.</li>
+      <li>Each message: ~1 KB average (including metadata) → 3.5M × 1 KB = <strong>~3.5 GB/sec</strong> of message data at peak.</li>
+    </ul>
+
+    <h3>WebSocket Connections</h3>
+    <ul>
+      <li>1B DAU, each with one persistent WebSocket connection → <strong>1 billion concurrent connections</strong>.</li>
+      <li>A single server can handle ~100K concurrent WebSocket connections (each connection uses ~10 KB RAM for state) → <strong>10,000 WebSocket servers</strong> needed.</li>
+      <li>Each server listens on up to 65,535 ports; in practice connections are multiplexed on a single port per server so the limiting factor is RAM, not port count.</li>
+    </ul>
+
+    <h3>Storage</h3>
+    <ul>
+      <li>100B messages/day × 1 KB × 365 = <strong>~36 PB/year</strong> of message data.</li>
+      <li>Most users retain messages for years → messages are stored indefinitely per user expectation, tiered from hot (recent 90 days in Cassandra) to cold (older, compressed in object storage).</li>
+      <li>Media attachments are the dominant storage cost: a 1 MB photo from 1% of messages = 1B media items/day × 1 MB ≈ <strong>1 PB/day</strong> of media. Media is deduplicated by hash before storage.</li>
+    </ul>
+
+    <h2>Step 3 — API Design</h2>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP + WS</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Auth</span>
+<span class="kw">POST</span> <span class="str">/api/auth/login</span>
+     { phone_number, otp }
+     <span class="cm">→ { access_token, refresh_token }</span>
+
+<span class="cm"># WebSocket connection (upgrade)</span>
+<span class="kw">GET</span>  <span class="str">/ws/connect</span>
+     Authorization: Bearer {access_token}
+     <span class="cm">→ 101 Switching Protocols</span>
+     <span class="cm">   Registers: user_id → ws_server:port in WebSocket Manager</span>
+
+<span class="cm"># Send message (over WS frame, not REST)</span>
+<span class="cm">-- Client sends WS frame:</span>
+{ type: <span class="str">"message"</span>, idempotency_key: <span class="str">"uuid"</span>,
+  receiver_id: <span class="num">456</span>, content: <span class="str">"hello"</span>, media_url: null }
+<span class="cm">-- Server replies:</span>
+{ type: <span class="str">"ack"</span>, message_id: <span class="num">7234567890123</span>, status: <span class="str">"sent"</span> }
+
+<span class="cm"># REST: message history (pagination by cursor)</span>
+<span class="kw">GET</span>  <span class="str">/api/conversations/{conv_id}/messages?before_id=7234567890123&limit=50</span>
+
+<span class="cm"># REST: create group</span>
+<span class="kw">POST</span> <span class="str">/api/groups</span>
+     { name, member_ids: [1, 2, 3 ...] }
+
+<span class="cm"># REST: upload media (returns CDN URL)</span>
+<span class="kw">POST</span> <span class="str">/api/media/upload</span>
+     Content-Type: multipart/form-data
+     <span class="cm">→ { media_url, media_id }</span></code></pre>
+    </div>
+
+    <p>Message sending happens <strong>over the WebSocket connection</strong>, not via REST, because the connection is already open and adding REST round-trips would waste the persistent connection. The <code>idempotency_key</code> is client-generated (UUID) and prevents duplicate message creation on retry — if the client sends the same key twice (e.g., because the ACK was lost), the server returns the already-created message ID without creating a second message.</p>
+
+    <h2>Step 4 — Protocol Selection: Why WebSockets</h2>
     <p>The central challenge of chat is server-to-client message push. Three approaches exist:</p>
 
     <table class="compare-table">
@@ -236,26 +305,30 @@
         <tr><td class="col-b">Short polling</td><td>Latency determined by poll interval; frequent polls waste resources, infrequent polls feel laggy</td></tr>
         <tr><td class="col-b">Long polling</td><td>Repeated connection setup/teardown overhead; multiple simultaneous requests can cause message ordering issues</td></tr>
         <tr><td class="col-a">WebSockets</td><td>Persistent full-duplex connection; eliminates polling overhead; supports true real-time bidirectional messaging</td></tr>
+        <tr><td class="col-b">Server-Sent Events (SSE)</td><td>Server-push only; client cannot send over the same connection; still requires a separate HTTP channel for sends</td></tr>
       </tbody>
     </table>
 
-    <p>WebSockets win because they maintain a single persistent connection per client, enabling the server to push messages the instant they arrive with no polling lag and no connection re-establishment overhead.</p>
+    <p>WebSockets win because they maintain a single persistent connection per client, enabling the server to push messages the instant they arrive with no polling lag and no connection re-establishment overhead. The connection stays open for the lifetime of the user's session; a heartbeat ping/pong every 30 seconds detects dead connections without requiring the client to poll.</p>
 
-    <h2>Core Services</h2>
+    <h2>Step 5 — Core Services</h2>
     <ul>
-      <li><strong>User Service</strong> — RESTful API for user CRUD and authentication</li>
-      <li><strong>Chat / Group Service</strong> — manages chat creation, deletion, and group membership; stores <code>[group_id, member_list]</code> pairs</li>
-      <li><strong>Message Service</strong> — persists messages and publishes them to Kafka for downstream processing</li>
-      <li><strong>WebSocket Manager</strong> — maintains a key-value mapping of <code>[user_id → websocket_server:port]</code>; backed by Redis for fast in-memory lookup across 65,000+ available ports per server</li>
-      <li><strong>Last Seen Service</strong> — samples user activity at ~1-minute intervals; records a timestamp when the app is open</li>
+      <li><strong>User Service</strong> — RESTful API for user CRUD, authentication, and contact management.</li>
+      <li><strong>Chat / Group Service</strong> — manages conversation creation, deletion, and group membership; stores <code>[group_id, member_list, admin_ids]</code>.</li>
+      <li><strong>Message Service</strong> — persists messages, generates Snowflake IDs, publishes events to Kafka for downstream processing.</li>
+      <li><strong>WebSocket Gateway</strong> — stateful servers that maintain long-lived client connections; handle WS frame parsing, heartbeats, and connection lifecycle.</li>
+      <li><strong>WebSocket Manager</strong> — maintains a key-value mapping of <code>user_id → websocket_server:port</code>; backed by Redis for fast in-memory lookup. This is the routing table that lets any service find the right WebSocket server for any user.</li>
+      <li><strong>Notification Service</strong> — dispatches push notifications (APNs for iOS, FCM for Android) to offline users.</li>
+      <li><strong>Presence Service</strong> — tracks online/offline status and last-seen timestamps.</li>
+      <li><strong>Media Service</strong> — receives binary uploads, stores in object storage, returns CDN URLs for embedding in messages.</li>
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-3.jpg" alt="Message object schema" loading="lazy">
-      <figcaption>Message object schema</figcaption>
+      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket connection management and message routing" loading="lazy">
+      <figcaption>WebSocket connection management and message routing</figcaption>
     </figure>
 
-    <h2>Message Schema and ID Generation</h2>
+    <h2>Step 6 — Data Model</h2>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -263,55 +336,255 @@
           <div class="code-dot" style="background:#ff5f57"></div>
           <div class="code-dot" style="background:#febc2e"></div>
           <div class="code-dot" style="background:#28c840"></div>
-          <span class="code-lang">schema</span>
+          <span class="code-lang">CQL / schema</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code><span class="cm">-- 1-to-1 message</span>
-message_id      BIGINT   <span class="cm">-- Snowflake ID (time-ordered)</span>
-sender_id       BIGINT
-receiver_id     BIGINT
-content         TEXT     <span class="cm">-- encrypted</span>
-status          ENUM     <span class="cm">-- Pending | Delivered | Read</span>
-created_at      TIMESTAMP
+      <pre><code><span class="cm">-- Messages table: partitioned by conversation for efficient history reads</span>
+<span class="kw">CREATE TABLE</span> messages (
+  conversation_id <span class="ty">BIGINT</span>,
+  message_id      <span class="ty">BIGINT</span>,    <span class="cm">-- Snowflake ID (time-ordered)</span>
+  sender_id       <span class="ty">BIGINT</span>,
+  content         <span class="ty">TEXT</span>,     <span class="cm">-- encrypted at rest</span>
+  media_url       <span class="ty">TEXT</span>,     <span class="cm">-- null for text-only</span>
+  status          <span class="ty">ENUM</span>,     <span class="cm">-- Sent | Delivered | Read</span>
+  idempotency_key <span class="ty">UUID</span>,    <span class="cm">-- dedup on retry</span>
+  created_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     ((conversation_id), message_id)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (message_id <span class="kw">DESC</span>);
 
-<span class="cm">-- Group message (receiver_id replaced by channel)</span>
-message_id      BIGINT
-sender_id       BIGINT
-channel_id      BIGINT   <span class="cm">-- broadcast to all members</span>
-content         TEXT
-status          ENUM
-created_at      TIMESTAMP</code></pre>
+<span class="cm">-- User inbox: each user's list of conversations with unread counts</span>
+<span class="kw">CREATE TABLE</span> user_inbox (
+  user_id         <span class="ty">BIGINT</span>,
+  conversation_id <span class="ty">BIGINT</span>,
+  last_message_id <span class="ty">BIGINT</span>,
+  unread_count    <span class="ty">INT</span>,
+  updated_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (user_id, updated_at)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (updated_at <span class="kw">DESC</span>);
+
+<span class="cm">-- Group membership</span>
+<span class="kw">CREATE TABLE</span> group_members (
+  group_id        <span class="ty">BIGINT</span>,
+  user_id         <span class="ty">BIGINT</span>,
+  role            <span class="ty">TEXT</span>,     <span class="cm">-- member | admin</span>
+  joined_at       <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (group_id, user_id)
+);
+
+<span class="cm">-- Delivery receipts: per-message per-recipient status</span>
+<span class="kw">CREATE TABLE</span> receipts (
+  message_id      <span class="ty">BIGINT</span>,
+  recipient_id    <span class="ty">BIGINT</span>,
+  status          <span class="ty">TEXT</span>,     <span class="cm">-- Delivered | Read</span>
+  updated_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (message_id, recipient_id)
+);</code></pre>
     </div>
 
-    <p>Message IDs use <strong>Snowflake</strong>: a 64-bit integer composed of a 41-bit millisecond timestamp, a 10-bit machine ID, and a 12-bit sequence number. This gives distributed uniqueness without coordination, and the timestamp prefix keeps messages naturally time-ordered for display.</p>
+    <p>The messages table is partitioned by <code>conversation_id</code> so the most common query — "load the last 50 messages in this conversation" — is a single-partition scan. The clustering key <code>message_id</code> (a Snowflake ID) keeps messages ordered by time within the partition. Cassandra is the right storage here because the write pattern (high throughput, append-only) and read pattern (range scan within a partition, by time) map perfectly to Cassandra's strengths.</p>
 
-    <h2>Delivery: Online vs. Offline Users</h2>
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-3.jpg" alt="Message object schema" loading="lazy">
+      <figcaption>Message object schema</figcaption>
+    </figure>
+
+    <h2>Step 7 — Message ID Generation: Snowflake</h2>
+    <p>Message IDs must be globally unique, time-ordered (so messages sort correctly in the UI without a separate timestamp sort), and generated without coordination (so there is no single-point-of-failure ID generator). <strong>Snowflake IDs</strong> satisfy all three requirements:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bit layout</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">Snowflake 64-bit ID layout:</span>
+┌─────────────────────────────┬──────────────┬──────────────────┐
+│   41 bits: ms timestamp     │ 10-bit nodeID│  12-bit sequence │
+│   (epoch offset, ~69 years) │  (1024 nodes)│  (4096/ms/node)  │
+└─────────────────────────────┴──────────────┴──────────────────┘
+
+Max throughput: 1024 nodes × 4096 IDs/ms = <span class="num">4.19</span> million IDs/ms
+Time ordering: IDs generated later are always numerically greater
+No coordination: each node generates independently</code></pre>
+    </div>
+
+    <p>The 41-bit timestamp field (milliseconds since a custom epoch) means IDs are sortable without a separate <code>created_at</code> field — comparing two Snowflake IDs directly tells you which message came first. The 10-bit node ID (configured per Message Service instance at startup) guarantees uniqueness across the fleet without any global lock or centralized ID service.</p>
+
+    <h2>Step 8 — Message Delivery: Online vs. Offline</h2>
     <p>When a message is sent, the Message Service checks whether the recipient has an active WebSocket connection by querying the WebSocket Manager. Two paths diverge:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>Sender sends message over WebSocket
+  → WebSocket Gateway receives WS frame
+  → Message Service:
+      1. Dedup check: idempotency_key in Redis (TTL 24h)
+      2. Generate Snowflake message_id
+      3. Persist to Cassandra (status: Sent)
+      4. Send ACK to sender: { message_id, status: "sent" }
+      5. Look up recipient in WebSocket Manager
+
+  [Recipient is ONLINE]
+    → Forward to recipient's WebSocket server (via internal RPC)
+    → WebSocket server pushes to client WS connection
+    → Recipient client ACKs receipt
+    → Message Service updates status: Delivered
+    → Push Delivered receipt to sender via WS
+
+  [Recipient is OFFLINE]
+    → Message stays in Cassandra (status: Pending)
+    → Notification Service sends push notification (APNs/FCM)
+    → On recipient reconnect:
+        Client sends { last_seen_message_id: 7234567890000 }
+        Server returns all messages with id > last_seen
+        Server updates status: Delivered
+        Sender receives Delivered receipt</code></pre>
+    </div>
+
+    <h3>At-Least-Once Delivery and Deduplication</h3>
+    <p>The system guarantees <strong>at-least-once delivery</strong> at the network level — a message may be attempted multiple times on retries. The application layer must deduplicate to achieve the user-visible guarantee of exactly-once. The deduplication key is the client-supplied <code>idempotency_key</code> (UUID), stored in Redis with a 24-hour TTL. On retry, the Message Service checks Redis before writing to Cassandra; if the key exists, it returns the existing message ID without creating a duplicate.</p>
+
+    <h2>Step 9 — Fan-out: Write Fanout vs. Read Fanout</h2>
+    <p>Fan-out is the architectural decision that determines how messages get from a sender to all recipients. There are two fundamentally different approaches, each with different tradeoffs:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Approach</th><th>How it works</th><th>Write cost</th><th>Read cost</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Write fanout (push model)</td><td>At send time, copy the message into each recipient's mailbox / inbox</td><td>O(N) writes where N = recipients</td><td>O(1) per-user inbox scan</td><td>Small groups, DMs; N is bounded</td></tr>
+        <tr><td class="col-b">Read fanout (pull model)</td><td>Store message once in a shared log; each recipient fetches on read</td><td>O(1) write</td><td>O(members) per read (each reader scans the shared log)</td><td>Large groups, public channels; write cost would explode</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Hybrid Strategy</h3>
+    <p>Production systems (WhatsApp, Slack, Telegram) use a hybrid:</p>
     <ul>
-      <li><strong>Online user</strong> — message is routed directly to the recipient's WebSocket server and delivered immediately; status advances to <strong>Delivered</strong></li>
-      <li><strong>Offline user</strong> — message is stored with status <strong>Pending</strong>; a push notification is dispatched via Apple Push Notification Service or Android push notifiers; delivery is confirmed when the user reconnects</li>
+      <li><strong>1:1 messages and small groups (&lt;100 members)</strong> — write fanout: at send time, the Message Service writes one delivery record per recipient into their inbox. Each recipient's inbox scan is O(1) at read time. The write cost of ~100 writes is negligible.</li>
+      <li><strong>Large groups (&gt;100 members)</strong> — read fanout: the message is stored once in a shared conversation log. When a member opens the conversation, they query the log with a cursor ("give me messages since my last-read position"). This avoids the O(5000) write cost of a 5,000-member channel.</li>
+      <li><strong>Very large public channels</strong> — read fanout with a separate "unread count" stored per-user as a simple integer, avoiding the need to scan the full message log to compute the badge count.</li>
     </ul>
 
-    <h2>Group Chat and Fan-out</h2>
-    <p>Group messages replace <code>receiver_id</code> with a <code>channel_id</code> and must be broadcast to all group members simultaneously. This fan-out is the main scalability challenge in group chat: a message to a 500-person group requires 500 individual deliveries. The design caps group size (WeChat's 500-user ceiling is cited as the reference) to bound the maximum fan-out cost and reduce delivery lag. The system accepts slightly different delivery timing across group members as a reasonable tradeoff for performance.</p>
+    <div class="callout">
+      <div class="callout-label">the fanout tradeoff in one sentence</div>
+      <p>Write fanout trades write amplification for fast reads; read fanout trades write simplicity for read complexity. The crossover point is roughly 100–200 members: below that, write fanout wins; above that, read fanout avoids an O(N) write storm.</p>
+    </div>
 
-    <h2>Media Storage</h2>
-    <p>Images, audio, and video are not stored inline in message objects. Instead, the message record holds a reference, and the actual binary content lives in a file system backed by CDN distribution. This keeps message database rows small and uniform while leveraging optimized object storage for large binary payloads.</p>
+    <h2>Step 10 — Group Chat and Ordering Guarantees</h2>
+    <p>Group messages replace <code>receiver_id</code> with a <code>conversation_id</code> and must be delivered to all group members simultaneously. This fan-out is the main scalability challenge in group chat: a message to a 500-person group requires 500 individual delivery attempts. The design caps group size (WeChat's 500-user ceiling is the reference) to bound the maximum fan-out cost and delivery lag.</p>
 
-    <h2>Last Seen and Presence</h2>
-    <p>Recording exact timestamps for every user action at 4 billion-user scale would generate enormous write load. Instead, the Last Seen Service samples: it polls whether the user has the app open approximately every minute and records a timestamp if so. This introduces minor inaccuracy in "last seen" timestamps — a deliberately accepted tradeoff to keep storage and write throughput manageable.</p>
+    <h3>Message Ordering Within a Conversation</h3>
+    <p>Two users sending messages simultaneously can both "win" and produce ordering conflicts. The solution is to use the Snowflake ID as the canonical ordering key — messages are always displayed sorted by <code>message_id</code> ascending. Since Snowflake IDs incorporate a millisecond timestamp, two messages sent within the same millisecond from different nodes are differentiated by the node ID bits, ensuring a deterministic total order even under concurrent sends.</p>
+
+    <p>For conversations where strict causal ordering matters (e.g., "reply to message X"), a <code>reply_to_message_id</code> field is included in the message schema. The client UI renders the thread view by following these links, regardless of the arrival order of the messages.</p>
+
+    <h2>Step 11 — Read Receipts</h2>
+    <p>The iconic double-tick / blue-tick indicators (sent → delivered → read) are a read receipt system. Implementation details:</p>
+    <ul>
+      <li><strong>Sent</strong> — the sender's client gets an ACK from the Message Service with the assigned <code>message_id</code>. One tick.</li>
+      <li><strong>Delivered</strong> — the recipient's device receives the message and sends a delivery ACK back through the WebSocket. The Message Service updates the <code>receipts</code> table and pushes a <code>Delivered</code> event to the sender. Two ticks.</li>
+      <li><strong>Read</strong> — the recipient's app marks the message as read (user opens the conversation). The client sends a <code>ReadReceipt</code> frame over the WebSocket. Two blue ticks.</li>
+    </ul>
+
+    <p>For group messages, the sender sees "delivered to all" only when every member has a <code>Delivered</code> receipt in the receipts table. This is O(members) reads per "delivered to all" check — the reason WhatsApp shows a per-member drill-down list rather than a single aggregate indicator for groups.</p>
+
+    <h3>Batching Receipt Writes</h3>
+    <p>At 100B messages/day, individual receipt writes would add another 200–300B writes/day to the database (two receipts per message). The Notification Service batches receipt updates: delivery ACKs are accumulated in Redis for 500 ms, then flushed to Cassandra in a single batch write. This reduces write amplification by ~50–100×.</p>
+
+    <h2>Step 12 — Presence and Last Seen</h2>
+    <p>Tracking "is this user online?" and "when did they last use the app?" sounds simple but is one of the hardest scalability problems in a chat system at 4 billion users.</p>
+
+    <h3>Naive Approach and Why It Fails</h3>
+    <p>The simplest implementation would have each user write their current timestamp to a database every second. At 1B DAU × 1 write/sec = <strong>1 billion writes/sec</strong> — this is obviously impossible.</p>
+
+    <h3>Presence via Heartbeat Sampling</h3>
+    <p>The Presence Service uses a sampled approach:</p>
+    <ul>
+      <li>The WebSocket Gateway sends a heartbeat to the Presence Service every <strong>60 seconds</strong> per active connection: <code>{ user_id, online: true }</code>.</li>
+      <li>1B active connections × 1 write/60 sec ≈ <strong>~16.7M writes/sec</strong> — still very high, but manageable with a sharded Redis cluster.</li>
+      <li>Each user's presence state is stored in Redis as a key with a TTL of 90 seconds. If no heartbeat arrives within the TTL, the key expires and the user is considered offline.</li>
+      <li>"Last seen" timestamp is written to Cassandra only on disconnect or once per hour while online, not on every heartbeat. This reduces Cassandra write load by 3600×.</li>
+    </ul>
+
+    <h3>Presence Subscription (Contacts' Online Status)</h3>
+    <p>Users want to know which of their contacts are online. The naive approach (query Presence Service for each contact on every page load) generates O(contacts) requests per user open. The production approach uses a pub-sub model:</p>
+    <ul>
+      <li>When user A comes online, the Presence Service publishes an <code>online</code> event to a channel keyed by <code>user_id_A</code>.</li>
+      <li>Any WebSocket server that has a subscriber to user A's contact list (i.e., a friend of A is connected) receives the event and pushes it to that friend's WebSocket connection.</li>
+      <li>Redis Pub/Sub or a dedicated presence broker (e.g., a lightweight MQTT broker) handles the fan-out.</li>
+    </ul>
+
+    <h2>Step 13 — Media Storage</h2>
+    <p>Images, audio, and video are not stored inline in message objects. Instead, the message record holds a CDN URL, and the actual binary content lives in object storage. The upload flow:</p>
+    <ol>
+      <li>Client calls <code>POST /api/media/upload</code>.</li>
+      <li>Media Service generates a pre-signed S3 upload URL and returns it along with a <code>media_id</code>.</li>
+      <li>Client uploads directly to S3 via the pre-signed URL (bypasses application servers entirely).</li>
+      <li>S3 triggers a Lambda/event that notifies the Media Service of upload completion.</li>
+      <li>Media Service records the <code>media_id → CDN URL</code> mapping and returns the CDN URL to the client.</li>
+      <li>Client includes the CDN URL in the message payload.</li>
+    </ol>
+
+    <p>Media deduplication: before uploading, the client computes a SHA-256 hash of the file and sends it to the Media Service. If the hash already exists in the database (another user already uploaded the same file), the server returns the existing CDN URL without a new upload — zero bytes transferred for duplicates. This is especially effective for viral media (memes, voice notes) where the same file is shared by thousands of users.</p>
+
+    <h2>Step 14 — Scaling and Fault Tolerance</h2>
+
+    <h3>WebSocket Server Scaling</h3>
+    <ul>
+      <li>WebSocket servers are stateful (they hold open connections) but the routing state is externalized to the WebSocket Manager (Redis). Adding a new server requires only registering it with a load balancer — no state migration.</li>
+      <li>On server crash, clients reconnect automatically (exponential backoff with jitter). The client sends its <code>last_seen_message_id</code> on reconnect, and the server delivers all pending messages since that ID.</li>
+      <li>The WebSocket Manager's Redis entry for the crashed server is cleaned up by a health-check watchdog that removes stale entries when a server stops sending heartbeats.</li>
+    </ul>
+
+    <h3>Cassandra Sharding for Messages</h3>
+    <ul>
+      <li>Messages are partitioned by <code>conversation_id</code>. Cassandra distributes partitions across nodes using consistent hashing, so adding nodes redistributes load without a full reshard.</li>
+      <li>Hot conversations (a massive group chat) can cause a single partition to become a hot spot. Mitigation: bucket time within the partition key — <code>conversation_id + month</code> as a composite partition key, so message history is distributed across time-based buckets.</li>
+    </ul>
+
+    <h3>Message Queue and Replay</h3>
+    <p>The Message Service publishes every incoming message to Kafka before persisting to Cassandra. This serves two purposes: it decouples the write path from downstream consumers (notification service, analytics, search indexer), and it enables replay — if a consumer falls behind or crashes, it can replay from its last committed Kafka offset without losing messages.</p>
+
+    <h2>Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Real-time delivery</td><td class="col-a">WebSocket (persistent)</td><td>Stateful servers; harder horizontal scaling than stateless HTTP</td></tr>
+        <tr><td>Message ID generation</td><td class="col-a">Snowflake (distributed)</td><td>Node IDs must be assigned carefully; clock skew can cause rare ordering issues</td></tr>
+        <tr><td>Fan-out strategy</td><td class="col-b">Hybrid (write &lt;100, read &gt;100)</td><td>Complexity of two code paths; threshold tuning required per platform</td></tr>
+        <tr><td>Message storage</td><td class="col-a">Cassandra (partitioned by conv)</td><td>No cross-conversation queries; analytics must use a separate OLAP store</td></tr>
+        <tr><td>Presence tracking</td><td class="col-b">Sampled heartbeat (60s)</td><td>Online status is slightly stale; "last seen 5 minutes ago" may be off by up to 60s</td></tr>
+        <tr><td>Delivery guarantee</td><td class="col-a">At-least-once + client dedup</td><td>Client must handle and discard duplicates (idempotency_key check)</td></tr>
+      </tbody>
+    </table>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Chat design is mostly about two hard problems: real-time delivery (WebSockets + WebSocket Manager for routing) and offline queuing (Pending status + push notifications). Snowflake IDs solve distributed unique ID generation with built-in time ordering. Group size caps are an explicit scalability lever — the smaller the cap, the cheaper the fan-out. Last seen sampling trades minor accuracy for write throughput.</p>
+      <p>Chat design is mostly about three hard problems: real-time delivery (WebSockets + WebSocket Manager for routing), offline queuing (Pending status + push notifications + catch-up on reconnect), and fan-out strategy (write fanout for small groups, read fanout for large ones). Snowflake IDs solve distributed unique ID generation with built-in time ordering. Group size caps are an explicit scalability lever. Presence sampling trades minor accuracy for write throughput — the classic availability-consistency tradeoff applied to a non-obvious dimension.</p>
     </div>
 
     <div class="callout">
       <div class="callout-label">🎯 interview hot-takes</div>
-      <p><strong>How do you route a message to the correct server when millions of WebSocket connections are spread across many servers?</strong> A WebSocket Manager (backed by Redis) stores user_id → server:port; any service can look up the target server in O(1) and forward the message.<br>
+      <p><strong>How do you route a message to the correct server when millions of WebSocket connections are spread across many servers?</strong> A WebSocket Manager (backed by Redis) stores user_id → server:port; any service can look up the target server in O(1) and forward the message via internal RPC.<br>
       <strong>Why cap group chat size?</strong> A group message fans out to every member — a 1,000-person group means 1,000 individual deliveries. Capping size bounds worst-case fan-out latency and prevents a single message from saturating the delivery pipeline.<br>
-      <strong>What happens if a message is sent to an offline user?</strong> The message is stored with status Pending; a push notification (APNs/FCM) wakes the recipient's device; delivery is confirmed and status updated to Delivered when the user reconnects via WebSocket.</p>
+      <strong>What happens if a message is sent to an offline user?</strong> The message is stored with status Pending; a push notification (APNs/FCM) wakes the recipient's device; on reconnect the client sends its last-seen ID, the server delivers all missed messages, and status is updated to Delivered.<br>
+      <strong>Write fanout vs. read fanout — when do you use each?</strong> Write fanout copies to each inbox at send time (fast reads, O(N) writes) — use for DMs and small groups. Read fanout stores once in a shared log (O(1) write, O(members) reads) — use for large groups where write amplification would be prohibitive.<br>
+      <strong>How do you prevent duplicate messages on retry?</strong> Client-generated idempotency keys (UUID) stored in Redis with a 24-hour TTL. The Message Service checks the key before writing; if it already exists, returns the existing message ID without creating a duplicate.</p>
     </div>
 
     <div class="article-nav">
@@ -332,7 +605,7 @@ created_at      TIMESTAMP</code></pre>
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
-      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
