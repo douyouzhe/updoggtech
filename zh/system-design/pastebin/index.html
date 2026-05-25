@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:Pastebin 文本分享——key 生成(随机 vs 计数器)、分离元数据与内容(DB 指针 + S3 blob、小粘贴内联)、读写路径、缓存与 CDN、过期清理、扩展与容错、安全与滥用防护、关键取舍。">
+<title>设计 Pastebin — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/pastebin/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/pastebin/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/pastebin/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/pastebin/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计 Pastebin">
+<meta property="og:description" content="Pastebin 系统设计:base-62 key、元数据/内容分离、S3 blob、缓存 CDN、过期清理、滥用防护。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/pastebin/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计 Pastebin">
+<meta name="twitter:description" content="设计 Pastebin:key 生成、元数据/blob 分离、不可变缓存、CDN、过期、滥用防护。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计 Pastebin", "description": "系统设计:Pastebin 文本分享——key 生成(随机 vs 计数器)、分离元数据与内容(DB 指针 + S3 blob、小粘贴内联)、读写路径、缓存与 CDN、过期清理、扩展与容错、安全与滥用防护、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/pastebin/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/pastebin/">EN</a>
+        <a href="/zh/system-design/pastebin/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">pastebin</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计 Pastebin</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Pastebin 让用户粘贴一块文本并拿回一个任何人都能打开阅读的短 URL。它是 <a href="/system-design/url-shortener/">URL 短链</a>的近亲,有一个重要区别:不存一个小目标 URL,你存一个潜在很大的<em>内容</em> blob。这把设计推向<strong>字节住哪</strong>的问题,且——因为粘贴被读得远多于被写——推向激进缓存。它是个很好的"中等"面试题,奖励元数据与内容的干净分离。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>每个粘贴生成一个短 base-62 key</strong>(随机或从计数器),就像 URL 短链;仅在随机时检查冲突。</li>
+        <li><strong>把内容存在 blob 存储,而非 DB 行</strong>——保留一个小元数据记录(key → blob 位置、过期、标志),把(可能大的)文本放进对象存储。</li>
+        <li><strong>读多约 10:1+</strong>——在 Redis 缓存热粘贴并经 CDN 服务;大多数读绝不该碰数据库或 blob 存储。</li>
+        <li><strong>粘贴写一次、不可变</strong>——这使它们平凡可缓存(无失效)且对 CDN 友好。</li>
+        <li><strong>过期是一等功能</strong>——支持 TTL;用读时惰性删除和后台清扫器的组合清除。</li>
+        <li><strong>滥用是真正的运维风险</strong>——对创建限流、扫描恶意软件/垃圾,并支持不公开/私有粘贴。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>每个粘贴铸造一个短 base-62 key。在数据库保留一个小元数据行(key、blob 指针、过期、可见性),把实际文本存在对象存储(S3)——只对极小粘贴内联。因为粘贴不可变且读多,在 Redis 缓存热的并用 CDN 罩住一切。经 TTL 配惰性 + 定时清理过期。在写路径限流和扫描以对抗滥用。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">high-level architecture</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                         ┌──────────────┐   ┌───────────────┐
+              写/读       │  App / API   │──▶│  元数据 DB    │  key→blob,
+   ┌──────────┐ ────────▶│  服务器      │   │  (KV / SQL)   │  过期、标志
+   │  客户端  │          └──────┬───────┘   └───────────────┘
+   └────┬─────┘                 │           ┌───────────────┐
+        │  读(热)              ├──────────▶│  blob 存储    │  粘贴内容
+        │                       │           │  (S3)         │
+        ▼                  ┌────▼────┐      └───────────────┘
+   ┌─────────┐   未命中    │  缓存   │   热粘贴 (Redis)
+   │   CDN   │◀───────────▶│ (Redis) │
+   └─────────┘             └─────────┘</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong>从一块文本创建一个粘贴并收到唯一 URL;按 URL 读粘贴;可选自定义别名;可选过期(如 10 分钟、1 天、永不);可见性(公开 / 不公开)。<strong>非功能:</strong>极读多、低读延迟、高可用、持久性(过期前不丢粘贴),和横向可扩展。预先约束粘贴大小——比如最多几 MB 文本、带硬上限——因为它驱动存储决策。粘贴<strong>写一次且不可变</strong>:你创建一个、从不编辑它(新编辑是新粘贴),这极大简化缓存。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>假设每天 1M 新粘贴(~12 写/秒平均)和 10:1 读写比(~120 读/秒平均,病毒粘贴峰值远高)。平均粘贴 10 KB → ~10 GB/天新内容,~3.6 TB/年(过期回收空间前)。写的数字适中但读路径必须处理粘贴走红时的尖锐尖峰——这正是缓存和 CDN 的用途。键空间:7 字符 base-62 key 给 62⁷ ≈ 3.5 万亿组合,绰绰有余。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /pastes   {content, expiry?, custom_alias?, visibility?}
+        → {key, url}
+GET  /pastes/{key}        → {content, created_at, expiry}
+DELETE /pastes/{key}      → ok            <span class="cm"># 仅所有者</span></code></pre>
+    </div>
+    <p>创建端点被限流和认证(或 captcha 把关)以遏制滥用;读端点公开且重度缓存。</p>
+
+    <h2>第 4 步 — Key 生成</h2>
+    <p>每个粘贴需要一个短、URL 安全的 key。两种标准方法,与 <a href="/system-design/url-shortener/">URL 短链</a>相同:</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方法</th><th>怎么做</th><th>取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">随机 base-62</td><td>生成 7 个随机字符,检查 DB 冲突,重试</td><td>不可猜(对不公开好);需冲突检查 + 重试</td></tr>
+        <tr><td class="col-b">计数器 / ID 生成</td><td>分布式计数器(如范围分配或 Snowflake)→ base-62 编码</td><td>构造上无冲突;但顺序键可猜/可枚举</td></tr>
+      </tbody>
+    </table>
+    <p>对粘贴服务,<strong>随机键通常更受偏好</strong>,因为"不公开"粘贴依赖 URL 不可猜;顺序 ID 会让任何人枚举每个粘贴。一个常见改进是<strong>预生成 key 池</strong>:一个后台服务把未用的 key 铸进一张表,使写路径只弹出一个(热路径上无实时冲突重试循环)。</p>
+
+    <h2>第 5 步 — 存储:分离元数据与内容</h2>
+    <p>决定性决策。别把多 KB/MB 文本塞进关系行——它膨胀数据库、拖慢扫描、浪费 DB 的强项。而是拆分:</p>
+    <ul>
+      <li><strong>元数据</strong>——每个粘贴一个小记录(key、指向 blob 的指针、大小、创建/过期时间戳、可见性、所有者)。住在数据库(键值存储或分片 SQL),按 key 查找快。</li>
+      <li><strong>内容</strong>——实际文本,存在按 key(或内容哈希)寻址的<strong>对象存储</strong>(S3)。对象存储便宜、持久、为大 blob 而建。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">优化</div>
+      <p>对<strong>极小</strong>粘贴(几百字节),到 blob 存储的往返可能比读本身成本更高。一个常见改进是把小内容直接<strong>内联</strong>在元数据行,只在超过一个大小阈值时才溢出到 blob 存储——两全其美。</p>
+    </div>
+
+    <h2>第 6 步 — 数据模型</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">metadata schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>pastes (
+   key         PK,          <span class="cm"># base-62 短 key</span>
+   blob_url,                <span class="cm"># 指向 S3 的指针(内联则 null)</span>
+   inline_text,             <span class="cm"># 小粘贴直接存这</span>
+   size, visibility, owner_id,
+   created_at, expires_at   <span class="cm"># 为清理建索引</span>
+)</code></pre>
+    </div>
+    <p>按 <code>key</code> 分片(哈希分区)使查找保持单分片、表横向扩展。<code>expires_at</code> 上的索引支持清理清扫。</p>
+
+    <h2>第 7 步 — 读写路径</h2>
+    <p><strong>写:</strong>校验 + 限流 → 获取一个 key(从池)→ 存内容(小则内联,否则 PUT 到 blob 存储)→ 插入元数据行 → 返回 URL。<strong>读:</strong>在缓存查 key;命中则立即返回;未命中则读元数据、取内容(内联或从 blob 存储)、填充缓存、返回。因为内容不可变,缓存条目从不需要失效——它只需在粘贴过期时过期。</p>
+
+    <h2>第 8 步 — 缓存与 CDN</h2>
+    <p>这是读多服务的核心。在元数据 + blob 查找前放一个 <strong>Redis 缓存</strong>,按粘贴 key 为键,使热门粘贴从内存服务。因为粘贴不可变,也用 <strong>CDN</strong> 罩住读路径:一个粘贴的渲染/原始内容能以长 TTL(由粘贴自己的过期限制)在边缘位置缓存,使病毒粘贴几乎完全从边缘服务、从不熔毁源。用 LRU 等淘汰策略使缓存持有当前热集。</p>
+
+    <h2>第 9 步 — 过期与清理</h2>
+    <p>过期粘贴必须停止被服务并最终被回收。三个互补机制(与 URL 短链同一套):</p>
+    <ul>
+      <li><strong>惰性删除</strong>——读时若 <code>expires_at</code> 已过,把它当没了(404)并可选当时删除它。便宜,但过期但未读的粘贴滞留。</li>
+      <li><strong>定时清扫器</strong>——后台作业周期性扫描 <code>expires_at</code> 索引并批量删除过期元数据 + 它们的 blob,回收存储。</li>
+      <li><strong>对象存储 TTL</strong>——让 blob 存储经生命周期规则自动过期对象,使内容清理由存储层处理。</li>
+    </ul>
+
+    <h2>第 10 步 — 扩展与容错</h2>
+    <p>app/API 层无状态、在负载均衡器后横向扩展。元数据存储按 key 分片并为可用复制;blob 存储(S3)已提供 ~11 个 9 持久性和实际无限的规模。缓存层通过跨 Redis 节点分片(一致性哈希)扩展。因为每层独立扩展且内容层不可变,系统几乎线性增长——主要容量关切是读尖峰,完全由缓存 + CDN 吸收。</p>
+
+    <h2>第 11 步 — 安全与滥用防护</h2>
+    <p>一个公开"粘贴任何东西"的端点是滥用的猫薄荷,所以这值得显式关注:</p>
+    <ul>
+      <li><strong>限流</strong>创建端点(按 IP / 按用户)以阻止垃圾和存储耗尽攻击。</li>
+      <li><strong>内容扫描</strong>恶意软件、钓鱼和垃圾;尊重下架请求。</li>
+      <li><strong>可见性控制</strong>——不公开粘贴依赖不可猜的随机键;真正私有粘贴需要认证和访问检查。</li>
+      <li><strong>大小上限</strong>和输入校验以防超大上传。</li>
+    </ul>
+
+    <h2>第 12 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>随机 vs 顺序键。</strong>随机键不可猜(不公开粘贴需要)但需冲突处理;顺序键避免冲突但可枚举。粘贴服务倾向随机。</li>
+      <li><strong>内联 vs blob 存储。</strong>内联小粘贴省一次往返;blob 存储让数据库为大内容保持精简。一个大小阈值兼得。</li>
+      <li><strong>缓存/CDN TTL。</strong>更长边缘缓存意味更少源命中但更粗控制;由粘贴过期限制它并接受轻微删除延迟。</li>
+      <li><strong>一致性。</strong>粘贴不可变且写一次,所以缓存的最终一致无害——新创建的粘贴只需它的首次读命中源。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>Pastebin 是两个想法的课:分离小元数据与大内容(DB 存指针、对象存储存字节),并利用不可变性狠狠缓存。一旦那些点通了,其余——key 生成、过期、滥用处理——是标准的。读路径通过缓存 + CDN 的尖峰容忍,正是把一个简单 CRUD 应用变成可扩展服务的东西。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>Pastebin 与 URL 短链有何不同?</strong>它存大内容,而非一个小目标 URL——所以关键决策是元数据-vs-blob 存储,且缓存重要得多。<br>
+      <strong>粘贴内容住哪?</strong>在对象存储(S3),数据库里只有一个小指针 + 元数据行;极小粘贴可能内联以跳过往返。<br>
+      <strong>为什么缓存在这这么有效?</strong>粘贴不可变且读多,所以缓存/CDN 条目从不需要失效——完美吸收病毒读尖峰。<br>
+      <strong>随机还是顺序键?</strong>随机,因为不公开粘贴依赖不可猜的 URL;顺序 ID 会让任何人枚举所有粘贴。<br>
+      <strong>粘贴怎么过期?</strong>TTL 配读时惰性删除加后台清扫器(和对象存储生命周期规则)以回收存储。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/key-value-store/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计分布式键值存储</div>
+      </a>
+      <a href="/system-design/typeahead/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计搜索自动补全 (Typeahead)</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
