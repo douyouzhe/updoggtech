@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:Dynamo 风格分布式键值存储——一致性哈希与虚拟节点、N 路复制与 preference list、quorum 可调一致性(W+R>N)、向量时钟冲突解决、hinted handoff、Merkle 树反熵、gossip 成员关系,以及 AP 取舍。">
+<title>设计分布式键值存储 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/key-value-store/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/key-value-store/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/key-value-store/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/key-value-store/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计分布式键值存储">
+<meta property="og:description" content="分布式 KV 存储系统设计:一致性哈希、quorum、向量时钟、hinted handoff、Merkle 反熵、gossip。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/key-value-store/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计分布式键值存储">
+<meta name="twitter:description" content="设计分布式 KV 存储:一致性哈希、W+R>N、向量时钟、hinted handoff、AP。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计分布式键值存储", "description": "系统设计:Dynamo 风格分布式键值存储——一致性哈希与虚拟节点、N 路复制与 preference list、quorum 可调一致性(W+R>N)、向量时钟冲突解决、hinted handoff、Merkle 树反熵、gossip 成员关系,以及 AP 取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/key-value-store/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/key-value-store/">EN</a>
+        <a href="/zh/system-design/key-value-store/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">key-value-store</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计分布式键值存储</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>分布式键值存储提供最简单可能的接口——<code>get(key)</code> 和 <code>put(key, value)</code>——但构建一个跨数千节点保持可用且快的,是个经典难题。这是 Amazon Dynamo、Cassandra 和 Riak 背后的设计。有趣的决策全关于分布:如何在集群变化时不重洗一切地把键散到节点、如何为持久性和可用性复制、如何保持副本一致(或决定不)、如何在无单一 leader 下挺过节点故障继续服务。它是我们 <a href="/ddia/chapter-5/">DDIA 复制笔记</a>和<a href="/ddia/chapter-6/">分区</a>里分布式数据想法最直接的应用。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>一致性哈希</strong>把键散到一个环上,使增删节点只移动一小片键——绝不整个键空间(无 <code>hash mod N</code>)。</li>
+        <li><strong>虚拟节点</strong>给每个物理节点环上许多点,平滑负载并使再平衡均匀。</li>
+        <li><strong>复制到 N 个节点</strong>(环上接下来的 N 个 = preference list);一个协调者处理每个请求。</li>
+        <li><strong>经 quorum 可调一致性</strong>——若 <code>W + R &gt; N</code> 读集和写集重叠,所以读看到最新写。为读多/写多负载调 W/R。</li>
+        <li><strong>无主 = 总可写</strong>——并发写造成冲突版本,用向量时钟(sibling)或最后写入胜调和。</li>
+        <li><strong>故障是常态</strong>——hinted handoff 覆盖临时宕机、Merkle 树反熵修复永久的、gossip 传播成员关系。</li>
+        <li><strong>它是个 AP 系统</strong>——分区下它偏好可用性而非强一致(CAP)。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>用一致性哈希 + 虚拟节点分区键。把每个键复制到 N 个节点(preference list)。用 quorum(<code>W + R &gt; N</code>)使一致性可调。因为无 leader,并发写用向量时钟(或 LWW)调和。用 hinted handoff(临时)和 Merkle 树反熵(永久)挺过故障,用 gossip 协议跟踪成员关系。结果是一个高可用、横向可扩展的 AP 存储。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the hash ring (N = 3 replication)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>          0 / 2^160
+              ▲
+       NodeD  │  NodeA
+          ╲   │   ╱
+           ╲  │  ╱      key "user:42" 哈希到这 ─┐
+            ╲ │ ╱                                ▼
+   ◀─────────●─────────▶   顺时针走 → 存到
+            ╱ │ ╲          NodeA, NodeB, NodeC  (N=3)
+           ╱  │  ╲         = "preference list"
+          ╱   │   ╲
+       NodeC  │  NodeB
+              ▼</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p><strong>功能:</strong><code>get(key)</code>、<code>put(key, value)</code>、<code>delete(key)</code>;值是适度大小(比如 ≤ 1 MB)的不透明 blob;无复杂查询或 join。<strong>非功能</strong>——这些是全部重点:高<strong>可用性</strong>("总可写",即便故障期间)、低延迟(个位数 ms)、<strong>横向可扩展</strong>(加节点增长)、<strong>可调一致性</strong>(让调用方用一致性换延迟),和分区容错。我们显式接受<strong>最终一致性</strong>为默认——那是 Dynamo 为可用性做的刻意取舍。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>假设 100 TB 数据、平均值 10 KB → ~100 亿键。1M 操作/秒、9:1 读写比,那是 ~900K 读和 ~100K 写每秒。商用节点各持 ~2 TB、N=3 复制,你需要约 (100 TB × 3) / 2 TB ≈ 150 节点,加余量。这些数字证明需要自动分区、复制和去中心化故障处理——没有单一协调者能跟上,且此机群规模下节点故障是日常事件。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">API with consistency knobs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>get(key, consistency = QUORUM)   → (value(s), version)
+put(key, value, version, consistency = QUORUM)   → ok
+delete(key, version)
+
+<span class="cm"># consistency ∈ {ONE, QUORUM, ALL} — 映射到多少</span>
+<span class="cm"># 副本必须响应(读用 R,写用 W)</span></code></pre>
+    </div>
+    <p>传给 <code>put</code> 的 <code>version</code> 是客户端从先前 <code>get</code> 得到的 context——它让存储检测并发修改。有未解决冲突时,一次读可能返回多个<em>版本</em>(下面细说)。</p>
+
+    <h2>第 4 步 — 用一致性哈希分区</h2>
+    <p>天真地把键分给 <code>hash(key) mod N</code> 个节点是个陷阱:改 <code>N</code> 重映射几乎每个键(见我们的<a href="/ddia/chapter-6/">分区笔记</a>)。<strong>一致性哈希</strong>修这个。把键哈希到一个固定环(如 0…2¹⁶⁰);把每个节点哈希到同一环;一个键属于顺时针走遇到的第一个节点。现在增删节点只移动它与邻居之间的键——一小片。为避免不均分布(和节点离开时不均负载),每个物理节点被映射到散布环上的许多<strong>虚拟节点</strong>,这平滑数据和负载,使离开节点的份额分散到许多幸存者而非倾倒给一个。</p>
+
+    <h2>第 5 步 — 复制</h2>
+    <p>为持久性和可用性,每个键存在 <strong>N</strong> 个节点:拥有它的节点加环上接下来 N−1 个不同物理节点。这个有序列表是键的 <strong>preference list</strong>。任何节点都能为一个请求充当<strong>协调者(coordinator)</strong>(通常是 preference list 里第一个);它把操作转发给副本并收集响应。因为每个副本都能服务读和接受写,没有 leader、因此无故障转移——只要足够副本可达系统就保持可写。</p>
+
+    <h2>第 6 步 — 可调一致性:Quorum</h2>
+    <p>一致性是一个旋钮,不是固定设置。有 N 个副本,一个写等 <strong>W</strong> 个确认、一个读查询 <strong>R</strong> 个副本。关键不等式:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">quorum tuning (N = 3)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>W + R &gt; N   ⇒   读 quorum 和写 quorum 重叠 ⇒ 读看到最新
+
+  W=2, R=2, N=3 :  2+2 &gt; 3  ✓  平衡(常见默认)
+  W=1, R=3      :  写快,读较慢/一致
+  W=3, R=1      :  读快,写持久但慢
+  W=1, R=1      :  最快,但无重叠 → 可能读到陈旧</code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>设置</th><th>行为</th><th>何时用</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">W=1, R=1</td><td>最低延迟,最终一致</td><td>缓存、指标、容忍陈旧</td></tr>
+        <tr><td class="col-b">W=2, R=2 (N=3)</td><td>较强(quorum 重叠)</td><td>通用默认</td></tr>
+        <tr><td class="col-a">W=N 或 R=N</td><td>一侧完全一致,低可用</td><td>读多或写少的关键数据</td></tr>
+      </tbody>
+    </table>
+
+    <p>见我们的 <a href="/ddia/chapter-5/">DDIA 复制笔记</a>看完整 quorum 推导。一个微妙处:网络分区下,<strong>宽松 quorum(sloppy quorum)</strong>让 W/R 由其他可达节点(不严格是前 N)满足,保持系统可用但削弱重叠保证——与下面的 hinted handoff 配对。</p>
+
+    <h2>第 7 步 — 数据版本化与冲突解决</h2>
+    <p>无 leader 且允许并发写,两个客户端能在不同副本上同时更新同一键,产生分歧版本。存储需要一种方式判断一个版本是否<em>派生自</em>另一个(可安全覆盖)、还是它们真正<strong>并发</strong>(真冲突)。<strong>向量时钟(vector clock)</strong>捕获这个:每个值携带一个 <code>(node, counter)</code> 对列表。若时钟 A 完全 ≤ 时钟 B,B 取代 A;否则它们并发、两者作为 <strong>sibling</strong> 保留。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">vector clocks detect concurrency</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>write on A:  v = [A:1]
+write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆盖</span>
+
+现在两个客户端分叉:
+  client X (见到 A:2):  [A:2, B:1]   <span class="cm"># 经节点 B</span>
+  client Y (见到 A:2):  [A:2, C:1]   <span class="cm"># 经节点 C</span>
+  → 谁都不 ≤ 另一个 → 并发 → 两者都作为 sibling 保留
+  → 下次读返回两者;应用(或 LWW)合并它们</code></pre>
+    </div>
+
+    <p>调和要么是<strong>最后写入胜</strong>(简单,但静默丢数据——时钟偏移下有风险,见<a href="/ddia/chapter-8/">不可靠时钟</a>),要么是<strong>应用级合并</strong>(如 Dynamo 的购物车把购物车并集,使无 add 丢失)。存储暴露 sibling;应用决定。</p>
+
+    <h2>第 8 步 — 处理临时故障:Hinted Handoff</h2>
+    <p>若 preference list 里一个副本短暂宕机,协调者不阻塞。它转而写到下一个健康节点,标上一个记录预期接收者的 <strong>hint</strong>。当宕掉的节点恢复,持有者把数据交回并删除 hint。这个 <strong>hinted handoff</strong> 让写在瞬时宕机中继续成功——系统"总可写"的一个核心原因。</p>
+
+    <h2>第 9 步 — 处理永久故障:用 Merkle 树反熵</h2>
+    <p>当一个节点永久消失(或不可达久到 hint 过期),副本漂移分开。为高效重新同步而不比较每个键,每个节点在它的键范围上保留一棵 <strong>Merkle 树</strong>(哈希的树)。两个副本自顶向下比较树:若根哈希匹配,它们相同、无数据移动;若不同,它们只下降到不同的分支,只传输实际分歧的键。这个<strong>反熵(anti-entropy)</strong>修复最小化交换的数据。</p>
+
+    <h2>第 10 步 — 成员关系与故障检测:Gossip</h2>
+    <p>一个去中心化系统不能依赖一个谁活着的中央注册表。相反节点用 <strong>gossip 协议</strong>:每个节点周期性与几个随机对等节点交换它对集群成员关系和环分配的视图,所以关于加入、离开和分区方案的知识在数秒内流行病式传播到整个集群。故障检测同样去中心化(如对等节点停止听到某节点则怀疑它死了),避免任何单点故障或协调瓶颈。</p>
+
+    <h2>第 11 步 — 读/写路径</h2>
+    <p>把它放一起做一个 <code>put</code>:客户端把请求发给任何节点,它成协调者;它计算 preference list、把写(带更新的向量时钟)发给 N 个副本,W 个确认后返回成功。<code>get</code> 对称工作:协调者查询 preference list、等 R 个响应,若它们版本不一致它返回所有 sibling(并触发<strong>读修复(read repair)</strong>——把最新版本推回陈旧副本)。每个节点上的本地存储通常是为高写吞吐优化的 <strong>LSM-tree</strong> 引擎(见我们的<a href="/ddia/chapter-3/">存储与检索笔记</a>)。</p>
+
+    <h2>第 12 步 — 扩展与热点 key</h2>
+    <p>吞吐和存储通过加节点增长;一致性哈希意味每个新节点以最小数据移动从邻居身上抬走公平的一片负载,而虚拟节点保持分布均匀。剩下的危险是<strong>热点 key</strong>——单个键收到不成比例的流量——任何分区都修不了它,因为它住在一组副本上。缓解:在客户端/边缘缓存热点 key,或把一个逻辑热点 key 用后缀拆成几个物理键并在读时合并。</p>
+
+    <h2>第 13 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>可用性 vs 一致性(CAP)。</strong>这是个 AP 设计:分区下它保持可用并服务可能陈旧的数据而非拒绝请求。一个 CP 存储(如建在共识上的)会相反——见<a href="/ddia/chapter-9/">一致性与共识</a>。</li>
+      <li><strong>Quorum 调优。</strong>W/R 让每个负载挑它在延迟 vs 一致性曲线上的点;没有全局正确答案。</li>
+      <li><strong>冲突解决。</strong>LWW 简单但丢写;向量时钟 + 应用合并保留数据,代价是客户端复杂度和 sibling 处理。</li>
+      <li><strong>无主的简单 vs 推理困难。</strong>无 leader 意味无故障转移和极好可用,但最终一致把真实复杂度推给应用开发者。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>Dynamo 风格存储是教科书 AP 系统:一致性哈希做分区、N 路复制配 quorum 可调一致性,和去中心化故障处理(hinted handoff、Merkle 反熵、gossip)。每个选择都用强一致换可用性和规模——所以正确的面试动作是显式陈述那个取舍并把每个机制系回它。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么一致性哈希而非 hash mod N?</strong>增删节点只重映射一小片键而非几乎全部;虚拟节点保持分布均匀。<br>
+      <strong>W + R &gt; N 保证什么?</strong>读 quorum 和写 quorum 至少重叠一个节点,所以一次读看到最新写——可调一致性旋钮。<br>
+      <strong>无 leader 怎么处理并发写?</strong>向量时钟检测版本是因果有序还是并发;并发 sibling 被保留并合并(应用逻辑或 LWW)。<br>
+      <strong>临时 vs 永久故障恢复?</strong>hinted handoff 覆盖瞬时宕机(写去一个带 hint 的替身);Merkle 树反熵通过只传输不同的键修复长期分歧。<br>
+      <strong>是 CP 还是 AP?</strong>AP——分区下保持可用且最终一致。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/google-drive/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计 Google Drive / Dropbox</div>
+      </a>
+      <a href="/system-design/pastebin/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计 Pastebin</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
