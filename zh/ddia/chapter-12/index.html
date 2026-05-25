@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 12 章:数据系统的未来——数据集成(记录系统 + 派生数据、批与流统一)、解绑数据库(以事件日志为集成点、数据流派生函数、读/写路径)、追求正确性(端到端幂等、完整性 vs 及时性、审计),以及数据伦理。">
+<title>DDIA 第12章 — 数据系统的未来 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-12/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-12/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-12/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-12/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="数据系统的未来">
+<meta property="og:description" content="DDIA 第 12 章:数据集成、解绑数据库、数据流、端到端正确性、完整性 vs 及时性、数据伦理。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-12/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="数据系统的未来">
+<meta name="twitter:description" content="DDIA 第 12 章:解绑数据库、事件日志、端到端幂等、完整性优先、数据伦理。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 12 章 — 数据系统的未来", "description": "DDIA 第 12 章:数据系统的未来——数据集成(记录系统 + 派生数据、批与流统一)、解绑数据库(以事件日志为集成点、数据流派生函数、读/写路径)、追求正确性(端到端幂等、完整性 vs 及时性、审计),以及数据伦理。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-12/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-12/">EN</a>
+        <a href="/zh/ddia/chapter-12/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-12</span>
+    </div>
+    <span class="article-tag">DDIA · 第 12 章</span>
+    <h1 class="article-title">数据系统的未来</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>最后一章是 Kleppmann 的综合与观点:鉴于前十一章的所有工具和取舍,我们<em>应该</em>如何构建数据系统?他的答案围绕一个组织性想法——<strong>数据流(dataflow)</strong>:把一个不可变事件的有序日志当作真相来源,把其他一切(数据库、索引、缓存、ML 特征)构建为从那个日志持续、异步计算的<strong>派生数据(derived data)</strong>。本章以一个对技术书不寻常的方式结束——对伦理的严肃讨论——因为数据系统如今塑造人们的生活。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>没有单一工具做一切</strong>——真实系统集成几个,所以你需要一种有原则的方式保持它们同步:全都从一个有序事件日志派生。</li>
+        <li><strong>解绑数据库(unbundling)</strong>——不用一个单体,而是组合专门的存储/索引/流系统,用日志作集成点("把数据库翻里朝外")。</li>
+        <li><strong>派生状态是物化视图</strong>——索引和缓存只是日志的预计算视图,由响应事件的流处理器维护。</li>
+        <li><strong>正确性需要端到端思考</strong>——exactly-once 和去重常无法在一层解决;你需要一个端到端标识符(如客户端生成的请求 ID)。</li>
+        <li><strong>完整性 &gt; 及时性</strong>——许多应用容忍临时不一致(滞后)但绝不容忍数据丢失/损坏;优先完整性并验证它(审计,别盲信)。</li>
+        <li><strong>伦理是工作的一部分</strong>——预测分析、偏见、监控和同意是工程关切,不是别人的问题。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Kleppmann 主张的未来:停止试图找一个做一切的数据库,而是把一个不可变事件日志当作记录系统,同时围绕它组合专门的派生系统(解绑数据库)。用数据流构建派生数据——流处理器维护物化视图。端到端追求正确性(由请求 ID 标识的幂等操作、完整性优于及时性、审计)。并为你构建之物的人类影响负责。</p>
+    </div>
+
+    <h2>数据集成(Data Integration)</h2>
+    <p>因为没有单一工具满足所有访问模式,每个非平凡应用最终组合几个——一个事务数据库、一个搜索索引、一个缓存、一个分析仓库,也许一个推荐系统。核心实际问题是随数据变化保持它们<strong>彼此一致</strong>。本书反复的答案:挑一个<strong>记录系统(system of record)</strong>(权威来源)并把其他一切当作从它计算的<strong>派生数据</strong>,通过把记录系统的变更日志(经 CDC 或事件溯源)<em>按定义的顺序</em>喂进每个派生系统来保持同步。一个清晰的写全序是让这可靠的东西;没有它,对不同系统的并发更新竞争并分歧。</p>
+
+    <h3>批与流,一起</h3>
+    <p>批处理和流处理都是派生数据的工具;它们主要区别在输入是否有界。<strong>Lambda 架构</strong>提议同时跑两者——一个批层从所有历史重算准确视图、一个速度层给低延迟近似结果——但维护两条代码路径很痛苦。Kleppmann 主张趋势是<strong>统一</strong>它们:一个强大的流处理器也能<em>重处理</em>历史数据(从头重放日志),所以你能在改代码时从头重建一个派生数据集,而无需单独的批系统。</p>
+
+    <h2>解绑数据库</h2>
+    <p>传统数据库捆绑许多特性:一个存储引擎、二级索引、复制、查询优化器、物化视图。Kleppmann 把整个应用重新设想为一个<em>翻里朝外</em>的数据库:不用一个内部做一切的单体,你把这些特性<strong>解绑</strong>成独立、专门的系统,并用一个<strong>事件日志作集成点</strong>把它们接在一起。索引、缓存和物化视图成为独立系统,各订阅日志并异步维护自己的派生状态。</p>
+
+    <h3>数据流:作为派生函数的应用代码</h3>
+    <p>在这个视角里,应用代码成为一组响应事件并产生派生输出的<strong>派生函数(derivation function)</strong>——很像电子表格,改一个单元格自动重算下游一切。流处理器维护派生状态;当一个新事件到达,相关视图被更新。这把工作从<strong>读路径</strong>移到<strong>写路径</strong>:一个物化视图在数据变化时(写时)做一次昂贵计算,所以读成为便宜查找。取舍是经典的——更多写时工作和存储以换更快、更简单的读。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>读路径(读时计算)</th><th>写路径(物化视图)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>工作何时发生</td><td class="col-a">查询时</td><td class="col-b">数据变化时</td></tr>
+        <tr><td>读延迟</td><td class="col-a">较高(每次重算)</td><td class="col-b">较低(预计算查找)</td></tr>
+        <tr><td>写成本 / 存储</td><td class="col-a">低</td><td class="col-b">较高(维护视图)</td></tr>
+        <tr><td>最适合</td><td class="col-a">读罕见、数据巨大</td><td class="col-b">读频繁、需低延迟</td></tr>
+      </tbody>
+    </table>
+
+    <h2>追求正确性</h2>
+    <p>若派生数据被异步维护且只是最终一致,我们如何保持应用<em>正确</em>?Kleppmann 对依赖任何单一机制(甚至事务)持怀疑,并推动一种更健壮的心态。</p>
+
+    <h3>端到端论证(End-to-End Argument)</h3>
+    <p>许多正确性保证只能<strong>端到端</strong>实现,而非由任何单层。经典例子是去重:TCP 重传、流处理器重试、事务可能被重新提交——所以<em>同一</em>操作能不止一次到达数据库。若用户点了两次,没有更低层能判断两个支付请求是"同一个"。修法是一个端到端<strong>幂等键(idempotency key)</strong>:客户端生成一个唯一请求 ID,操作针对它做成幂等,这样栈里任何地方的重复都被吸收。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">end-to-end idempotence with a request ID</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 客户端生成 ID 一次,随每次重试发送</span>
+POST /payments   request_id = <span class="str">"a1b2-c3d4"</span>   amount = 50
+
+server:
+  <span class="kw">if</span> seen(request_id):        <span class="cm"># 来自任何地方重试的重复</span>
+      <span class="kw">return</span> stored_result     <span class="cm"># 被吸收——无双重扣款</span>
+  <span class="kw">else</span>:
+      result = charge(50)
+      record(request_id, result)
+
+  来自 TCP、应用或流处理器的重试全都坍缩
+  到一个效果——正确性端到端强制,而非每层。</code></pre>
+    </div>
+
+    <h3>及时性 vs 完整性</h3>
+    <p>Kleppmann 分开人们混为"一致性"的两件事。<strong>及时性(timeliness)</strong>意味用户看到系统处于最新状态(无陈旧读);临时违反只是滞后,通常自我纠正。<strong>完整性(integrity)</strong>意味没有损坏——无丢失或矛盾的数据、无凭空创造或销毁的钱;违反是永久且严重的。实践中,<strong>完整性远比及时性要紧</strong>。许多应用乐于容忍几秒不一致(搜索索引落后数据库),只要完整性从不被违反。基于日志的派生数据系统有吸引力正因为它们使完整性容易:从一个不可变、有序日志的确定派生即便滞后也不能丢失或损坏数据。</p>
+
+    <h3>信任,但要验证</h3>
+    <p>最后,别<em>假设</em>你的系统正确——软件有 bug、磁盘悄悄损坏数据,且"它还没坏"不是保证。Kleppmann 倡导构建持续<strong>审计(audit)</strong>自己的系统:检查不变量、对照源验证派生数据,并使检测(并从中恢复)损坏成为可能,而非几年后才发现它。一个不可变事件日志在这里也有帮助——你总能重新派生并比较。</p>
+
+    <h2>做正确的事</h2>
+    <p>本书以伦理收尾,坚持工程师不能把数据系统的人类后果当成别人的问题。关切:</p>
+    <ul>
+      <li><strong>预测分析与偏见。</strong>关于信贷、就业、保险和警务的算法决策能编码并放大现有歧视;有偏的训练数据产生有偏的结果,而<strong>反馈循环</strong>能使它们自我强化。</li>
+      <li><strong>隐私与监控。</strong>无处不在的数据收集等同于监控;当使用一个服务需要接受不透明条款时,"同意"常毫无意义。今天囤积的数据是个负担——它泄露,且能被未来的所有者或政府滥用。</li>
+      <li><strong>数据是负债,不只是资产。</strong>收集一切的本能应与持有它的责任(和风险)平衡。</li>
+    </ul>
+    <p>行动号召:把对用户的尊重——他们的尊严、隐私和自主——当作一等工程要求,而非事后想法。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>DDIA 结束于它开始的地方——可靠性、可扩展性、可维护性——但围绕数据流重构:一个不可变日志作真相来源、从它计算的派生数据、端到端追求的正确性、完整性优先于及时性。它加上一个最后的、非技术的支柱:工程师对这些系统对人做了什么的责任。构建正确、可审计、人道的系统。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>"解绑数据库"是什么意思?</strong>围绕一个事件日志作集成点组合专门系统(存储、索引、缓存、流处理器),而非一个单体数据库——"把数据库翻里朝外"。<br>
+      <strong>为什么正确性是端到端关切?</strong>重试在许多层发生,所以去重需要一个端到端标识符(客户端请求 ID)和幂等操作——没有单层能保证它。<br>
+      <strong>及时性 vs 完整性?</strong>及时性 = 最新(一个滞后,自我纠正);完整性 = 无损坏/丢失(永久、严重)。完整性更要紧,基于日志的派生使它容易。<br>
+      <strong>读路径 vs 写路径?</strong>物化视图把工作移到写时,使读成为便宜查找——用写成本和存储换读延迟。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-11/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">流处理</div>
+      </a>
+      <a href="/ddia/" class="article-nav-card next">
+        <div class="article-nav-label">返回 →</div>
+        <div class="article-nav-title">DDIA</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
