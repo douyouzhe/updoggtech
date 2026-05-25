@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 9 章:线性一致性(vs 可串行化、CAP 代价)、排序与因果性(版本向量、Lamport 时间戳、全序广播)、分布式事务与共识(两阶段提交的 in-doubt 问题、容错共识 Paxos/Raft/Zab、FLP、ZooKeeper/etcd 协调服务)。">
+<title>DDIA 第9章 — 一致性与共识 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-9/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-9/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-9/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-9/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="一致性与共识">
+<meta property="og:description" content="DDIA 第 9 章:线性一致性、CAP、因果性、全序广播、2PC、共识(Paxos/Raft)、ZooKeeper。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-9/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="一致性与共识">
+<meta name="twitter:description" content="DDIA 第 9 章:线性一致性 vs 可串行化、全序广播、2PC、共识、ZooKeeper/etcd。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 9 章 — 一致性与共识", "description": "DDIA 第 9 章:线性一致性(vs 可串行化、CAP 代价)、排序与因果性(版本向量、Lamport 时间戳、全序广播)、分布式事务与共识(两阶段提交的 in-doubt 问题、容错共识 Paxos/Raft/Zab、FLP、ZooKeeper/etcd 协调服务)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-9/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-9/">EN</a>
+        <a href="/zh/ddia/chapter-9/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-9</span>
+    </div>
+    <span class="article-tag">DDIA · 第 9 章</span>
+    <h1 class="article-title">一致性与共识</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 9 章是第二部分的高潮。在编目了一切可能出错的东西(第 8 章)后,Kleppmann 现在构建积极的工具:带强保证的通用抽象,让应用能忽略它们底下的一些混沌。两个大想法是<strong>线性一致性(linearizability)</strong>(最强的单对象一致性模型)和<strong>共识(consensus)</strong>(让节点尽管有故障也就某事达成一致)。本章的妙处在于,出人意料的大量问题——leader 选举、唯一性约束、原子提交、锁服务——都等价于共识,所以解决共识一次(或外包给 ZooKeeper)就解决了它们全部。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>线性一致性</strong>让一个复制系统<em>看起来像单一副本</em>带原子操作——一个新近度保证:一旦写完成,每个之后的读都看到它。</li>
+        <li><strong>它不免费</strong>——CAP 定理说网络分区期间你必须在线性一致(一侧不可用)或可用(且非线性一致)间选。它也慢。</li>
+        <li><strong>因果性是更弱、更便宜的顺序</strong>——因果一致性是挺过分区的最强模型,用版本向量或 Lamport 时间戳捕获。</li>
+        <li><strong>全序广播(total order broadcast)</strong>(以相同顺序把相同消息投递给所有节点)等价于共识,是状态机复制的基础。</li>
+        <li><strong>两阶段提交(2PC)</strong>给跨节点原子提交,但协调者死了就阻塞(in-doubt 问题)——一个单点故障。</li>
+        <li><strong>共识算法</strong>(Paxos、Raft、Zab)用多数 quorum 安全达成一致;ZooKeeper/etcd 把它打包,这样你不自己实现。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>线性一致性是金标准的"像一台机器一样行为"保证,但 CAP 和延迟使它昂贵,所以更弱的模型(因果一致性)常是正确选择。当你真正需要一致——谁是 leader、事务是否提交、这个名字是否唯一——你需要共识,它等价于全序广播。别自己造;用 ZooKeeper 或 etcd 这样的共识系统。</p>
+    </div>
+
+    <h2>线性一致性(Linearizability)</h2>
+    <p><strong>线性一致性</strong>(也叫强一致性或原子一致性)背后的想法是让系统<em>表现得仿佛只有一份数据副本</em>,且仿佛对它的所有操作都是原子的。即便数据跨许多节点复制,客户端永远不该观察到复制:一个客户端的写完成的那一刻,每个后续读——来自任何客户端、在任何副本上——都必须返回那个新值(或更新的)。它从根本上是一个<strong>新近度保证</strong>。一个经典说明:两人在手机上看体育比分;若一人看到最终结果,另一人绝不能仍看到"进行中"。</p>
+
+    <h3>线性一致性 vs 可串行化</h3>
+    <p>这俩名字听起来相似且不断被混淆,但它们是不同的保证:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>线性一致性</th><th>可串行化</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>关于</td><td class="col-a">单对象读/写的新近度</td><td class="col-b">多对象事务的隔离</td></tr>
+        <tr><td>保证</td><td class="col-a">看起来像单一副本、实时顺序</td><td class="col-b">事务等价于某个串行顺序</td></tr>
+        <tr><td>关切</td><td class="col-a">复制 / 新鲜度</td><td class="col-b">并发 / 交错</td></tr>
+        <tr><td>合在一起</td><td class="col-a" colspan="2">严格可串行化(strict serializability)= 同时两者(如两阶段锁、Spanner)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>何时需要它</h3>
+    <p>没有线性一致性,几样东西会<em>坏</em>:</p>
+    <ul>
+      <li><strong>锁和 leader 选举</strong>——锁必须线性一致,使只有一个节点相信它持有锁;这就是为什么系统用 ZooKeeper/etcd 做协调。</li>
+      <li><strong>唯一性约束</strong>——保证用户名或 email 唯一需要一个线性一致的寄存器(否则两个节点都接受同一名字)。</li>
+      <li><strong>跨通道时序依赖</strong>——如一个 web 服务器把图片写到存储,然后经一个单独通道给 resizer 发消息;没有线性一致性 resizer 可能读到旧或缺失版本。</li>
+    </ul>
+
+    <h3>它如何实现,以及 CAP 代价</h3>
+    <p>哪些复制方法线性一致?单主复制<em>能</em>(若你只从 leader 读,且它真的是 leader)。共识算法<em>是</em>。多主不是。无主(Dynamo 风格)即便用严格 quorum 通常也<strong>不</strong>线性一致,因为时钟偏移和读修复的时序破坏新近度保证。线性一致性难的深层原因被 <strong>CAP 定理</strong>捕获:网络分区发生时,系统必须选——通过在够不到 quorum 的那侧拒绝请求来保持<strong>一致</strong>(线性一致)(牺牲可用性),或通过服务可能陈旧的数据保持<strong>可用</strong>(牺牲线性一致)。CAP 常被表述得太宽;它只关切一个故障(分区)和一个模型(线性一致)。但实际教训成立:线性一致性需要网络往返,所以它<strong>慢</strong>,许多系统刻意放弃它以换性能和可用性。</p>
+
+    <h2>排序与因果性</h2>
+    <p>排序不断重现,因为它与因果性深深相连。<strong>因果性</strong>给事件强加一个顺序:问题必须在答案之前;一行必须在被更新前创建。因果性定义一个<strong>偏序(partial order)</strong>——一些事件有序(因果相关),其他不可比(并发)。线性一致性相反,强加一个<strong>全序(total order)</strong>:每个操作都在一条时间线上。线性一致性蕴含因果性,但它比必要的更强(更贵)。</p>
+    <p><strong>因果一致性(causal consistency)</strong>是<em>不</em>需要等网络、能在分区期间保持可用的最强一致性模型——使它很有吸引力。要跟踪因果性你能用<strong>版本向量</strong>。<strong>Lamport 时间戳</strong>给一个与因果性一致的<em>全序</em>(每个节点保留一个计数器、附到消息上,并把它升到它见过的最大值)——但单个 Lamport 时间戳无法告诉你一个顺序<em>何时</em>被最终确定(是否还有另一个更低编号的操作在途)。</p>
+
+    <h3>全序广播(Total Order Broadcast)</h3>
+    <p>单主系统真正需要的是一种决定固定且已知的操作全序的方式。<strong>全序广播</strong>(原子广播)是正式版:一个<em>可靠地</em>且以<em>相同顺序</em>把消息投递给所有节点的协议。它是<strong>状态机复制(state machine replication)</strong>的基础——若每个副本以相同顺序应用相同操作,它们都最终处于相同状态。结果证明,全序广播<strong>等价于共识</strong>,且正是 ZooKeeper 和 etcd 这样的系统内部提供的。</p>
+
+    <h2>分布式事务与共识</h2>
+    <p>共识——让若干节点就某事达成一致——是分布式计算中最重要、最微妙的问题之一。它听起来简单但布满风险,尤其因为第 8 章的故障。</p>
+
+    <h3>两阶段提交(2PC)</h3>
+    <p>跨多个节点<strong>原子提交</strong>的标准算法——确保要么所有节点提交一个事务、要么全部中止。一个<strong>协调者</strong>驱动两阶段:首先它问每个参与者"你能提交吗?"(prepare);每个只在确定能时才回是。若全投是,协调者发 commit;若任何投否,它发 abort。参与者投"是"时做的承诺不可撤销——这造成 2PC 的致命弱点。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">2PC and the in-doubt problem</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>阶段 1 (prepare):  协调者 → 参与者: "你能提交吗?"
+                   参与者 → 协调者: "能"(现在它们必须服从)
+
+阶段 2 (commit):   协调者 → 参与者: "提交!"
+
+  ✗ 协调者在阶段 1 后、阶段 2 前崩溃
+    参与者卡在 "in doubt" — 它们承诺了提交,
+    无法单方面决定,必须持锁直到协调者恢复。
+    → 阻塞;协调者是 SPOF。</code></pre>
+    </div>
+
+    <p>若协调者在参与者投了是之后、但在它发决定之前崩溃,那些参与者<strong>in doubt(存疑)</strong>:它们无法自行提交或中止,所以它们阻塞、持锁,直到协调者回来。这使协调者成为单点故障。(<strong>XA</strong> 标准跨异构系统实现 2PC,并恰好遭受这些运维头痛。)</p>
+
+    <h3>容错共识</h3>
+    <p>共识算法比 2PC 做得更好,通过容忍协调者失败。一个共识算法必须满足四个属性:<strong>一致同意(uniform agreement)</strong>(没有两个节点决定不同)、<strong>完整性(integrity)</strong>(没有节点决定两次)、<strong>有效性(validity)</strong>(被决定的值由某个节点提议过),和<strong>终止(termination)</strong>(每个未崩溃节点最终决定——容错属性)。众所周知的算法——<strong>Paxos、Raft、Zab、Viewstamped Replication</strong>——实际实现全序广播(决定一个值的序列)。它们依赖<strong>多数 quorum</strong> 和一个 <strong>epoch/ballot 号</strong>:每轮领导有一个唯一递增的号,leader 必须在决定前从一个 quorum 收集投票,这保证任何两个 quorum 重叠、且一个旧 leader 无法覆盖一个更新的。</p>
+
+    <div class="callout">
+      <div class="callout-label">FLP,简述</div>
+      <p>著名的 <strong>FLP 不可能性</strong>结果证明,若哪怕一个节点可能崩溃,在完全异步模型里没有算法能<em>总</em>达成共识。实践中的逃生口:真实系统被允许用<strong>超时</strong>(有时随机化)来取得进展,绕开理论不可能性,同时仍保证安全性。共识也有代价——它需要多数来取得进展且通常需要一个 leader,所以它对网络延迟敏感。</p>
+    </div>
+
+    <h3>成员与协调服务</h3>
+    <p>你很少自己实现共识。相反,你用一个<strong>协调服务</strong>如 <strong>ZooKeeper</strong> 或 <strong>etcd</strong>,它们内部运行一个共识算法并暴露一小组强大原语:线性一致的原子操作(如锁的 compare-and-set)、<strong>操作全序</strong>(ZooKeeper 的 <code>zxid</code> 充当 fencing token)、故障检测(会话和心跳),和变更通知(watch)。有了这些你构建 leader 选举、分区/分配管理、服务发现和分布式锁。模式是把难的共识工作<strong>外包</strong>给这些久经考验的服务之一,并把它挡在你自己应用逻辑的关键路径之外。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>本章的大领悟是这张等价之网:线性一致的 compare-and-set、全序广播、原子提交、leader 选举和共识全都能相互归约。所以你无需分别解决每个——解决共识一次。而既然正确的共识极难实现,工程答案几乎总是倚靠 ZooKeeper、etcd,或一个内建共识的数据库,而非自己造。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>线性一致性 vs 可串行化?</strong>线性一致性 = 单对象的新近度(看起来像单一副本);可串行化 = 多对象事务的隔离。严格可串行化是两者。<br>
+      <strong>CAP 实际说什么?</strong>网络分区期间,选一致(线性一致,拒绝一些请求)或可用(服务陈旧数据)。它很窄——一个故障、一个模型——但取舍真实。<br>
+      <strong>2PC 为什么脆弱?</strong>若协调者在 prepare 阶段后崩溃,参与者存疑——它们无法独自决定并阻塞持锁。协调者是单点故障。<br>
+      <strong>为什么用 ZooKeeper 而非自己写共识?</strong>共识(Paxos/Raft)以难做对著称;ZooKeeper/etcd 打包线性一致操作、全序和故障检测,这样你在其上构建 leader 选举和锁。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-8/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">分布式系统的麻烦</div>
+      </a>
+      <a href="/ddia/chapter-10/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">批处理</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

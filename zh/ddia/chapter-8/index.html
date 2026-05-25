@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 8 章:分布式系统的故障——部分失败、不可靠网络(超时、无界延迟)、不可靠时钟(time-of-day vs 单调、LWW 的危险、TrueTime)、进程暂停,以及 quorum、fencing token、Byzantine 故障与系统模型(安全性/活性)。">
+<title>DDIA 第8章 — 分布式系统的麻烦 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-8/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-8/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-8/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-8/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="分布式系统的麻烦">
+<meta property="og:description" content="DDIA 第 8 章:部分失败、不可靠网络与时钟、进程暂停、fencing token、Byzantine 故障。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-8/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="分布式系统的麻烦">
+<meta name="twitter:description" content="DDIA 第 8 章:分布式系统故障、超时、时钟偏移、fencing token、安全性 vs 活性。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 8 章 — 分布式系统的麻烦", "description": "DDIA 第 8 章:分布式系统的故障——部分失败、不可靠网络(超时、无界延迟)、不可靠时钟(time-of-day vs 单调、LWW 的危险、TrueTime)、进程暂停,以及 quorum、fencing token、Byzantine 故障与系统模型(安全性/活性)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-8/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-8/">EN</a>
+        <a href="/zh/ddia/chapter-8/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-8</span>
+    </div>
+    <span class="article-tag">DDIA · 第 8 章</span>
+    <h1 class="article-title">分布式系统的麻烦</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 8 章是悲观者的章节。在几章假设事情大体工作之后,Kleppmann 转向分布式系统里一切可能出错的东西——清单又长又令人谦卑。定义性特征是<strong>部分失败(partial failure)</strong>:系统的某些部分工作而其他坏了,以你常常甚至无法检测的非确定方式。单台计算机是确定的(它工作或干净崩溃);分布式系统能处于一个令人抓狂的中间状态。本章目标是建立这些故障的准确心智模型——不可靠的网络、不可靠的时钟、进程暂停——这样第 9 章的共识工具才说得通。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>部分失败是本质</strong>——分布式系统以单机从不会的非确定、部分方式失败。你必须假设任何能坏的都会坏。</li>
+        <li><strong>网络不可靠</strong>——丢失的请求、死掉的节点、慢响应,从发送者那侧无法区分。唯一工具是超时,而没有完美超时。</li>
+        <li><strong>时钟不可靠</strong>——time-of-day 时钟能跳(NTP、闰秒),所以用墙钟时间戳跨节点排序事件(如 LWW)不安全。</li>
+        <li><strong>进程不可预测地暂停</strong>——GC、VM 挂起、OS 调度能冻结一个节点数秒;一个"leader"可能暂停超过它的租约而不自知。</li>
+        <li><strong>fencing token</strong> 防御共享资源——一个单调递增的 token 让存储拒绝一个醒来还以为自己持有锁的陈旧节点。</li>
+        <li><strong>一个节点不能信任自己</strong>——真相由 quorum(多数)定义,而非任何单节点的意见。Byzantine 故障(撒谎的节点)是更难、通常与数据中心无关的情况。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>分布式系统建在三个根本不可靠的基础上——网络、时钟,和代码的及时执行——且没有一个能被信任在界限内行为。实际后果:只通过超时检测故障(不完美)、绝不用墙钟时间跨节点排序事件、用 fencing token 防御共享资源,并让多数 quorum——而非任何单节点——决定什么是真的。</p>
+    </div>
+
+    <h2>故障与部分失败</h2>
+    <p>在单台计算机上,操作是确定的:要么整台机器工作,要么它崩溃。我们刻意偏好计算机完全崩溃而非返回错误结果。分布式系统放弃这种舒适。许多机器经网络连接,会有<strong>部分失败</strong>:部分工作而其他坏了,且关键地失败是<em>非确定的</em>——涉及网络的操作可能不可预测地成功、失败或挂起,而你甚至可能不知道是哪个。这种非确定性,而非任何单个故障,是使分布式系统难的原因。云计算方法(商用机器、预期失败、在软件里建容错)不同于超算方法(把整个集群当一台机器、失败时重启)。对互联网服务我们想要持续可用,所以我们必须<strong>从不可靠组件构建可靠系统</strong>。</p>
+
+    <h2>不可靠的网络</h2>
+    <p>本书里的分布式系统是 <strong>shared-nothing</strong> 的:机器只通过在异步分组网络上传消息通信。当你发一个请求而没收到响应,你无法判断发生了什么。许多可能性坍缩成同一观察:</p>
+    <ul>
+      <li>你的请求丢失了(线缆被拔、交换机过载)。</li>
+      <li>你的请求被排队,稍后会投递。</li>
+      <li>远程节点失败了(崩溃或断电)。</li>
+      <li>远程节点暂时暂停,稍后会响应。</li>
+      <li>远程节点处理了你的请求,但<em>响应</em>丢失或延迟了。</li>
+    </ul>
+    <p>从发送者那侧,所有这些看起来相同:无回复。即便在单个数据中心内网络故障也不罕见——书中引用的研究发现它们常见。处理一个无响应节点唯一实用的方式是<strong>超时</strong>:过一段时间后停止等待并假设失败。</p>
+
+    <h3>超时与无界延迟</h3>
+    <p>但正确的超时是多长?没有好答案。<strong>长</strong>超时意味宣告死节点死之前长时间等待(慢恢复)。<strong>短</strong>超时更快检测故障但冒<strong>假阳性</strong>风险——在节点只是慢时宣告它死,这可能是灾难性的:节点的工作被交给其他、增加它们的负载、可能使<em>它们</em>超时,级联成死亡螺旋。延迟无界,因为分组网络用<strong>统计复用(statistical multiplexing)</strong>:交换机处、目的地 OS 处,以及来自其他流量的排队都加可变延迟。相反,传统电路交换电话网保留带宽并提供<em>有界</em>延迟——但代价是对突发数据利用率差。你不能同时有高利用率和有界延迟,所以正确做法是<strong>持续测量往返时间并自适应</strong>超时,而非硬编码一个。</p>
+
+    <h2>不可靠的时钟</h2>
+    <p>时间看似简单但在分布式系统里危险,因为每台机器有自己的时钟(一个漂移的石英振荡器),通过网络用 NTP 不完美地同步。两种时钟不能混淆:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>Time-of-day 时钟</th><th>单调时钟</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>测量</td><td class="col-a">墙钟时间(如 UTC)</td><td class="col-b">自某点以来的流逝时间</td></tr>
+        <tr><td>能后跳?</td><td class="col-a">能——NTP、闰秒</td><td class="col-b">不能——总向前</td></tr>
+        <tr><td>跨节点可比?</td><td class="col-a">本应可比,但不可靠</td><td class="col-b">不——跨节点无意义</td></tr>
+        <tr><td>用于</td><td class="col-a">时间戳、日历</td><td class="col-b">测量时长/超时</td></tr>
+      </tbody>
+    </table>
+
+    <h3>信任同步时钟的危险</h3>
+    <p>时钟同步远不如人们假设的可靠:NTP 受网络往返延迟限制,节点漂移,闰秒和误配置导致时钟跳动。最危险的后果是用墙钟时间戳<strong>跨节点排序事件</strong>——例如,<strong>最后写入胜(LWW)</strong>冲突解决。若节点 A 的时钟哪怕略快于节点 B 的,一个真正发生更晚的来自 B 的写可能被悄悄丢弃,因为它的时间戳看起来更旧。时钟偏移因此造成几乎无法调试的数据丢失和因果违反。若你必须用时钟排序,你需要<strong>置信区间</strong>:时间戳其实是一个范围,而非一个点。Google 的 Spanner 用 <strong>TrueTime</strong>(GPS 和原子钟)界定不确定性,并刻意在提交前<em>等过</em>不确定区间,使排序得到保证。</p>
+
+    <h3>进程暂停</h3>
+    <p>即便撇开时钟,你也不能假设代码及时运行。一个线程能在任何点被暂停任意长时间:一次<strong>垃圾回收</strong> stop-the-world 暂停、一台虚拟机被<strong>挂起和迁移</strong>、OS 抢占线程、笔记本盖子合上,甚至慢磁盘 I/O。经典故障:一个节点持有租约说"我是 leader 直到时间 T",做了些工作,但在行动前暂停(比如 15 秒 GC 暂停)。等它恢复,租约已过期,另一个 leader 已接管——但暂停的节点不知道并继续行动,仿佛它仍掌权,损坏共享状态。</p>
+
+    <h2>知识、真相与谎言</h2>
+    <p>反复出现的教训是一个节点<strong>不能信任自己对系统状态的判断</strong>——它只知道它收到(或没收到)了什么消息,而那些能丢失或延迟。所以分布式系统依赖 <strong>quorum</strong>:决策需要多数节点间的一致,这样系统不依赖任何单节点。一个节点可能相信自己是 leader,但若 quorum 已经前进,它的信念无关紧要——且危险。</p>
+
+    <h3>Fencing Token</h3>
+    <p>为保护共享资源免受暂停 leader 问题,用 <strong>fencing token</strong>:每次锁/租约被授予,锁服务也返回一个每次<em>递增</em>的数。客户端必须把这个 token 随每个对受保护资源的写一起包含,而资源<strong>拒绝任何携带比它已见过的更旧 token 的写</strong>。所以当一个暂停的旧 leader 醒来并试图用陈旧 token 写,存储拒绝它。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">fencing tokens reject a stale leader</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>client A 拿到锁  → token 33
+client A 暂停(长 GC)…
+租约过期;client B 拿到锁 → token 34
+client B writes(token=34)  → 存储接受,记录 34
+client A 醒来,writes(token=33) → 存储看到 33 &lt; 34 → 拒绝
+
+  存储服务强制顺序——客户端不能被信任
+  去知道自己已被取代。</code></pre>
+    </div>
+
+    <h3>Byzantine 故障</h3>
+    <p>上面一切都假设节点诚实但可能慢、崩溃或丢消息。<strong>Byzantine 故障</strong>更糟:一个节点任意行为——发送损坏或矛盾的消息,也许恶意地(名字来自"Byzantine 将军问题")。Byzantine 容错算法即便某些节点撒谎也继续工作,但它们复杂且昂贵。在典型可信数据中心你能假设无 Byzantine 故障(节点是你的),所以大多数系统不付这个代价。它们在对抗环境里要紧:航天(辐射翻转位),以及参与者互不信任的 P2P/区块链系统。</p>
+
+    <h3>系统模型</h3>
+    <p>为严格推理,我们定义一个<strong>系统模型</strong>——关于时序的假设(<em>同步</em>:有界延迟;<em>部分同步</em>:通常有界但偶尔不——现实的那个;<em>异步</em>:无时序假设)和关于节点失败的假设(<em>crash-stop</em>、<em>crash-recovery</em>、<em>Byzantine</em>)。正确性表达为<strong>安全性(safety)</strong>属性("坏事不发生"——必须始终成立)和<strong>活性(liveness)</strong>属性("好事最终发生"——可能有"最终"这样的限定)。好算法证明它们的安全性属性在模型允许的所有运行里成立。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>本章刻意阴郁,这样下一章能建设性。它灌输的最有用的习惯:停止假设网络可靠、时钟准确,或你的代码按时运行。设计时假设请求会丢失、时间戳会撒谎、你的进程会在最糟时刻冻结——然后倚靠 quorum 和 fencing token 而非任何节点的本地信念。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么你无法区分死节点和慢节点?</strong>一个 shared-nothing 节点只观察到"无回复",那可能是丢失的请求、崩溃的对端,或慢响应——所以超时是唯一(不完美)的检测器。<br>
+      <strong>为什么用墙钟时间戳的 LWW 不安全?</strong>节点间时钟偏移意味一个真正更晚的写可能携带"更旧"时间戳并被悄悄丢弃——因果违反造成的数据丢失。<br>
+      <strong>fencing token 解决什么问题?</strong>一个在租约过期后才醒来的暂停 leader;一个单调递增的 token 让存储拒绝陈旧写者。<br>
+      <strong>安全性 vs 活性?</strong>安全性 = "坏事不发生"且必须始终成立;活性 = "好事最终发生"且可能被"最终"限定。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-7/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">事务</div>
+      </a>
+      <a href="/ddia/chapter-9/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">一致性与共识</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
