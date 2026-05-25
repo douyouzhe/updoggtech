@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:面向代码生成与 agentic 任务的 prompt engineering——为什么 prompt 决定输出质量、给足上下文、用验收标准规约需求、先要计划、few-shot 示例、规约语言/风格/边界、精确迭代追问、测试驱动 prompting、分解大改动,以及常见反模式。">
+<title>面向代码的提示工程 — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="面向代码的提示工程">
+<meta property="og:description" content="面向代码的 prompt engineering:上下文、验收标准、先规划、few-shot、测试驱动、分解、反模式。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="面向代码的提示工程">
+<meta name="twitter:description" content="代码 prompt engineering:对的上下文 + 清晰规格 + 验收标准 + 先规划 + few-shot 示例。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "面向代码的提示工程", "description": "AI 编程:面向代码生成与 agentic 任务的 prompt engineering——为什么 prompt 决定输出质量、给足上下文、用验收标准规约需求、先要计划、few-shot 示例、规约语言/风格/边界、精确迭代追问、测试驱动 prompting、分解大改动,以及常见反模式。", "datePublished": "2026-05-12", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/prompt-engineering-for-code/">EN</a>
+        <a href="/zh/ai-coding/prompt-engineering-for-code/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">prompt-engineering-for-code</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">面向代码的提示工程</h1>
+    <div class="article-meta">
+      <span>2026年5月12日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>每个 AI 编码工具都跑着同一个核心循环:你给出文本,模型生成代码。听上去简单,直到你意识到你给出的文本——prompt——是你对产出唯一的杠杆。模型是固定的;上下文窗口是有限的;你唯一能控制的变量,是你往里放什么。然而多数工程师把 prompting 当作事后想起的小事,敲一行字,然后纳闷输出为什么不对劲。</p>
+    <p>本文专门深入剖析面向代码生成与 agentic 编码任务的 prompt engineering。它覆盖“为什么 prompt 决定输出质量”的机理、那些能稳定抬高水准的具体技巧——上下文、约束、规划、few-shot 示例、迭代精修、测试驱动 prompting——以及那些悄悄产出平庸或破碎代码的反模式。读完你应该拥有一套可复用的心智模型,去 prompt 任何 AI 编码工具,从 Copilot 补全到 Claude Code 的 agentic 任务。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>上下文是倍增器。</strong>给模型对的文件、真实的报错、真实的约束,胜过任何其他单项技巧。</li>
+        <li><strong>先规划再写码。</strong>让模型先勾勒它的做法,能在设计错误被嵌进 200 行实现之前抓住它们。</li>
+        <li><strong>few-shot 示例瓦解歧义。</strong>一个具体的“给定 X、产出 Y”示例,比一整段散文描述同样的东西更清楚。</li>
+        <li><strong>陈述验收标准,而非只有目标。</strong>“加认证”是目标;“加一个 JWT middleware,拒绝无有效 token 的请求并返回带 JSON 错误体的 401”是可测试的规格。</li>
+        <li><strong>用有针对性的追问来迭代。</strong>一个超长 mega-prompt 很少胜过一个干净的初始 prompt 加几轮聚焦的纠正。</li>
+        <li><strong>含糊的 prompt 产出看似合理的错误代码。</strong>模型永远不会告诉你 prompt 有歧义——它只会幻想出一个看似合理的答案。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>为代码写 prompt 是一门技能,不是窍门。核心公式是:<strong>对的上下文 + 清晰的规格 + 验收标准 + 先规划 + few-shot 示例</strong>。把这五样配齐,模型输出会显著改善。略过它们,你得到看似合理、却悄悄违反你约束的代码。</p>
+    </div>
+
+    <h2>为什么 prompt 决定代码质量</h2>
+    <p>大语言模型本质上是一个以上下文窗口内一切为条件的下一 token 预测器。它对你的 repo、你团队的约定、你在 Slack 里提过的生产约束、上个 sprint 烧到你的边界情况,毫无背景知识。它知道的,只有你此刻给它的。</p>
+    <p>这有个深刻含义:<strong>模型的输出受其输入质量所限。</strong>一个前沿模型配上烂 prompt,会比一个小模型配上极好的 prompt 产出更糟的代码,因为小模型至少在用准确、完整的信息工作。上下文组装——选择往 prompt 里放什么——是输出质量的主导因素,而它完全在你掌控之中。</p>
+    <p>还有一个你需要理解的失败不对称性:模型<em>总会</em>产出点什么。它不会告诉你 prompt 太含糊;它会用统计上合理的补全填补空白。在代码语境里,那意味着看似合理的代码——可能编译、能过表面阅读,却仍以只在生产中浮现的方式微妙地错。这正是为什么一个激进 vibe-coding 的初级工程师,能在技术债凝结前显得高产好几周。</p>
+    <p>因此,面向代码的 prompt engineering 无关魔法咒语。它关乎系统性地消除模型的不确定性:给它需要的文件、它必须修的报错、它必须尊重的约束、以及展示它该匹配什么风格的示例。本文每个技巧都减少一种不同的不确定性。</p>
+
+    <h2>给模型足够的上下文</h2>
+    <p>你能做的最高杠杆的事,也是最机械的:贴对代码。多数工程师贴得太少。他们该贴函数时用散文描述函数;他们该贴完整栈追踪时只提一句报错;他们该从“auth 模块”里贴出相关五十行时只说一句“auth 模块”。</p>
+    <h3>该纳入什么</h3>
+    <ul>
+      <li><strong>正被改的函数或文件</strong>——别描述它,展示它。模型需要真实的签名、变量名、现有逻辑。</li>
+      <li><strong>紧密相关的代码</strong>——调用方、被调函数、数据类型。若你的函数返回 <code>UserRecord</code>,贴出 <code>UserRecord</code> 结构体定义。</li>
+      <li><strong>真实的报错信息或失败测试输出</strong>——不是“它抛了个错”,而是含行号的完整栈追踪。</li>
+      <li><strong>相关配置</strong>——构建配置、schema、改变“何为有效代码”的环境约束。</li>
+      <li><strong>代码库里的先例</strong>——“这是我们目前在 orders 服务里如何处理分页”把模型锚定在你真实的约定上。</li>
+    </ul>
+    <h3>不该纳入什么</h3>
+    <ul>
+      <li>只有几个函数要紧时却贴整个文件——摘要或节选。</li>
+      <li>把重要上下文挤向窗口末尾的噪声(模型对开头和结尾关注更强)。</li>
+      <li>secret、PII 或专有数据——贴进任何云端模型前永远先脱敏。</li>
+    </ul>
+    <p>一个有用的启发法:若一位新队友正与你结对做这个确切任务,你会往共享屏幕上放什么?贴那个。不少于它,也不无端多于它。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">prompt — 糟糕的上下文</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># ❌ 含糊 —— 模型必须猜“the auth middleware”长什么样</span>
+Fix the bug in our auth middleware where sometimes
+tokens are accepted even when expired.</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">prompt — 良好的上下文</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># ✅ 模型有了做出精确修复所需的一切</span>
+Here is our JWT middleware (Go):
+
+<span class="kw">func</span> <span class="fn">AuthMiddleware</span>(next http.Handler) http.Handler {
+    <span class="kw">return</span> http.<span class="fn">HandlerFunc</span>(<span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+        tokenStr := r.Header.<span class="fn">Get</span>(<span class="str">"Authorization"</span>)
+        claims := &amp;Claims{}
+        token, err := jwt.<span class="fn">ParseWithClaims</span>(tokenStr, claims, keyFunc)
+        <span class="kw">if</span> err != <span class="kw">nil</span> || !token.Valid {
+            http.<span class="fn">Error</span>(w, <span class="str">"unauthorized"</span>, http.StatusUnauthorized)
+            <span class="kw">return</span>
+        }
+        next.<span class="fn">ServeHTTP</span>(w, r)
+    })
+}
+
+Bug: tokens that are expired (<span class="ty">Claims</span>.ExpiresAt in the past) are
+sometimes accepted. jwt.ParseWithClaims does check expiry, but we
+strip the "Bearer " prefix inconsistently — see the raw header value
+in the failing test output below:
+
+    Authorization: Bearer eyJhbGci...   &lt;-- has "Bearer " prefix
+    jwt: token is malformed              &lt;-- parse error swallowed, falls through
+
+Fix the prefix stripping and make sure an expired token always 401s.</code></pre>
+    </div>
+
+    <h2>用验收标准规约需求</h2>
+    <p><em>目标</em>与<em>规格</em>之间存在类别差异。“加限流”是目标。规格告诉模型“完成”长什么样:哪些端点、什么限额、哪个 header 携带剩余计数、耗尽时什么状态码、重置窗口多长、限额是按 IP 还是按用户。模型读不到你的心思;你不规约,就会得到模型的默认假设,而那可能不匹配你的。</p>
+    <p>好的验收标准有两个性质:它们<strong>具体</strong>(名称、数字、状态码、字段名),它们<strong>可测试</strong>(你能写出一个当且仅当标准被满足时才通过的测试)。若你为它写不出测试,这条标准多半太含糊。</p>
+    <table class="compare-table">
+      <thead>
+        <tr><th>含糊的目标</th><th>可测试的规格</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>给 user 端点加输入校验</td>
+          <td>POST /users 在 email 缺失或非 RFC 5322 格式时必须返回 422 带 <code>{"error":"email_invalid"}</code>;name &gt; 100 字符时返回 422 <code>{"error":"name_too_long"}</code></td>
+        </tr>
+        <tr>
+          <td>让它更快</td>
+          <td><code>listProducts</code> 查询在 1 万行时 p99 必须 &lt;50 ms;若缺失则在 <code>(category_id, created_at DESC)</code> 上加索引</td>
+        </tr>
+        <tr>
+          <td>更好地处理错误</td>
+          <td>包装所有 <code>db.Query</code> 调用,在 ERROR 级记录 <code>query=&lt;sql&gt; err=&lt;msg&gt; duration=&lt;ms&gt;</code>;把原始错误向上传播,绝不吞掉</td>
+        </tr>
+        <tr>
+          <td>加缓存</td>
+          <td>把 GET /products/:id 缓存到 Redis,TTL 300 s;用 key <code>product:&lt;id&gt;</code>;缓存未命中时从 DB 取并回填;DB 返回 404 时不缓存</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>右列字更多,但它产出可度量为正确的代码。左列产出貌似正确的代码——那是非常不同的两回事。</p>
+
+    <h2>先要计划</h2>
+    <p>对非平凡任务,最可靠的技巧之一是两步序列:先让模型<em>勾勒其做法</em>,再让它实现。这能在设计问题被嵌进代码之前抓住它们,也迫使模型对问题做推理,而非模式匹配到最近的样板。</p>
+    <p>规划 prompt 通常很短:“写任何代码之前,勾勒你实现 X 要采取的步骤。列出你做的任何假设。指出我该留意的任何边界情况。”读这个计划。若计划错了——做法错、库错、误解了需求——在实现前纠正它。两分钟的计划评审省下二十分钟的调试。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">两步 prompting</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## Step 1 — 计划 prompt</span>
+I need to add distributed rate limiting to our Go API gateway.
+Requirements:
+- 100 req/min per API key, sliding window
+- Limits stored in Redis; gateway pods are stateless
+- On limit exceeded: 429 with Retry-After header (seconds until window resets)
+- Keys are passed in X-API-Key header
+
+Before writing any code, outline:
+1. The algorithm you'll use (token bucket? sliding log? fixed window?)
+2. The Redis data structure and key schema
+3. The middleware interface in Go
+4. Any edge cases (key missing, Redis down, clock skew)
+
+<span class="cm">## Step 2 — 实现 prompt(评审计划之后)</span>
+The plan looks good. Implement it.
+Use go-redis v9. The middleware should be chainable with our existing
+http.Handler chain. Do not introduce a global singleton — accept a
+*redis.Client as a parameter so it can be injected in tests.</code></pre>
+    </div>
+
+    <p>先规划对模型将自主执行多步的 agentic 任务尤其有价值。一个立刻开始实现的 agent 会在你注意到之前深入一条错误路径。一个先呈现计划的 agent,让你在可能最便宜的时刻重定向。</p>
+
+    <h2>Few-Shot 示例:展示,而不只是讲述</h2>
+    <p>few-shot prompting——在要真东西之前提供一个或多个输入/输出示例——是 prompt engineering 里最古老、最可靠的技巧之一。对代码它尤其强大,因为代码无歧义:单个示例同时钉死命名约定、缩进、错误处理风格、返回类型模式、日志格式,这是成段描述永远做不到的。</p>
+    <h3>few-shot 何时回报最大</h3>
+    <ul>
+      <li><strong>有特定形状的样板</strong>——“为 Product 模型写 CRUD 端点,遵循这些现有 User 端点的同样模式。”把 User 端点作为示例贴上。</li>
+      <li><strong>你没文档化的代码风格</strong>——若你团队用某种特定的错误包装模式或非标准日志格式,一个示例胜过千言万语。</li>
+      <li><strong>带刁钻边界情况的数据变换</strong>——展示输入数据和期望输出数据;模型从示例中推断映射,连边界情况一起。</li>
+      <li><strong>编写测试</strong>——展示一两个现有测试;模型会精确匹配 table-driven 风格、断言库、setup/teardown 模式。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">few-shot — 生成风格一致的 handler</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// 示例 handler(现有代码 —— 作为 few-shot 示例贴上)</span>
+<span class="kw">func</span> (h *Handler) <span class="fn">GetUser</span>(w http.ResponseWriter, r *http.Request) {
+    id := chi.<span class="fn">URLParam</span>(r, <span class="str">"id"</span>)
+    user, err := h.store.<span class="fn">GetUser</span>(r.<span class="fn">Context</span>(), id)
+    <span class="kw">if</span> errors.<span class="fn">Is</span>(err, store.ErrNotFound) {
+        h.<span class="fn">writeError</span>(w, http.StatusNotFound, <span class="str">"user_not_found"</span>)
+        <span class="kw">return</span>
+    }
+    <span class="kw">if</span> err != <span class="kw">nil</span> {
+        h.<span class="fn">writeError</span>(w, http.StatusInternalServerError, <span class="str">"internal_error"</span>)
+        <span class="kw">return</span>
+    }
+    h.<span class="fn">writeJSON</span>(w, http.StatusOK, user)
+}
+
+<span class="cm">// 贴完示例后的 prompt:</span>
+<span class="cm">// Following exactly the same pattern above (chi router, h.store,</span>
+<span class="cm">// h.writeError / h.writeJSON, errors.Is for not-found),</span>
+<span class="cm">// write GetProduct and DeleteProduct handlers.</span></code></pre>
+    </div>
+
+    <p>关键纪律:贴你代码库里的<em>真实</em>示例,而非杜撰的。杜撰的示例会意外引入你其实不用的约定。</p>
+
+    <h2>规约语言、风格与边界</h2>
+    <p>AI 编码模型是多语言的。没有明确指示,它们会挑它们认为对该任务最常见的语言、库和风格。那可能不是你的语言、你的库、你的风格。这些要紧时,永远显式陈述。</p>
+    <h3>语言与运行时</h3>
+    <p>版本要紧时规约语言版本:<code>Go 1.22</code>、<code>Python 3.12 with type annotations</code>、<code>TypeScript 5 strict mode</code>、<code>Java 21 with records and sealed interfaces</code>。模型知道每个版本有哪些特性可用,会据此避免或使用它们。</p>
+    <h3>库与框架</h3>
+    <p>指名具体的库:<code>use pgx/v5 not database/sql</code>、<code>use Zod for validation not Joi</code>、<code>use React Query v5 not SWR</code>。没有这个,模型会挑它训练得最多的那个,而那可能与你现有的依赖树冲突。</p>
+    <h3>什么在范围之外</h3>
+    <p>边界约束和正向需求一样重要。“不要加任何新依赖”“不要改这个函数的公开接口”“不要加数据库迁移——这必须在应用层处理”“不要碰测试文件”。这些负向约束,防止模型“热心地”重构你没让它碰的东西——一个非常常见的失败模式。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">风格与边界约束</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 显式约束防止“热心”漂移</span>
+Add a retry wrapper around the S3 upload call in upload.go.
+
+Constraints:
+- Language: Go 1.22
+- Use only stdlib (context, time, errors) — do NOT add a retry library
+- Max 3 attempts, exponential backoff starting at 100 ms, cap at 2 s
+- Do not change the function signature of UploadFile
+- Do not modify upload_test.go
+- Log each retry attempt at WARN level with attempt=N err=&lt;msg&gt; using
+  our existing slog.Default() logger</code></pre>
+    </div>
+
+    <h2>精确地迭代与追问</h2>
+    <p>好的 prompting 是对话,不是独白。第一个响应很少完美;问题是如何高效纠正它。最糟的做法是用一个更长的 mega-prompt 重头来过。最好的做法是一个简短、外科手术式的追问,精确点名哪里错了。</p>
+    <h3>一个好的纠正的解剖</h3>
+    <ul>
+      <li><strong>点名具体问题</strong>——“retry 逻辑在调用之间没重置 backoff 计时器”可执行;“这不太对”不可执行。</li>
+      <li><strong>引用出问题的代码</strong>——“第 23 行,<code>attempt := 0</code> 在循环里;它应该在循环外。”模型能看到自己的输出,但精确引用消除歧义。</li>
+      <li><strong>陈述你想要的替代</strong>——不只说什么错了,还要说对的样子。</li>
+      <li>尽可能<strong>一次只问一个纠正</strong>——复合纠正(“修 X,还有 Y,还顺便重构 Z”)产出混乱的 diff,各部分难以逐一验证。</li>
+    </ul>
+    <p>一个有价值的元技巧:拿到输出后,让模型批评自己的工作。“这个实现漏了哪些边界情况?”或“你做了哪些可能不成立的假设?”被直接问到时,模型出奇地擅长找出自己的漏洞。</p>
+
+    <h2>测试驱动 prompting</h2>
+    <p>最严格的 prompting 工作流借鉴 TDD:先规约测试,再让模型让它们通过。这迫使规格精确(测试无歧义),并给模型一个它能用来验证自身输出的自动反馈回路。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">测试驱动 prompting 工作流</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## Step 1: 自己写测试(或先 prompt 出测试)</span>
+<span class="kw">func</span> <span class="fn">TestParseISO8601Duration</span>(t *testing.T) {
+    cases := []<span class="kw">struct</span>{ input <span class="ty">string</span>; want time.Duration; wantErr <span class="ty">bool</span> }{
+        {<span class="str">"PT30S"</span>,   <span class="num">30</span> * time.Second,  <span class="kw">false</span>},
+        {<span class="str">"PT1M30S"</span>, <span class="num">90</span> * time.Second,  <span class="kw">false</span>},
+        {<span class="str">"P1D"</span>,     <span class="num">24</span> * time.Hour,    <span class="kw">false</span>},
+        {<span class="str">"P1Y"</span>,     <span class="num">0</span>,               <span class="kw">true</span>},  <span class="cm">// years not supported</span>
+        {<span class="str">""</span>,        <span class="num">0</span>,               <span class="kw">true</span>},
+        {<span class="str">"garbage"</span>, <span class="num">0</span>,               <span class="kw">true</span>},
+    }
+    <span class="kw">for</span> _, c := <span class="kw">range</span> cases {
+        got, err := <span class="fn">ParseISO8601Duration</span>(c.input)
+        <span class="kw">if</span> (err != <span class="kw">nil</span>) != c.wantErr {
+            t.<span class="fn">Errorf</span>(<span class="str">"%q: wantErr=%v got err=%v"</span>, c.input, c.wantErr, err)
+        }
+        <span class="kw">if</span> !c.wantErr &amp;&amp; got != c.want {
+            t.<span class="fn">Errorf</span>(<span class="str">"%q: want %v got %v"</span>, c.input, c.want, got)
+        }
+    }
+}
+
+<span class="cm">## Step 2: prompt 对照测试实现</span>
+<span class="cm">// Implement ParseISO8601Duration(s string) (time.Duration, error)</span>
+<span class="cm">// in duration.go so all cases above pass. Do not add dependencies.</span></code></pre>
+    </div>
+
+    <p>用 Claude Code 这类 agentic 工具时,你可以更进一步:“实现后跑测试并迭代,直到全部通过。”agent 自动闭合反馈回路,你只在测试变绿时审查最终 diff。</p>
+
+    <h2>为模型分解大改动</h2>
+    <p>上下文窗口有限,且注意力在长而复杂的任务上退化。一个触及十五个文件、重组数据模型、更新三个 API 面的改动不是一个 prompt——它是五六个。把大改动拆成聚焦、可独立审查的步骤,产出更好,也让每步更易验证。</p>
+    <h3>一个分解启发法</h3>
+    <ul>
+      <li><strong>每个 prompt 一处数据模型改动</strong>——若你在改 schema,先做它并验证,再碰任何依赖它的东西。</li>
+      <li><strong>一次一个接口</strong>——改接口定义,再更新实现,再更新调用方。每个都是独立 prompt,把上一步输出作为上下文贴入。</li>
+      <li><strong>实现前先测试</strong>——每步都先写或确认测试,再实现。</li>
+      <li><strong>feature 工作用纵切片</strong>——把一个端点端到端实现(DB → service → handler → test)再做下一个,而非先做所有 handler 再做所有 service。</li>
+    </ul>
+    <p>当改动确实大时,把分解明确写出来并贴进第一个 prompt:“我要分四步做这个改动。这是第 1 步。只实现第 1 步。”这防止模型投机地实现第 2–4 步,造出你审不动的 diff。</p>
+
+    <h2>常见反模式</h2>
+    <p>理解失败模式和理解最佳实践一样有用。这些是稳定产出糟糕输出的 prompting 反模式。</p>
+    <h3>好高骛远的含糊 prompt</h3>
+    <p>“重构这个让它更干净、更可维护。”这给模型无限自由去重组任何它认为次优的东西。你会得到大量改动,可能合也可能不合你的约定,碰到你本不想碰的代码。要具体说明“更干净”是什么意思:“把 processPayment 里三层嵌套的 if 块抽成有名字的辅助函数;别改任何其他逻辑。”</p>
+    <h3>复制粘贴的 cargo cult</h3>
+    <p>贴一大块代码加一句“修 bug”。没有症状描述、复现用例、或错误出现在哪一行,模型只能猜。它可能猜对,也可能“修”了代码别的部分并引入回归。永远纳入可观察的失败:栈追踪、失败测试输出、错误的返回值。</p>
+    <h3>缺失的负向约束</h3>
+    <p>要新功能却不规约什么不能变。模型常会“改进”相邻代码、重命名它觉得困惑的变量、或加它认为标准的依赖。这些没要的改动搅浑你的 diff,还能引入隐蔽的破坏。对任何需要保持稳定的东西,永远纳入“不要改 X”。</p>
+    <h3>一次性 mega-prompt</h3>
+    <p>试图在单个巨型 prompt 里完整规约一个复杂 feature。这超载了模型的指令遵循能力;靠后的约束相对靠前的被赋予过低权重。对复杂工作,迭代:prompt 出计划、批准、prompt 第 1 步、审查、继续。总质量更高,即便总回合数更多。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">反模式 vs. 正确的 prompt</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">## ❌ 反模式:含糊 + 无上下文 + 无约束</span>
+Add pagination to the API.
+
+<span class="cm">## ✅ 正确:上下文 + 规格 + 约束 + 验收标准</span>
+File: handlers/products.go (pasted below)
+Current GET /products returns all rows, which causes OOM at scale.
+
+Add cursor-based pagination:
+- Query params: limit (int, default 20, max 100) and cursor (opaque string)
+- Response: add "next_cursor" field to the existing JSON envelope;
+  null if no more pages
+- Cursor encodes the last row's (created_at, id) as base64 JSON —
+  do not use offset
+- Return 400 {"error":"invalid_limit"} if limit &lt; 1 or &gt; 100
+- Do not change the shape of the Product objects in the response
+- Do not add any new SQL queries beyond what listProducts already uses;
+  add the WHERE clause to the existing query
+
+[paste handlers/products.go here]
+[paste store/products.go here]</code></pre>
+    </div>
+
+    <h3>不加审查就接受第一个输出</h3>
+    <p>这本身不算 prompting 反模式——它是工作流反模式——但值得在此点名,因为它正是那个让上述所有技巧失效的失败模式。每一块 AI 生成的代码都应被阅读、理解、并有意识地接受。若你讲不清一个函数做什么,你就还没准备好 merge 它。模型是你的结对程序员,不是你的代码审查者。</p>
+
+    <h2>随时间建立 prompting 直觉</h2>
+    <p>prompting 是一门会复利的技能。用了一年 AI 编码工具的工程师,写出的 prompt 比起步时好得多,因为他们已内化了哪些技巧闭合哪些缺口、要预防哪些失败模式。</p>
+    <p>几个加速这条学习曲线的习惯:</p>
+    <ul>
+      <li><strong>记 prompt 日志</strong>——记下出奇地好或坏的 prompt,以及是什么造成差别。你会开始看到导致失败的模式。</li>
+      <li><strong>仔细读你的 diff</strong>——每次你在 AI 输出里抓到一个隐蔽错误,回溯到 prompt 缺了什么。那次回溯就是一堂 prompting 课。</li>
+      <li><strong>在安全地带实验</strong>——用测试文件或一次性分支去试新 prompting 策略,再用到生产关键改动上。</li>
+      <li><strong>把好 prompt 分享给团队</strong>——一个为常见任务(写迁移脚本、生成 gRPC handler、更新 OpenAPI spec)而设的高质量 prompt 共享库,抬高的是团队下限,而不只是个人上限。</li>
+    </ul>
+    <p>prompt engineering 最好的心智模型:你在写一份将由一位极有能力但完全天真的承包商执行的规格。他们会严格照你说的做,以最常见的方式解读歧义,且从不要求澄清。据此写规格——无歧义、完整、并对“不要做什么”有明确约束。</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>面向代码的 prompt engineering 其实是规格工程。这些技巧——上下文、验收标准、先规划、few-shot 示例、分解、精确追问——都服务于一个目标:减少模型的不确定性,使它可观的能力被精确瞄准你真正的问题。把规格做到位,代码质量随之而来。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试尖锐观点</div>
+      <p><strong>为什么在 AI 编码工具里上下文比模型大小更重要?</strong>上下文窗口有限;模型只能对窗口里的东西做推理。给它对的文件和报错,胜过一个用含糊散文工作的更大模型。<br>
+      <strong>什么是先规划 prompting,为什么有帮助?</strong>让模型在写码前勾勒做法,在可能最便宜的时刻浮现设计错误——在它们被嵌进实现之前——并迫使模型推理而非模式匹配。<br>
+      <strong>最危险的 AI 编码反模式是什么?</strong>不加审查就接受第一个输出。即便模型已微妙地违反你的约束,它也会产出看似合理的代码,而“貌似合理却错误”比明显的错误更难抓。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/copilot-vs-cursor-vs-claude-code/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Copilot vs Cursor vs Claude Code</div>
+      </a>
+      <a href="/ai-coding/ai-assisted-coding-best-practices/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">AI 辅助编程:最佳实践与陷阱</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
