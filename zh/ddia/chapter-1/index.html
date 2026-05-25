@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 1 章:什么让系统可靠、如何用负载参数和百分位延迟推理可扩展性,以及可维护性的三大支柱(可运维性、简单性、可演化性)。">
+<title>DDIA 第1章 — 可靠、可扩展与可维护 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-1/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-1/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-1/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-1/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="可靠、可扩展与可维护">
+<meta property="og:description" content="DDIA 第 1 章:可靠性(故障 vs 失效)、可扩展性(负载参数、尾延迟)、可维护性三支柱。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-1/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="可靠、可扩展与可维护">
+<meta name="twitter:description" content="DDIA 第 1 章:可靠、可扩展、可维护——故障类型、p99、Twitter 扇出、队头阻塞。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 1 章 — 可靠、可扩展与可维护", "description": "DDIA 第 1 章:什么让系统可靠、如何用负载参数和百分位延迟推理可扩展性,以及可维护性的三大支柱(可运维性、简单性、可演化性)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-1/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-1/">EN</a>
+        <a href="/zh/ddia/chapter-1/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-1</span>
+    </div>
+    <span class="article-tag">DDIA · 第 1 章</span>
+    <h1 class="article-title">可靠、可扩展与可维护</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 1 章为整本书设定词汇。Kleppmann 主张现代应用是<strong>数据密集型</strong>而非计算密集型——真正的挑战是数据的体量、复杂度和速度。三个属性定义一个好的数据系统:它必须可靠、可扩展、可维护。本章用具体例子拆解每一个。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>故障(fault)vs 失效(failure)</strong>——故障是一个组件偏离规格;失效是整个系统宕掉。在故障变成失效之前设计去容忍它。</li>
+        <li><strong>硬件故障独立,软件 bug 相关</strong>——一个节点二进制里的 bug 很可能在每个节点上都有,使软件故障危险得多。</li>
+        <li><strong>用负载参数,而非模糊术语</strong>——在推理可扩展性前精确描述负载(请求/秒、扇出比)。</li>
+        <li><strong>尾延迟胜过平均值</strong>——用 p95/p99;你最慢的用户往往最活跃。SLO 和 SLA 用百分位定义。</li>
+        <li><strong>横向 &gt; 纵向扩展</strong>——一旦撞上成本/天花板曲线,shared-nothing 的商用硬件胜过单机 scale-up。</li>
+        <li><strong>可维护性的成本高于初始开发</strong>——从第一天起投资可运维性、简单性、可演化性;技术债会复利累积。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>可靠性 = 容忍故障而不失效。可扩展性 = 随负载增长维持性能。可维护性 = 让系统易运维、易演化。这三个属性是 DDIA 其余部分写作的透镜。</p>
+    </div>
+
+    <h2>原始笔记</h2>
+    <p>本章总结所基于的手写学习笔记:</p>
+    <figure class="article-figure">
+      <img src="/assets/img/chapter-1-1.jpg" alt="DDIA 第 1 章手写笔记" loading="lazy">
+      <figcaption>原始手写笔记——DDIA 第 1 章</figcaption>
+    </figure>
+
+    <h2>可靠性(Reliability)</h2>
+    <p>可靠的系统即使出错也继续正确工作。Kleppmann 在<strong>故障(fault)</strong>和<strong>失效(failure)</strong>之间划出鲜明区别:故障是一个组件偏离其规格;失效是系统整体停止提供所需服务。容错系统的目标是防止故障升级为失效。注意,刻意触发故障是有意义的——Netflix 的 Chaos Monkey 开创的混沌工程实践——正是为了证明容错机制真的有效、没有悄悄萎缩。</p>
+
+    <h3>硬件故障</h3>
+    <p>硬盘崩溃、内存出坏位、电网闪断、有人拔错线缆。单块硬盘的平均无故障时间约 10–50 年,但在 1 万块硬盘的集群里你预期每天丢一块。直到不久前,标准应对是硬件级冗余——RAID 阵列、双电源、热插拔 CPU、柴油发电机。当单台机器是部署单元时这些足够。</p>
+    <p>随着数据量和计算需求增长,应用开始在大量商用机器上运行。云平台(AWS、GCP、Azure)明确不保证单机可靠性;它们转而为虚拟机抢占和节点丢失而设计。现代答案是软件里的<strong>多机冗余</strong>:复制的数据库、负载均衡器后的无状态应用服务器,以及<strong>滚动升级</strong>——一次下线一个节点,使系统全程保持服务。硬件故障仍然相关,但现在由架构而非仅靠硬件开销处理。</p>
+
+    <div class="callout">
+      <div class="callout-label">关键区别</div>
+      <p>硬件故障在统计上是<strong>独立的</strong>——机架 A 里的坏盘对机架 B 的盘毫无暗示。这意味着跨机器的 RAID 和复制真正降低风险。软件 bug 是<strong>相关的</strong>——若 bug 存在于你的二进制里,它同时存在于每个节点。再多复制也救不了一个让所有副本崩溃的软件故障。</p>
+    </div>
+
+    <h3>软件故障(系统性故障)</h3>
+    <p>软件 bug 比硬件故障危险得多,正是因为那种相关性。一个节点二进制里的 bug 很可能也在所有其他节点上,意味着它能同时拖垮整个集群——磁盘故障从不会这样。Kleppmann 给出几个现实中系统性故障的经典例子:</p>
+    <ul>
+      <li>一个软件 bug,在提供某个不寻常输入时同时让每个实例崩溃(如畸形日期、整数溢出)。</li>
+      <li>一个失控进程,缓慢吃掉所有 CPU 或内存直到节点无响应。</li>
+      <li>一个服务响应请求变慢,导致依赖服务级联超时、堆积连接并耗尽自己的线程池——一种在微服务图里传播的失效模式。</li>
+      <li>一个依赖在版本升级后开始返回损坏或意外的响应,悄悄污染调用方的数据。</li>
+    </ul>
+    <p>没有银弹。缓解靠工程纪律:设计时仔细推理假设和交互、单元/集成/端到端各级别的彻底自动化测试、进程隔离以限制爆炸半径、崩溃即重启策略(让它快速失败而非带病运行污染数据),以及持续监控并对意外的不变量违反告警。系统性故障常蛰伏数月直到特定条件触发它,这就是为什么即便一切看起来正常时,生产中监控不变量也很重要。</p>
+
+    <h3>人为错误</h3>
+    <p>大规模互联网服务宕机的事后分析一致地将操作员失误识别为头号原因——配错的部署、误删、错误的数据库连接串、应用到错误环境的 schema 迁移。人既是这些系统的设计者也是操作者,且不可避免地会犯错。好的系统设计接受这点并减少爆炸半径:</p>
+    <ul>
+      <li><strong>设计良好的抽象</strong>,让错误的事难做——一个要求显式破坏性动作标志、而非默默接受危险命令的 API 面。</li>
+      <li><strong>沙箱和预发环境</strong>,工程师能在不碰生产数据的情况下实验和犯错。</li>
+      <li><strong>各级别自动化测试</strong>——单元、集成、端到端测试——使配置错误在发布前被抓住。</li>
+      <li><strong>简单快速的回滚</strong>——能在两分钟内回退的部署限制人为宕机的窗口。</li>
+      <li><strong>详尽的监控、指标和日志</strong>——若操作员犯错,你想在数秒而非数小时内检测到。监控也提供异常的早期预警,可在升级前纠正。</li>
+      <li><strong>好的运维手册和 runbook</strong>——on-call 工程师不该在凌晨 3 点遇到新故障时依赖部落知识。</li>
+    </ul>
+
+    <h3>容错设计模式</h3>
+    <p>理解故障分类指导该用哪些设计模式。硬件故障呼唤复制和冗余。软件故障呼唤隔离边界、熔断器和渐进发布。人为错误呼唤流程护栏和可观测性。跨这三类,指导原则相同:预期故障会发生,设计系统去检测和遏制它们,并让恢复快速。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>故障类型</th><th>特征</th><th>主要缓解</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">硬件故障</td><td>独立失败;规模化下统计可预测</td><td>RAID、复制、多 AZ、滚动升级</td></tr>
+        <tr><td class="col-b">软件故障</td><td>相关;能一次拖垮所有节点</td><td>测试、进程隔离、渐进发布、监控</td></tr>
+        <tr><td class="col-a">人为错误</td><td>宕机的头号原因;难消除</td><td>沙箱、抽象、快速回滚、runbook</td></tr>
+      </tbody>
+    </table>
+
+    <h2>可扩展性(Scalability)</h2>
+    <p>可扩展性不是你贴在系统上的一维标签。问题永远更具体:"若系统以<em>这种特定方式</em>增长,我们怎么应对?"用户增长 10 倍不同于数据量增长 10 倍,又不同于同样用户数下请求率增长 10 倍。你必须先用<strong>负载参数</strong>精确描述负载,再测量这些参数增加时性能如何变化,然后才决定如何处理增长。不定义负载就直接跳到"我们需要横向扩展"在系统设计面试里是个红旗。</p>
+
+    <h3>描述负载:负载参数</h3>
+    <p><strong>负载参数</strong>是一个有意义地刻画系统负载的数字。参数的正确选择取决于系统架构和瓶颈的性质。跨不同系统的例子:</p>
+    <ul>
+      <li><strong>Web 服务器:</strong>每秒请求数,以及请求类型分布(读 vs 写、缓存 vs 未缓存)。</li>
+      <li><strong>数据库:</strong>读/写比;并发连接数;工作集相对可用内存的大小。</li>
+      <li><strong>聊天应用:</strong>同时活跃用户数;每条消息的扇出(每个发送者多少接收者)。</li>
+      <li><strong>搜索引擎:</strong>查询率;索引大小;新鲜度要求(新文档多快必须出现)。</li>
+      <li><strong>缓存:</strong>命中率——99% 与 95% 的缓存命中率是 5 倍的 DB 负载差异,而非 4% 的差异。</li>
+    </ul>
+
+    <h3>Twitter 扇出案例研究</h3>
+    <p>Kleppmann 用 Twitter 的主页时间线作为权威扇出例子,因为它干净地说明负载参数的<em>分布</em>比其平均值更重要。问题:当你打开 Twitter,你看到你关注的每个人合并后的时间线。有两种根本不同的方式服务它。</p>
+
+    <p><strong>方法 1——读时拉(请求时查询):</strong>当用户请求其主页时间线,系统查出他们关注的所有账号、取每个账号的近期推文、按时间戳排序合并结果并返回页面。发推 → 只往 tweets 表插一行。简单。问题是读成本:若你关注 400 个账号,时间线生成需要 400 次查找加一次归并排序。在 Twitter 的规模(书写作时 3 亿月活),这是每秒数亿次昂贵的扇出读。</p>
+
+    <p><strong>方法 2——写时扇出(发推时推):</strong>当用户发推,系统立即把那条推文推进每个关注者预计算的主页时间线缓存。读时间线变成单次缓存查找——极便宜。成本在写时:发一条推触发 N 次缓存写,N 是发推者的关注者数。对大多数用户这没问题。对有 3000 万关注者的名人,单条推触发 3000 万次缓存写——一个能压垮系统的巨大写放大尖峰。</p>
+
+    <p>Twitter 的实际解法是<strong>混合</strong>:对绝大多数用户(关注者数适中)写时扇出,对一小组高关注账号(名人、新闻媒体)读时拉。大多数时间线被预计算;少量名人推文在读时拼接进来。关键洞见:要推理的正确负载参数不是"平均发推率"而是<strong>每用户关注者数的分布</strong>——具体是高关注账号的长尾,它使朴素的写时扇出不可行。</p>
+
+    <div class="callout">
+      <div class="callout-label">设计洞见</div>
+      <p>Twitter 的例子教一个通用教训:推理可扩展性时,总要问负载参数的<em>分布</em>,而非仅平均。一个优雅处理平均负载的系统可能在尾部崩溃。正确的架构在中位数情况和 99 分位情况间常常不同。</p>
+    </div>
+
+    <h3>描述性能:响应时间 vs 延迟</h3>
+    <p>测量性能前,值得厘清常被混淆的术语。<strong>延迟(latency)</strong>是请求等待被处理的时间——它在系统接手前在队列里坐着的时间。<strong>响应时间(response time)</strong>是客户端从发请求到收到完整响应所测量的;它包括网络时间、排队时间和处理时间。实践中,"延迟"被宽松地用来指响应时间,Kleppmann 在对话语境里互换使用,在要紧时才精确。</p>
+    <p>对在线服务,响应时间是对用户要紧的性能指标。对批处理系统,<strong>吞吐量</strong>(每秒或每小时处理的记录数)通常更相关。它们需要不同的优化策略:最小化响应时间常意味着优先处理单个请求;最大化吞吐量常意味着批量工作并完全饱和资源,接受更高的每请求延迟。</p>
+
+    <h3>为什么平均值是错误的指标</h3>
+    <p>平均(mean)响应时间几乎总是错误的指标。它对偏斜分布的算术敏感:少量很慢的请求戏剧性地抬高平均值,但它们在统计上消失其中——你无法判断 200 ms 的平均值代表一个每个请求都 200 ms 的系统,还是一个 90% 取 50 ms、10% 取 1.5 s 的系统。两者平均值相同。只有百分位让你看出区别。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>百分位</th><th>含义</th><th>为何要紧</th><th>典型用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">p50(中位数)</td><td>一半请求比这快</td><td>代表典型用户体验</td><td>基线健康检查</td></tr>
+        <tr><td class="col-a">p95</td><td>100 个里 95 个更快</td><td>展示尾部行为而无极端离群</td><td>常见 SLO 目标</td></tr>
+        <tr><td class="col-a">p99</td><td>100 个里 99 个更快</td><td>捕获高价值用户体验</td><td>对客户的 SLA 承诺</td></tr>
+        <tr><td class="col-a">p999</td><td>1000 个里 999 个更快</td><td>绝对最差的非异常体验</td><td>Amazon 内部服务目标</td></tr>
+      </tbody>
+    </table>
+
+    <p>高百分位延迟——常称<strong>尾延迟(tail latency)</strong>——出于两个原因不成比例地要紧。第一,体验最慢的用户往往是你最活跃、最高价值的用户:他们有更多数据(更长历史、更多连接、购物车里更多商品),所以每个查询触及更多行、耗时更长。优化中位数而忽略尾部是为容易、低价值的情况优化。第二,现代应用并行做许多后端调用来组装一个页面;端到端响应时间受最慢的那个调用而非平均限制。若二十个后端调用里只有一个慢(一个 p95 事件),而页面渲染需要 20 个并行调用,那么平均每个页面渲染都会被那个 p95 离群拖延。</p>
+
+    <p>服务级目标(<strong>SLO</strong>)和服务级协议(<strong>SLA</strong>)正是因此用百分位定义。一个典型 SLO 可能写:"面向用户的读请求的 p99 必须低于 200 ms,在滚动 5 分钟窗口上测量。"SLA 是这个的合同版本,带违约罚则条款。两者若用平均值表述都毫无意义。</p>
+
+    <h3>队头阻塞与负载测试</h3>
+    <p><strong>队头阻塞(head-of-line blocking)</strong>是尾延迟的一个微妙但重要的放大器。服务器并发处理请求,但只到其线程池或连接上限。当少量慢请求占据那些线程,后续请求在它们后面排队、经历高延迟,即便服务器本身平均上并未过载。慢请求阻塞了队头,拖住一切。这个效应意味着即便单个请求的 p95 慢,也能在页面级产生高得多的端到端延迟,因为多个请求可能撞到慢请求后面的队列。</p>
+    <p>在<strong>客户端</strong>而非仅服务端测量响应时间,对捕获队头阻塞至关重要。服务端 p99 的 50 ms 能与客户端 p99 的 2 s 并存,若请求在排队。跑负载测试时,以固定速率发请求(不等每个完成才发下一个)很关键——否则你只测低负载下的性能,而非服务器真正并发受压时的行为。</p>
+
+    <h3>应对负载的方法</h3>
+    <p>一旦你描述了负载参数并测量了性能,你面对如何扩展的问题。两种基本策略是纵向和横向扩展,但真正的决策更微妙:</p>
+    <ul>
+      <li><strong>纵向扩展(scale up)</strong>——换更强的机器:更多 CPU、更多 RAM、更快磁盘。优势是简单;你不改架构。劣势是强力机器比商用机非线性地更贵,且有硬天花板——单节点上你只能买这么多 CPU。纵向扩展对 shared-nothing 水平分区在架构上复杂的数据库工作得好。</li>
+      <li><strong>横向扩展(scale out, shared-nothing)</strong>——把负载分散到更多商用机器。每台机器拥有数据子集或处理请求子集。更复杂去构建和运维,但天花板高得多、成本随负载更线性地扩展。无状态服务(如 HTTP API 处理器)自然横向扩展;有状态服务(如数据库)需要谨慎的分区设计。</li>
+      <li><strong>弹性 vs 手动扩展</strong>——弹性系统检测负载增加并自动开新实例(云环境的自动扩缩)。手动扩展需要人判断何时加容量。弹性扩展适合高度可变的负载(如突发新闻时流量飙升的新闻站);手动扩展更简单,对可预测、缓慢增长的负载足够。</li>
+    </ul>
+    <p>纵向 vs 横向扩展的选择不纯是技术性的——它涉及运维复杂度、成本曲线和负载性质。一个从第一天就设计成横向可扩展的系统,对一个本可在单 Postgres 实例上跑数年的初创公司常是过度工程。务实做法:从简单开始,用真实数据识别实际瓶颈,扩展那个特定瓶颈而非猜测未来负载。</p>
+
+    <h2>可维护性(Maintainability)</h2>
+    <p>软件成本的大部分不在初始开发而在持续维护:修 bug、保持系统运行、调查故障、适配新平台、偿还技术债、加新功能。维护非自己构建系统的工程师花大量时间对抗本不必要、本可用更好的前期设计选择避免的复杂度。Kleppmann 识别可维护性的三个设计原则,各针对持续成本的一个不同轴。</p>
+
+    <h3>可运维性:让运维生活轻松</h3>
+    <p>运维团队负责保持系统 7×24 运行。他们不是代码作者——他们是东西坏时凌晨 3 点被呼叫的人。一个系统可运维,若它帮他们高效干活并最小化日常任务和事件响应的认知负荷。</p>
+    <p>具体地,好的可运维性意味着:</p>
+    <ul>
+      <li><strong>对运行时行为的可见性</strong>——通过 Prometheus/StatsD 暴露的丰富指标、在日志聚合系统(如 Elasticsearch、Splunk)里可查询的结构化日志,以及让工程师看到单个请求跨数十个服务的完整因果链的分布式追踪。没有可观测性,运维是猜测。</li>
+      <li><strong>标准工具接口</strong>——与现有监控、部署、告警框架集成的系统无需自定义一次性工具来运维。运维者应能套用其他系统的技能和 runbook。</li>
+      <li><strong>无单机依赖</strong>——系统应容忍滚动重启、机器替换和打补丁而不下线服务。这需要无状态应用层和复制的有状态层。</li>
+      <li><strong>好的默认行为带覆盖</strong>——对 95% 情况有效的安全默认,对另外 5% 有显式覆盖机制。运维者绝不该为理解系统为何意外行为而钻进源码。</li>
+      <li><strong>可预测行为</strong>——惊喜是 on-call 的敌人。一个偶尔"无明显原因"停顿 30 秒的系统(如 stop-the-world GC 暂停、后台 compaction 作业)比一个延迟特征可预测的难运维得多。</li>
+      <li><strong>好的文档</strong>——架构图、常见故障模式的 runbook、每个配置旋钮及其作用的解释。过时的文档几乎比没有更糟,因为它制造虚假信心。</li>
+    </ul>
+
+    <h3>简单性:管理复杂度</h3>
+    <p>Kleppmann 直言:管理复杂度是大规模软件开发的最大单一挑战。复杂度不只关乎代码行数——它关乎理解系统到能做出正确变更所需的认知负荷。复杂系统是这样一个:每个变更都需要理解大量不明显的交互;在一处加功能悄悄破坏看似无关的东西;每个工程师维护一个私有且略不同的心智模型,导致边界处微妙的 bug。</p>
+
+    <p>Kleppmann 区分两种复杂度。<strong>本质复杂度(essential)</strong>是问题域固有的——一个处理每个司法辖区规则的税务计算引擎有不可约的复杂度,因为问题本身复杂。<strong>偶然复杂度(accidental)</strong>由实现引入、非问题所需——不必要的状态、无关组件间的紧耦合、混乱命名、深嵌套条件逻辑,或在每个使用点泄露内部的抽象。目标是最小化偶然复杂度,同时接受本质复杂度不可避免。</p>
+
+    <p>管理复杂度的主要工具是好的<strong>抽象</strong>:一个把实现细节藏在简单接口后的干净概念边界。SQL 是 Kleppmann 的经典例子。SQL 查询背后是复杂的 B-tree 结构、buffer pool、事务日志、查询优化器和锁管理器——SQL 作者都不需要理解。抽象让一个干净概念(行的表,声明式查询)在数千应用里使用,而无需每个开发者重新发明或理解存储层。当抽象好,它们显著减少每个工程师必须放在脑中的心智表面积。</p>
+
+    <div class="callout">
+      <div class="callout-label">关于简单性的注解</div>
+      <p>简单性不意味着更少功能或降低能力。它意味着系统行为从其接口可理解、可预测。一个系统可以既功能丰富又简单,若功能干净组合且抽象连贯。简单性的敌人不是功能——而是隐形耦合、隐藏状态和泄露抽象。</p>
+    </div>
+
+    <h3>可演化性:让变更容易</h3>
+    <p>软件需求不是静态的。业务转向、新法规到来、性能特征改变,看似重要的功能结果没人用而意料外的用例出现。一个不能安全变更而需英雄式努力的系统是个负担——它要么随技术债累积而僵化,要么以巨大代价被重写。<strong>可演化性</strong>(也叫可扩展性或可修改性)是让变更可处理的系统属性。</p>
+    <p>在单个文件和函数的小尺度,敏捷实践应对可演化性:测试驱动开发确保重构前有安全网;持续重构让局部代码结构不至于钙化;短反馈循环快速抓住回归。这些对大系统必要但不充分。</p>
+    <p>在<strong>架构尺度</strong>,可演化性需要让独立关注点分离的设计决策。若加一个新功能需要理解和修改十个不同服务,因为它们都紧耦合,系统就不可演化。若给数据加一种新编码格式需要同时更新每个消费者,因为没有 schema 演化机制,系统就不可演化。这就是为什么 DDIA 后续章节如此重度聚焦于 schema 演化策略(Avro、Protocol Buffers、Thrift)、向后/向前兼容,以及解耦数据生产者与消费者的流处理架构——所有这些都是在系统设计层面买可演化性的工具。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>可维护性支柱</th><th>核心问题</th><th>关键工具与实践</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">可运维性</td><td>运维能否不靠英雄式努力保持它运行?</td><td>指标、日志、追踪、runbook、滚动部署、可预测行为</td></tr>
+        <tr><td class="col-b">简单性</td><td>新工程师能否快速理解这个系统?</td><td>好抽象、最小耦合、干净接口、避免偶然复杂度</td></tr>
+        <tr><td class="col-a">可演化性</td><td>我们能否随时间安全变更这个系统?</td><td>schema 演化、松耦合、向后兼容、TDD、重构文化</td></tr>
+      </tbody>
+    </table>
+
+    <h3>三个属性的相互作用</h3>
+    <p>可靠性、可扩展性、可维护性不是独立的——它们相互作用且常彼此权衡。一个通过加缓存层和异步处理优先可扩展性的系统变得更难运维和推理,降低可维护性。一个通过大量冗余和容错设计优先可靠性的系统变得更复杂、因而更难演化。工程师的任务不是孤立地最大化任一属性,而是为手头问题找到正确平衡,考虑团队规模、系统预期增长轨迹和失败的成本。</p>
+    <p>Kleppmann 的框架——可靠性、可扩展性、可维护性——被刻意用作 DDIA 其余部分的组织透镜。当他引入一个新技术(复制、分区、事务、流处理),他总回到这三个问题:这帮助系统更可靠、更可扩展,还是更可维护?答案很少是"同时三者皆是"——每个技术有一个主要目标和次要成本,理解那些成本是工程成熟度的标志。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>用负载参数(而非"很多流量"这类模糊术语)精确描述系统行为。测量尾延迟(p95/p99),而非平均——你最慢的用户往往最有价值。为你语境里最可能的故障类型设计:硬件故障独立(复制有帮助),软件 bug 相关(测试和进程隔离是主要防御),人为错误居首(可运维性和回滚能力是答案)。并从第一天起投资简单性和可演化性——糟糕可维护性的成本在系统生命周期里比几乎任何其他技术债复利得更快。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>故障和失效的区别是什么?</strong>故障是一个组件偏离其规格;失效是整个系统停止提供所需服务。容错系统防止故障级联成失效——刻意触发故障(混沌工程)是你验证机制有效的方式。<br>
+      <strong>为什么用 p99 而非平均延迟?</strong>平均隐藏尾部行为。最慢的 1% 用户往往是你最高价值的客户(最多数据、最活跃)。SLA 正因此用百分位写。还有:一个由 20 个并行调用组成、每个 p95 = 200 ms 的页面,统计上几乎每次渲染都有一个慢调用——每调用的平均延迟与页面延迟无关。<br>
+      <strong>写时扇出 vs 读时——Twitter 怎么解决?</strong>写时扇出在写时预计算主页时间线(读快,对高关注账号昂贵)。Twitter 用混合:普通用户写时扇出,名人读时拉。关键负载参数是关注者数的分布,而非平均发推率。<br>
+      <strong>什么是队头阻塞?</strong>慢请求占据服务器线程,导致后续请求在它们后面排队。即便大多数请求快,一个 p95 慢请求能阻塞队列并抬高所有并发请求的端到端延迟。客户端(而非服务端)延迟测量能捕获这个。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/" class="article-nav-card">
+        <div class="article-nav-label">← 返回</div>
+        <div class="article-nav-title">DDIA</div>
+      </a>
+      <a href="/ddia/chapter-2/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">数据模型与查询语言</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
