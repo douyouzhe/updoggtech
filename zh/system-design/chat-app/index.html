@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:聊天应用(WhatsApp/微信规模)——WebSocket 与 WebSocket Manager 路由、Snowflake 消息 ID、在线/离线投递与去重、写扇出 vs 读扇出、群聊有序、已读回执、在线状态心跳采样、媒体存储、扩展与容错、关键取舍。">
+<title>设计聊天应用 — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/chat-app/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/chat-app/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/chat-app/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/chat-app/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计聊天应用">
+<meta property="og:description" content="聊天应用系统设计:WebSocket、Snowflake ID、写/读扇出、已读回执、在线状态采样、媒体存储。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/chat-app/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计聊天应用">
+<meta name="twitter:description" content="设计聊天应用:WebSocket 路由、Snowflake、扇出策略、回执、在线状态、媒体。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计聊天应用", "description": "系统设计:聊天应用(WhatsApp/微信规模)——WebSocket 与 WebSocket Manager 路由、Snowflake 消息 ID、在线/离线投递与去重、写扇出 vs 读扇出、群聊有序、已读回执、在线状态心跳采样、媒体存储、扩展与容错、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/chat-app/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/chat-app/">EN</a>
+        <a href="/zh/system-design/chat-app/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">chat-app</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计聊天应用</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>聊天应用坐落在系统设计最苛刻的交叉点之一:它必须处理数十亿用户、每天数千亿条消息、亚秒投递延迟、可靠的离线排队和复杂的群组语义——同时维护端到端加密和准确的在线状态信息。核心挑战是每条消息必须被投递到一个特定设备,而不只是一条数据库记录——这意味系统必须跨数千台服务器跟踪实时连接状态,并实时把消息路由到恰好正确的服务器。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>WebSocket</strong>——持久全双工连接消除轮询延迟;每客户端单连接支持真正的服务端推送。</li>
+        <li><strong>WebSocket Manager(Redis KV)</strong>——映射 user_id → websocket_server:port;让任何服务能跨 65K+ 端口把消息路由到正确服务器。</li>
+        <li><strong>Snowflake ID</strong>——64 位:41 位 ms 时间戳 + 10 位机器 ID + 12 位序列;分布式唯一 ID 带内建时间排序用于消息显示。</li>
+        <li><strong>在线 vs 离线投递</strong>——在线:直接 WebSocket 投递;离线:Pending 状态 + 推送通知(APNs/FCM)直到重连。</li>
+        <li><strong>写扇出 vs 读扇出</strong>——写扇出在发送时把消息复制到每个接收者的信箱;读扇出在读时查询共享消息存储。小群写扇出胜,大群读扇出胜。</li>
+        <li><strong>群大小上限</strong>——有界扇出成本(微信 500 人上限);每条群消息需每成员一次投递。</li>
+        <li><strong>last seen 采样</strong>——~1 分钟间隔轮询在线状态;接受轻微精度损失以避免 4B 用户下的写风暴。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>用 WebSocket 做全双工、持久的客户端-服务器连接。通过一个把用户 ID 映射到服务器的 WebSocket Manager(键值存储)路由消息。用 Snowflake 生成消息 ID(时间有序、分布式、64 位)。对离线用户把消息排队为"pending"并经推送通知投递。1:1 和小群用写扇出;大群切到读扇出(共享消息日志)。给群大小设上限以约束最坏扇出成本。</p>
+    </div>
+
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-1.jpg" alt="聊天应用高层架构" loading="lazy">
+      <figcaption>聊天应用高层架构</figcaption>
+    </figure>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>聊天应用从简单的 1:1 短信式消息到实时协作工作区不等。画任何图前界定问题。</p>
+
+    <h3>功能</h3>
+    <ul>
+      <li>用户注册和认证。</li>
+      <li>带可靠投递的一对一消息。</li>
+      <li>群聊(有界大小——如最多 500 成员)。</li>
+      <li>媒体支持:文本、图片、音频、视频片段。</li>
+      <li>已读回执(已发送 / 已送达 / 已读指示)。</li>
+      <li>last seen / 在线状态跟踪。</li>
+      <li>消息历史和搜索。</li>
+    </ul>
+
+    <h3>非功能</h3>
+    <ul>
+      <li><strong>低延迟</strong>——实时感是核心产品承诺;给在线接收者 &lt;100 ms p99 投递。</li>
+      <li><strong>高可用</strong>——掉线或漏消息摧毁信任;目标 99.99%。</li>
+      <li><strong>海量规模</strong>——40 亿用户,每天 1000 亿条消息。</li>
+      <li><strong>消息有序</strong>——一个会话内的消息必须在所有设备上按发送顺序出现。</li>
+      <li><strong>应用级 exactly-once 投递保证</strong>——无重复消息,即便重试。</li>
+    </ul>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>WhatsApp / 微信规模:<strong>40 亿用户</strong>,大约 <strong>10 亿日活(DAU)</strong>。每 DAU 发 ~100 条消息/天。</p>
+
+    <h3>消息量</h3>
+    <ul>
+      <li>1B DAU × 100 消息/天 = <strong>1000 亿条消息/天</strong>。</li>
+      <li>100B ÷ 86,400 秒 = <strong>~115 万条消息/秒</strong>平均;3× 峰值因子 → <strong>~350 万条/秒</strong>。</li>
+      <li>每条消息:~1 KB 平均(含元数据)→ 3.5M × 1 KB = 峰值 <strong>~3.5 GB/秒</strong>消息数据。</li>
+    </ul>
+
+    <h3>WebSocket 连接</h3>
+    <ul>
+      <li>1B DAU,每个一条持久 WebSocket 连接 → <strong>10 亿并发连接</strong>。</li>
+      <li>单台服务器能处理 ~100K 并发 WebSocket 连接(每连接用 ~10 KB RAM 存状态)→ 需要 <strong>10,000 台 WebSocket 服务器</strong>。</li>
+      <li>每台服务器在多达 65,535 个端口上监听;实践中连接在每服务器单端口上多路复用,所以限制因素是 RAM、不是端口数。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>100B 消息/天 × 1 KB × 365 = <strong>~36 PB/年</strong>消息数据。</li>
+      <li>大多数用户保留消息数年 → 消息按用户预期无限期存储,从热(近 90 天在 Cassandra)分层到冷(更旧,对象存储里压缩)。</li>
+      <li>媒体附件是主导存储成本:1% 消息的 1 MB 照片 = 1B 媒体项/天 × 1 MB ≈ <strong>1 PB/天</strong>媒体。媒体存储前按哈希去重。</li>
+    </ul>
+
+    <h2>第 3 步 — API 设计</h2>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP + WS</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Auth</span>
+<span class="kw">POST</span> <span class="str">/api/auth/login</span>
+     { phone_number, otp }
+     <span class="cm">→ { access_token, refresh_token }</span>
+
+<span class="cm"># WebSocket 连接(升级)</span>
+<span class="kw">GET</span>  <span class="str">/ws/connect</span>
+     Authorization: Bearer {access_token}
+     <span class="cm">→ 101 Switching Protocols</span>
+     <span class="cm">   注册: user_id → ws_server:port 进 WebSocket Manager</span>
+
+<span class="cm"># 发消息(经 WS 帧,非 REST)</span>
+<span class="cm">-- 客户端发 WS 帧:</span>
+{ type: <span class="str">"message"</span>, idempotency_key: <span class="str">"uuid"</span>,
+  receiver_id: <span class="num">456</span>, content: <span class="str">"hello"</span>, media_url: null }
+<span class="cm">-- 服务器回复:</span>
+{ type: <span class="str">"ack"</span>, message_id: <span class="num">7234567890123</span>, status: <span class="str">"sent"</span> }
+
+<span class="cm"># REST: 消息历史(按 cursor 分页)</span>
+<span class="kw">GET</span>  <span class="str">/api/conversations/{conv_id}/messages?before_id=7234567890123&limit=50</span>
+
+<span class="cm"># REST: 创建群</span>
+<span class="kw">POST</span> <span class="str">/api/groups</span>
+     { name, member_ids: [1, 2, 3 ...] }
+
+<span class="cm"># REST: 上传媒体(返回 CDN URL)</span>
+<span class="kw">POST</span> <span class="str">/api/media/upload</span>
+     Content-Type: multipart/form-data
+     <span class="cm">→ { media_url, media_id }</span></code></pre>
+    </div>
+
+    <p>发消息<strong>经 WebSocket 连接</strong>发生,不经 REST,因为连接已开着、加 REST 往返会浪费持久连接。<code>idempotency_key</code> 由客户端生成(UUID)并在重试时防止重复消息创建——若客户端发同键两次(如因为 ACK 丢失),服务器返回已创建的消息 ID 而不创建第二条消息。</p>
+
+    <h2>第 4 步 — 协议选择:为什么 WebSocket</h2>
+    <p>聊天的核心挑战是服务器到客户端的消息推送。存在三种方法:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>协议</th><th>问题</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-b">短轮询</td><td>延迟由轮询间隔决定;频繁轮询浪费资源,不频繁轮询感觉卡</td></tr>
+        <tr><td class="col-b">长轮询</td><td>反复连接建立/拆除开销;多个同时请求能造成消息有序问题</td></tr>
+        <tr><td class="col-a">WebSocket</td><td>持久全双工连接;消除轮询开销;支持真正的实时双向消息</td></tr>
+        <tr><td class="col-b">Server-Sent Events (SSE)</td><td>仅服务端推送;客户端无法经同一连接发送;发送仍需单独 HTTP 通道</td></tr>
+      </tbody>
+    </table>
+
+    <p>WebSocket 胜出,因为它们每客户端维护一条持久连接,使服务器能在消息到达瞬间推送、无轮询延迟、无连接重建开销。连接在用户会话生命周期内保持开着;每 30 秒一次心跳 ping/pong 检测死连接而无需客户端轮询。</p>
+
+    <h2>第 5 步 — 核心服务</h2>
+    <ul>
+      <li><strong>用户服务(User Service)</strong>——用户 CRUD、认证和联系人管理的 RESTful API。</li>
+      <li><strong>聊天 / 群组服务</strong>——管理会话创建、删除和群成员;存 <code>[group_id, member_list, admin_ids]</code>。</li>
+      <li><strong>消息服务(Message Service)</strong>——持久化消息、生成 Snowflake ID、发布事件到 Kafka 供下游处理。</li>
+      <li><strong>WebSocket 网关</strong>——维护长生命周期客户端连接的有状态服务器;处理 WS 帧解析、心跳和连接生命周期。</li>
+      <li><strong>WebSocket Manager</strong>——维护 <code>user_id → websocket_server:port</code> 的键值映射;由 Redis 支撑做快速内存查找。这是让任何服务为任何用户找到正确 WebSocket 服务器的路由表。</li>
+      <li><strong>通知服务(Notification Service)</strong>——给离线用户派发推送通知(iOS 用 APNs、Android 用 FCM)。</li>
+      <li><strong>在线状态服务(Presence Service)</strong>——跟踪在线/离线状态和 last-seen 时间戳。</li>
+      <li><strong>媒体服务(Media Service)</strong>——接收二进制上传、存进对象存储、返回 CDN URL 以嵌入消息。</li>
+    </ul>
+
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket 连接管理与消息路由" loading="lazy">
+      <figcaption>WebSocket 连接管理与消息路由</figcaption>
+    </figure>
+
+    <h2>第 6 步 — 数据模型</h2>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">CQL / schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 消息表:按会话分区以高效读历史</span>
+<span class="kw">CREATE TABLE</span> messages (
+  conversation_id <span class="ty">BIGINT</span>,
+  message_id      <span class="ty">BIGINT</span>,    <span class="cm">-- Snowflake ID(时间有序)</span>
+  sender_id       <span class="ty">BIGINT</span>,
+  content         <span class="ty">TEXT</span>,     <span class="cm">-- 静态加密</span>
+  media_url       <span class="ty">TEXT</span>,     <span class="cm">-- 纯文本则 null</span>
+  status          <span class="ty">ENUM</span>,     <span class="cm">-- Sent | Delivered | Read</span>
+  idempotency_key <span class="ty">UUID</span>,    <span class="cm">-- 重试去重</span>
+  created_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     ((conversation_id), message_id)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (message_id <span class="kw">DESC</span>);
+
+<span class="cm">-- 用户收件箱:每个用户的会话列表带未读计数</span>
+<span class="kw">CREATE TABLE</span> user_inbox (
+  user_id         <span class="ty">BIGINT</span>,
+  conversation_id <span class="ty">BIGINT</span>,
+  last_message_id <span class="ty">BIGINT</span>,
+  unread_count    <span class="ty">INT</span>,
+  updated_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (user_id, updated_at)
+) <span class="kw">WITH CLUSTERING ORDER BY</span> (updated_at <span class="kw">DESC</span>);
+
+<span class="cm">-- 群成员</span>
+<span class="kw">CREATE TABLE</span> group_members (
+  group_id        <span class="ty">BIGINT</span>,
+  user_id         <span class="ty">BIGINT</span>,
+  role            <span class="ty">TEXT</span>,     <span class="cm">-- member | admin</span>
+  joined_at       <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (group_id, user_id)
+);
+
+<span class="cm">-- 投递回执:每消息每接收者状态</span>
+<span class="kw">CREATE TABLE</span> receipts (
+  message_id      <span class="ty">BIGINT</span>,
+  recipient_id    <span class="ty">BIGINT</span>,
+  status          <span class="ty">TEXT</span>,     <span class="cm">-- Delivered | Read</span>
+  updated_at      <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span>     (message_id, recipient_id)
+);</code></pre>
+    </div>
+
+    <p>消息表按 <code>conversation_id</code> 分区,使最常见查询——"加载这个会话的最后 50 条消息"——是单分区扫描。聚簇键 <code>message_id</code>(一个 Snowflake ID)在分区内按时间保持消息有序。Cassandra 是这里正确的存储,因为写模式(高吞吐、仅追加)和读模式(分区内按时间范围扫描)完美映射到 Cassandra 的强项。</p>
+
+    <figure class="article-figure">
+      <img src="/assets/img/chat-app-3.jpg" alt="消息对象 schema" loading="lazy">
+      <figcaption>消息对象 schema</figcaption>
+    </figure>
+
+    <h2>第 7 步 — 消息 ID 生成:Snowflake</h2>
+    <p>消息 ID 必须全局唯一、时间有序(使消息在 UI 里正确排序而无需单独时间戳排序),且无需协调生成(使没有单点故障 ID 生成器)。<strong>Snowflake ID</strong> 满足全部三个需求:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bit layout</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">Snowflake 64 位 ID 布局:</span>
+┌─────────────────────────────┬──────────────┬──────────────────┐
+│   41 位: ms 时间戳          │ 10 位 nodeID │  12 位序列       │
+│   (epoch 偏移, ~69 年)      │  (1024 节点) │  (4096/ms/节点)  │
+└─────────────────────────────┴──────────────┴──────────────────┘
+
+最大吞吐: 1024 节点 × 4096 ID/ms = <span class="num">4.19</span> 百万 ID/ms
+时间排序: 较晚生成的 ID 数值上总更大
+无协调: 每个节点独立生成</code></pre>
+    </div>
+
+    <p>41 位时间戳字段(自定义 epoch 以来的毫秒)意味 ID 无需单独 <code>created_at</code> 字段就可排序——直接比较两个 Snowflake ID 就告诉你哪条消息先来。10 位节点 ID(每个消息服务实例启动时配置)保证跨机群唯一而无任何全局锁或集中 ID 服务。</p>
+
+    <h2>第 8 步 — 消息投递:在线 vs 离线</h2>
+    <p>一条消息被发送时,消息服务通过查询 WebSocket Manager 检查接收者是否有活跃 WebSocket 连接。两条路径分叉:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>发送者经 WebSocket 发消息
+  → WebSocket 网关接收 WS 帧
+  → 消息服务:
+      1. 去重检查: idempotency_key 在 Redis(TTL 24h)
+      2. 生成 Snowflake message_id
+      3. 持久到 Cassandra(status: Sent)
+      4. 给发送者发 ACK: { message_id, status: "sent" }
+      5. 在 WebSocket Manager 查接收者
+
+  [接收者在线]
+    → 转发到接收者的 WebSocket 服务器(经内部 RPC)
+    → WebSocket 服务器推到客户端 WS 连接
+    → 接收者客户端 ACK 回执
+    → 消息服务更新 status: Delivered
+    → 经 WS 把 Delivered 回执推给发送者
+
+  [接收者离线]
+    → 消息留在 Cassandra(status: Pending)
+    → 通知服务发推送通知(APNs/FCM)
+    → 接收者重连时:
+        客户端发 { last_seen_message_id: 7234567890000 }
+        服务器返回所有 id > last_seen 的消息
+        服务器更新 status: Delivered
+        发送者收到 Delivered 回执</code></pre>
+    </div>
+
+    <h3>At-Least-Once 投递与去重</h3>
+    <p>系统在网络级别保证<strong>至少一次投递</strong>——一条消息在重试时可能被尝试多次。应用层必须去重以达到用户可见的 exactly-once 保证。去重键是客户端提供的 <code>idempotency_key</code>(UUID),存在 Redis 里带 24 小时 TTL。重试时,消息服务在写 Cassandra 前检查 Redis;若键存在,它返回已存在的消息 ID 而不创建重复。</p>
+
+    <h2>第 9 步 — 扇出:写扇出 vs 读扇出</h2>
+    <p>扇出是决定消息如何从发送者到达所有接收者的架构决策。有两种根本不同的方法,各有不同取舍:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方法</th><th>怎么工作</th><th>写成本</th><th>读成本</th><th>最适合</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">写扇出(推模型)</td><td>发送时把消息复制进每个接收者的信箱/收件箱</td><td>O(N) 写,N = 接收者</td><td>O(1) 每用户收件箱扫描</td><td>小群、DM;N 有界</td></tr>
+        <tr><td class="col-b">读扇出(拉模型)</td><td>消息在共享日志里存一次;每个接收者读时取</td><td>O(1) 写</td><td>O(成员) 每读(每个读者扫描共享日志)</td><td>大群、公开频道;写成本会爆炸</td></tr>
+      </tbody>
+    </table>
+
+    <h3>混合策略</h3>
+    <p>生产系统(WhatsApp、Slack、Telegram)用混合:</p>
+    <ul>
+      <li><strong>1:1 消息和小群(&lt;100 成员)</strong>——写扇出:发送时消息服务往每个接收者的收件箱写一条投递记录。每个接收者的收件箱扫描在读时 O(1)。~100 次写的写成本可忽略。</li>
+      <li><strong>大群(&gt;100 成员)</strong>——读扇出:消息在一个共享会话日志里存一次。成员打开会话时,他们用一个 cursor 查日志("给我自我上次已读位置以来的消息")。这避免 5,000 成员频道的 O(5000) 写成本。</li>
+      <li><strong>极大公开频道</strong>——读扇出配每用户存为简单整数的单独"未读计数",避免为算徽章计数而扫描完整消息日志。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">一句话说扇出取舍</div>
+      <p>写扇出用写放大换快读;读扇出用写简单换读复杂。交叉点大约是 100–200 成员:低于此,写扇出胜;高于此,读扇出避免 O(N) 写风暴。</p>
+    </div>
+
+    <h2>第 10 步 — 群聊与有序保证</h2>
+    <p>群消息把 <code>receiver_id</code> 换成 <code>conversation_id</code> 且必须同时投递给所有群成员。这个扇出是群聊主要的可扩展性挑战:一条给 500 人群的消息需要 500 次单独投递尝试。设计给群大小设上限(微信 500 人上限是参考)以约束最大扇出成本和投递滞后。</p>
+
+    <h3>会话内消息有序</h3>
+    <p>两个用户同时发消息能都"赢"并产生有序冲突。解法是用 Snowflake ID 作权威排序键——消息总按 <code>message_id</code> 升序显示。因为 Snowflake ID 含一个毫秒时间戳,同一毫秒从不同节点发的两条消息由节点 ID 位区分,即便并发发送也确保一个确定全序。</p>
+
+    <p>对严格因果有序要紧的会话(如"回复消息 X"),消息 schema 里含一个 <code>reply_to_message_id</code> 字段。客户端 UI 通过跟随这些链接渲染线程视图,无论消息的到达顺序。</p>
+
+    <h2>第 11 步 — 已读回执</h2>
+    <p>标志性的双勾 / 蓝勾指示(已发送 → 已送达 → 已读)是一个已读回执系统。实现细节:</p>
+    <ul>
+      <li><strong>已发送(Sent)</strong>——发送者客户端从消息服务收到带分配 <code>message_id</code> 的 ACK。一个勾。</li>
+      <li><strong>已送达(Delivered)</strong>——接收者设备收到消息并经 WebSocket 发回投递 ACK。消息服务更新 <code>receipts</code> 表并把 <code>Delivered</code> 事件推给发送者。两个勾。</li>
+      <li><strong>已读(Read)</strong>——接收者应用标消息已读(用户打开会话)。客户端经 WebSocket 发 <code>ReadReceipt</code> 帧。两个蓝勾。</li>
+    </ul>
+
+    <p>对群消息,发送者只在每个成员都在 receipts 表里有 <code>Delivered</code> 回执时才看到"已送达所有人"。这是每次"已送达所有人"检查 O(成员) 次读——WhatsApp 对群显示每成员下钻列表而非单个聚合指示的原因。</p>
+
+    <h3>批处理回执写</h3>
+    <p>在 100B 消息/天,单个回执写会再给数据库加 200–300B 写/天(每消息两个回执)。通知服务批处理回执更新:投递 ACK 在 Redis 累积 500 ms,然后在单个批写里刷到 Cassandra。这把写放大降低 ~50–100×。</p>
+
+    <h2>第 12 步 — 在线状态与 Last Seen</h2>
+    <p>跟踪"这个用户在线吗?"和"他们上次何时用应用?"听起来简单,但在 40 亿用户的聊天系统里是最难的可扩展性问题之一。</p>
+
+    <h3>朴素方法及为什么失败</h3>
+    <p>最简单的实现会让每个用户每秒把当前时间戳写到数据库。1B DAU × 1 写/秒 = <strong>10 亿写/秒</strong>——这显然不可能。</p>
+
+    <h3>经心跳采样的在线状态</h3>
+    <p>在线状态服务用一个采样方法:</p>
+    <ul>
+      <li>WebSocket 网关每 <strong>60 秒</strong>给每个活跃连接向在线状态服务发心跳:<code>{ user_id, online: true }</code>。</li>
+      <li>1B 活跃连接 × 1 写/60 秒 ≈ <strong>~16.7M 写/秒</strong>——仍很高,但用分片 Redis 集群可管理。</li>
+      <li>每个用户的在线状态存在 Redis 里作一个 TTL 90 秒的 key。若 TTL 内无心跳到达,key 过期、用户被视为离线。</li>
+      <li>"last seen" 时间戳只在断开或在线时每小时一次写到 Cassandra,而非每次心跳。这把 Cassandra 写负载降低 3600×。</li>
+    </ul>
+
+    <h3>在线状态订阅(联系人的在线状态)</h3>
+    <p>用户想知道哪些联系人在线。朴素方法(每次页面加载为每个联系人查在线状态服务)每用户打开产生 O(联系人) 个请求。生产方法用一个 pub-sub 模型:</p>
+    <ul>
+      <li>当用户 A 上线,在线状态服务把一个 <code>online</code> 事件发布到按 <code>user_id_A</code> 为键的频道。</li>
+      <li>任何有用户 A 联系人列表订阅者的 WebSocket 服务器(即 A 的一个好友已连接)收到事件并把它推到那个好友的 WebSocket 连接。</li>
+      <li>Redis Pub/Sub 或一个专用在线状态 broker(如一个轻量 MQTT broker)处理扇出。</li>
+    </ul>
+
+    <h2>第 13 步 — 媒体存储</h2>
+    <p>图片、音频和视频不内联存在消息对象里。相反,消息记录持有一个 CDN URL,实际二进制内容住在对象存储。上传流程:</p>
+    <ol>
+      <li>客户端调 <code>POST /api/media/upload</code>。</li>
+      <li>媒体服务生成一个预签名 S3 上传 URL 并连同一个 <code>media_id</code> 返回。</li>
+      <li>客户端经预签名 URL 直接上传到 S3(完全绕过应用服务器)。</li>
+      <li>S3 触发一个 Lambda/事件通知媒体服务上传完成。</li>
+      <li>媒体服务记录 <code>media_id → CDN URL</code> 映射并把 CDN URL 返回给客户端。</li>
+      <li>客户端把 CDN URL 包含在消息载荷里。</li>
+    </ol>
+
+    <p>媒体去重:上传前,客户端计算文件的 SHA-256 哈希并发给媒体服务。若哈希已存在数据库(另一用户已上传同文件),服务器返回已存在的 CDN URL 而无新上传——重复零字节传输。这对病毒媒体(表情包、语音)尤其有效,那里同一文件被数千用户分享。</p>
+
+    <h2>第 14 步 — 扩展与容错</h2>
+
+    <h3>WebSocket 服务器扩展</h3>
+    <ul>
+      <li>WebSocket 服务器有状态(它们持有开着的连接)但路由状态被外置到 WebSocket Manager(Redis)。加一台新服务器只需向负载均衡器注册它——无状态迁移。</li>
+      <li>服务器崩溃时,客户端自动重连(带抖动指数退避)。客户端重连时发它的 <code>last_seen_message_id</code>,服务器投递自那 ID 以来的所有待处理消息。</li>
+      <li>崩溃服务器的 WebSocket Manager Redis 条目由一个健康检查 watchdog 清理,它在服务器停止发心跳时移除陈旧条目。</li>
+    </ul>
+
+    <h3>消息的 Cassandra 分片</h3>
+    <ul>
+      <li>消息按 <code>conversation_id</code> 分区。Cassandra 用一致性哈希把分区分布在节点上,所以加节点重分布负载而无需全量重分片。</li>
+      <li>热门会话(一个庞大群聊)能使单个分区成热点。缓解:在分区键里给时间分桶——<code>conversation_id + month</code> 作复合分区键,使消息历史分布在基于时间的桶上。</li>
+    </ul>
+
+    <h3>消息队列与重放</h3>
+    <p>消息服务在持久到 Cassandra 前把每条进来的消息发布到 Kafka。这服务两个目的:它把写路径与下游消费者(通知服务、分析、搜索索引器)解耦,且它支持重放——若一个消费者落后或崩溃,它能从它最后提交的 Kafka offset 重放而不丢消息。</p>
+
+    <h2>关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>实时投递</td><td class="col-a">WebSocket(持久)</td><td>有状态服务器;比无状态 HTTP 更难横向扩展</td></tr>
+        <tr><td>消息 ID 生成</td><td class="col-a">Snowflake(分布式)</td><td>节点 ID 必须谨慎分配;时钟偏移能造成罕见有序问题</td></tr>
+        <tr><td>扇出策略</td><td class="col-b">混合(写 &lt;100,读 &gt;100)</td><td>两条代码路径的复杂度;每平台需调阈值</td></tr>
+        <tr><td>消息存储</td><td class="col-a">Cassandra(按会话分区)</td><td>无跨会话查询;分析必须用单独 OLAP 存储</td></tr>
+        <tr><td>在线状态跟踪</td><td class="col-b">采样心跳(60s)</td><td>在线状态略陈旧;"last seen 5 分钟前"可能偏差最多 60s</td></tr>
+        <tr><td>投递保证</td><td class="col-a">至少一次 + 客户端去重</td><td>客户端必须处理并丢弃重复(idempotency_key 检查)</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>聊天设计主要关于三个难问题:实时投递(WebSocket + WebSocket Manager 做路由)、离线排队(Pending 状态 + 推送通知 + 重连时追赶),和扇出策略(小群写扇出,大群读扇出)。Snowflake ID 用内建时间排序解决分布式唯一 ID 生成。群大小上限是一个显式可扩展性杠杆。在线状态采样用轻微精度换写吞吐——经典的可用性-一致性取舍应用到一个不明显的维度。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>当数百万 WebSocket 连接散布在许多服务器上时,怎么把消息路由到正确服务器?</strong>一个 WebSocket Manager(Redis 支撑)存 user_id → server:port;任何服务能 O(1) 查目标服务器并经内部 RPC 转发消息。<br>
+      <strong>为什么给群聊大小设上限?</strong>一条群消息扇出到每个成员——1,000 人群意味 1,000 次单独投递。设上限约束最坏扇出延迟并防止单条消息饱和投递管道。<br>
+      <strong>消息发给离线用户会怎样?</strong>消息以 Pending 状态存储;一个推送通知(APNs/FCM)唤醒接收者设备;重连时客户端发它的 last-seen ID,服务器投递所有漏掉的消息,状态更新为 Delivered。<br>
+      <strong>写扇出 vs 读扇出——何时用各个?</strong>写扇出在发送时复制到每个收件箱(快读,O(N) 写)——用于 DM 和小群。读扇出在共享日志里存一次(O(1) 写,O(成员) 读)——用于写放大会过高的大群。<br>
+      <strong>怎么在重试时防止重复消息?</strong>客户端生成的幂等键(UUID)存在 Redis 里带 24 小时 TTL。消息服务写前检查键;若已存在,返回已存在的消息 ID 而不创建重复。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/video-streaming/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计视频流平台</div>
+      </a>
+      <a href="/system-design/ride-share/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计打车应用</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
