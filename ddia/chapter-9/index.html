@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.9 of DDIA: consistency and consensus — linearizability, the CAP theorem, ordering and causality, Lamport timestamps, total order broadcast, two-phase commit, consensus algorithms, and ZooKeeper.">
+<title>DDIA Ch.9 — Consistency &amp; Consensus | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-9/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.9 — Consistency &amp; Consensus">
+<meta property="og:description" content="Linearizability, the CAP theorem, causality and ordering, total order broadcast, two-phase commit, and consensus.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-9/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.9 — Consistency &amp; Consensus">
+<meta name="twitter:description" content="The strongest consistency models and how distributed nodes agree: linearizability, CAP, and consensus.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.9 — Consistency & Consensus","description":"Linearizability, the CAP theorem, causality and ordering, total order broadcast, two-phase commit, and consensus.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-9/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-9</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.9</span>
+    <h1 class="article-title">Consistency &amp; Consensus</h1>
+    <div class="article-meta">
+      <span>Apr 08, 2023</span>
+      <span class="separator">·</span>
+      <span>36 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 9 is the climax of Part II. Having catalogued everything that can go wrong (Chapter 8), Kleppmann now builds the positive tools: general-purpose abstractions with strong guarantees that let applications ignore some of the chaos beneath them. The two big ideas are <strong>linearizability</strong> (the strongest single-object consistency model) and <strong>consensus</strong> (getting nodes to agree on something despite faults). The chapter's punchline is that a surprising number of problems — leader election, uniqueness constraints, atomic commit, lock services — are all equivalent to consensus, so solving consensus once (or outsourcing it to ZooKeeper) solves them all.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Linearizability</strong> makes a replicated system <em>look like a single copy</em> with atomic operations — a recency guarantee: once a write completes, every later read sees it.</li>
+        <li><strong>It's not free</strong> — the CAP theorem says that during a network partition you must choose between linearizable (and unavailable on one side) or available (and not linearizable). It's also slow.</li>
+        <li><strong>Causality is a weaker, cheaper order</strong> — causal consistency is the strongest model that survives partitions, captured with version vectors or Lamport timestamps.</li>
+        <li><strong>Total order broadcast</strong> (deliver the same messages to all nodes in the same order) is equivalent to consensus and underlies state-machine replication.</li>
+        <li><strong>Two-phase commit</strong> gives atomic commit across nodes but blocks if the coordinator dies (the in-doubt problem) — a single point of failure.</li>
+        <li><strong>Consensus algorithms</strong> (Paxos, Raft, Zab) use majority quorums to agree safely; ZooKeeper/etcd package this so you don't implement it yourself.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Linearizability is the gold-standard "behaves like one machine" guarantee, but CAP and latency make it costly, so weaker models (causal consistency) are often the right call. When you genuinely need agreement — who is the leader, did the transaction commit, is this name unique — you need consensus, which is equivalent to total order broadcast. Don't roll your own; use a consensus system like ZooKeeper or etcd.</p>
+    </div>
+
+    <h2>Linearizability</h2>
+    <p>The idea behind <strong>linearizability</strong> (also called strong consistency or atomic consistency) is to make a system <em>appear as if there is only one copy of the data</em>, and as if all operations on it are atomic. Even though data is replicated across many nodes, clients should never observe the replication: the moment one client's write completes, every subsequent read — from any client, on any replica — must return that new value (or a newer one). It's fundamentally a <strong>recency guarantee</strong>. A classic illustration: two people looking at a sports score on their phones; if one sees the final result, the other must not still see "in progress."</p>
+
+    <h3>Linearizability vs Serializability</h3>
+    <p>These names sound alike and are constantly confused, but they're different guarantees:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Linearizability</th><th>Serializability</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>About</td><td class="col-a">Recency of single-object reads/writes</td><td class="col-b">Isolation of multi-object transactions</td></tr>
+        <tr><td>Guarantee</td><td class="col-a">Looks like one copy, real-time order</td><td class="col-b">Txns equivalent to some serial order</td></tr>
+        <tr><td>Concerns</td><td class="col-a">Replication / freshness</td><td class="col-b">Concurrency / interleaving</td></tr>
+        <tr><td>Together</td><td class="col-a" colspan="2">Strict serializability = both at once (e.g. two-phase locking, Spanner)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>When You Need It</h3>
+    <p>Several things <em>break</em> without linearizability:</p>
+    <ul>
+      <li><strong>Locking and leader election</strong> — a lock must be linearizable so that only one node believes it holds the lock; this is why systems use ZooKeeper/etcd for coordination.</li>
+      <li><strong>Uniqueness constraints</strong> — guaranteeing a username or email is unique requires a linearizable register (otherwise two nodes both accept the same name).</li>
+      <li><strong>Cross-channel timing dependencies</strong> — e.g. a web server writes an image to storage, then sends a message to a resizer over a separate channel; without linearizability the resizer may read an old or missing version.</li>
+    </ul>
+
+    <h3>How It's Implemented, and the CAP Cost</h3>
+    <p>Which replication methods are linearizable? Single-leader replication <em>can</em> be (if you read only from the leader, and it really is the leader). Consensus algorithms <em>are</em>. Multi-leader is not. Leaderless (Dynamo-style) is generally <strong>not</strong> linearizable even with strict quorums, because clock skew and the timing of read repair break the recency guarantee. The deep reason linearizability is hard is captured by the <strong>CAP theorem</strong>: when a network partition occurs, a system must choose — remain <strong>consistent</strong> (linearizable) by refusing requests on the side that can't reach a quorum (sacrificing availability), or remain <strong>available</strong> by serving possibly-stale data (sacrificing linearizability). CAP is often stated too broadly; it only concerns one fault (partitions) and one model (linearizability). But the practical lesson holds: linearizability requires network round-trips, so it's <strong>slow</strong>, and many systems deliberately give it up for performance and availability.</p>
+
+    <h2>Ordering and Causality</h2>
+    <p>Ordering keeps recurring because it's deeply tied to causality. <strong>Causality</strong> imposes an order on events: a question must come before its answer; a row must be created before it's updated. Causality defines a <strong>partial order</strong> — some events are ordered (causally related), others are incomparable (concurrent). Linearizability, by contrast, imposes a <strong>total order</strong>: every operation is in one timeline. Linearizability implies causality, but it's stronger (and costlier) than necessary.</p>
+    <p><strong>Causal consistency</strong> is the strongest consistency model that does <em>not</em> require waiting on the network and can remain available during a partition — making it very attractive. To track causality you can use <strong>version vectors</strong>. <strong>Lamport timestamps</strong> give a <em>total order</em> that is consistent with causality (each node keeps a counter, attaches it to messages, and bumps it to the max it has seen) — but a Lamport timestamp alone can't tell you <em>when</em> an order is finalized (whether some other operation with a lower number is still in flight).</p>
+
+    <h3>Total Order Broadcast</h3>
+    <p>What single-leader systems really need is a way to decide on a total order of operations that's fixed and known. <strong>Total order broadcast</strong> (atomic broadcast) is the formal version: a protocol for delivering messages to all nodes <em>reliably</em> and in the <em>same order</em>. It's the basis of <strong>state machine replication</strong> — if every replica applies the same operations in the same order, they all end up in the same state. Total order broadcast is, it turns out, <strong>equivalent to consensus</strong>, and it's exactly what systems like ZooKeeper and etcd provide internally.</p>
+
+    <h2>Distributed Transactions and Consensus</h2>
+    <p>Consensus — getting several nodes to agree on something — is one of the most important and most subtle problems in distributed computing. It sounds simple but is fraught, especially because of the failures in Chapter 8.</p>
+
+    <h3>Two-Phase Commit (2PC)</h3>
+    <p>The standard algorithm for <strong>atomic commit</strong> across multiple nodes — ensuring either all nodes commit a transaction or all abort. A <strong>coordinator</strong> drives two phases: first it asks every participant "can you commit?" (prepare); each replies yes only if it's certain it can. If all vote yes, the coordinator sends commit; if any votes no, it sends abort. The promise a participant makes when it votes "yes" is irrevocable — which creates 2PC's fatal weakness.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">2PC and the in-doubt problem</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>phase 1 (prepare):  coordinator → participants: "can you commit?"
+                    participants → coordinator: "yes" (now they MUST obey)
+
+phase 2 (commit):   coordinator → participants: "commit!"
+
+  ✗ coordinator CRASHES after phase 1, before phase 2
+    participants are stuck "in doubt" — they promised to commit,
+    can't unilaterally decide, and must hold locks until the
+    coordinator recovers.  → blocking; coordinator is a SPOF.</code></pre>
+    </div>
+
+    <p>If the coordinator crashes after participants have voted yes but before it sends the decision, those participants are <strong>in doubt</strong>: they can't commit or abort on their own, so they block, holding locks, until the coordinator comes back. This makes the coordinator a single point of failure. (The <strong>XA</strong> standard implements 2PC across heterogeneous systems and suffers exactly these operational headaches.)</p>
+
+    <h3>Fault-Tolerant Consensus</h3>
+    <p>Consensus algorithms do better than 2PC by tolerating coordinator failure. A consensus algorithm must satisfy four properties: <strong>uniform agreement</strong> (no two nodes decide differently), <strong>integrity</strong> (no node decides twice), <strong>validity</strong> (a decided value was proposed by some node), and <strong>termination</strong> (every non-crashed node eventually decides — the fault-tolerance property). The well-known algorithms — <strong>Paxos, Raft, Zab, Viewstamped Replication</strong> — actually implement total order broadcast (deciding a sequence of values). They rely on <strong>majority quorums</strong> and an <strong>epoch/ballot number</strong>: each round of leadership has a unique increasing number, and a leader must collect votes from a quorum before deciding, which guarantees that any two quorums overlap and that an old leader can't override a newer one.</p>
+
+    <div class="callout">
+      <div class="callout-label">FLP, briefly</div>
+      <p>The famous <strong>FLP impossibility</strong> result proves that no algorithm can <em>always</em> reach consensus in a fully asynchronous model if even one node may crash. The escape hatch in practice: real systems are allowed to use <strong>timeouts</strong> (and sometimes randomization) to make progress, sidestepping the theoretical impossibility while still guaranteeing safety. Consensus has a cost too — it needs a majority to make progress and typically a leader, so it's sensitive to network delays.</p>
+    </div>
+
+    <h3>Membership and Coordination Services</h3>
+    <p>You rarely implement consensus yourself. Instead, you use a <strong>coordination service</strong> like <strong>ZooKeeper</strong> or <strong>etcd</strong>, which run a consensus algorithm internally and expose a small set of powerful primitives: linearizable atomic operations (e.g. compare-and-set for locks), <strong>total ordering of operations</strong> (ZooKeeper's <code>zxid</code> serves as a fencing token), failure detection (sessions and heartbeats), and change notifications (watches). With these you build leader election, partition/assignment management, service discovery, and distributed locks. The pattern is to <strong>outsource the hard consensus work</strong> to one of these battle-tested services and keep it off the critical path of your own application logic.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>The big realization of this chapter is the web of equivalences: linearizable compare-and-set, total order broadcast, atomic commit, leader election, and consensus are all reducible to one another. So you don't need to solve each separately — solve consensus once. And since correct consensus is extremely hard to implement, the engineering answer is almost always to lean on ZooKeeper, etcd, or a database that has consensus built in, rather than rolling your own.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Linearizability vs serializability?</strong> Linearizability = recency for single objects (looks like one copy); serializability = isolation for multi-object transactions. Strict serializability is both.<br>
+      <strong>What does CAP actually say?</strong> During a network partition, choose consistency (linearizable, reject some requests) or availability (serve stale data). It's narrow — one fault, one model — but the trade is real.<br>
+      <strong>Why is 2PC fragile?</strong> If the coordinator crashes after the prepare phase, participants are in doubt — they can't decide alone and block holding locks. The coordinator is a single point of failure.<br>
+      <strong>Why use ZooKeeper instead of writing consensus?</strong> Consensus (Paxos/Raft) is famously hard to get right; ZooKeeper/etcd package linearizable ops, total ordering, and failure detection so you build leader election and locks on top.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-8/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">The Trouble with Distributed Systems</div>
+      </a>
+      <a href="/ddia/chapter-10/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Batch Processing</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

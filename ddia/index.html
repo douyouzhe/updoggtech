@@ -99,6 +99,13 @@
   .post-row:nth-child(1) { animation-delay: 0.05s; }
   .post-row:nth-child(2) { animation-delay: 0.1s; }
   .post-row:nth-child(3) { animation-delay: 0.15s; }
+  .post-row:nth-child(4) { animation-delay: 0.2s; }
+  .post-row:nth-child(5) { animation-delay: 0.25s; }
+  .post-row:nth-child(6) { animation-delay: 0.3s; }
+  .post-row:nth-child(7) { animation-delay: 0.35s; }
+  .post-row:nth-child(8) { animation-delay: 0.4s; }
+  .post-row:nth-child(9) { animation-delay: 0.45s; }
+  .post-row:nth-child(n+10) { animation-delay: 0.5s; }
 
   @media (max-width: 768px) {
     .post-row { grid-template-columns: 1fr; }
@@ -137,7 +144,7 @@
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active">All (3)</button>
+    <button class="filter-btn active">All (12)</button>
     <button class="filter-btn">Foundations</button>
     <button class="filter-btn">Storage</button>
   </div>
@@ -184,6 +191,141 @@
       </div>
       <div class="post-row-right">
         <span class="post-date">Apr 02, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-4/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">04</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.4</span>
+          <span class="post-title">Encoding &amp; Evolution</span>
+          <span class="post-excerpt">Backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 03, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-5/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">05</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.5</span>
+          <span class="post-title">Replication</span>
+          <span class="post-excerpt">Single-leader, multi-leader, and leaderless replication, replication lag, and quorums.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 04, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-6/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">06</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.6</span>
+          <span class="post-title">Partitioning</span>
+          <span class="post-excerpt">Key-range vs hash partitioning, hot spots, secondary indexes, rebalancing, and routing.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 05, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-7/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">07</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.7</span>
+          <span class="post-title">Transactions</span>
+          <span class="post-excerpt">ACID, isolation levels, lost updates and write skew, and the paths to serializability.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 06, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-8/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">08</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.8</span>
+          <span class="post-title">The Trouble with Distributed Systems</span>
+          <span class="post-excerpt">Unreliable networks and clocks, process pauses, fencing tokens, and Byzantine faults.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 07, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-9/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">09</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.9</span>
+          <span class="post-title">Consistency &amp; Consensus</span>
+          <span class="post-excerpt">Linearizability, CAP, ordering and causality, two-phase commit, and consensus.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 08, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-10/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">10</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.10</span>
+          <span class="post-title">Batch Processing</span>
+          <span class="post-excerpt">The Unix philosophy, MapReduce, joins, and dataflow engines like Spark and Flink.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 09, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-11/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">11</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.11</span>
+          <span class="post-title">Stream Processing</span>
+          <span class="post-excerpt">Event streams, log-based brokers, CDC, event sourcing, windows, and stream joins.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 10, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+    <a href="/ddia/chapter-12/" class="post-row">
+      <div class="post-row-left">
+        <span class="post-num">12</span>
+        <div class="post-info">
+          <span class="post-tag">DDIA · Ch.12</span>
+          <span class="post-title">The Future of Data Systems</span>
+          <span class="post-excerpt">Deriving data from logs, unbundling the database, end-to-end correctness, and ethics.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">Apr 11, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>

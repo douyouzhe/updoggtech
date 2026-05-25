@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.5 of DDIA: replication strategies — single-leader, multi-leader, and leaderless — synchronous vs asynchronous, failover dangers, replication lag anomalies, and quorum reads/writes.">
+<title>DDIA Ch.5 — Replication | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-5/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.5 — Replication">
+<meta property="og:description" content="Single-leader, multi-leader, and leaderless replication; sync vs async; failover dangers; replication lag; quorums.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-5/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.5 — Replication">
+<meta name="twitter:description" content="The three replication strategies, replication lag anomalies, and quorum reads/writes.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.5 — Replication","description":"Single-leader, multi-leader, and leaderless replication; sync vs async; failover dangers; replication lag; quorums.","datePublished":"2023-04-04","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-5/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-5</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.5</span>
+    <h1 class="article-title">Replication</h1>
+    <div class="article-meta">
+      <span>Apr 04, 2023</span>
+      <span class="separator">·</span>
+      <span>32 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 5 opens Part II of DDIA, "Distributed Data." Replication means <strong>keeping a copy of the same data on multiple machines</strong> connected via a network. We do it for three reasons: to keep data geographically close to users (lower latency), to keep the system working even when some parts fail (availability), and to scale out the number of machines serving read queries (throughput). If the data never changed, replication would be trivial — copy it once and you're done. The entire difficulty, and the whole chapter, is about <strong>handling changes</strong> to replicated data. Kleppmann frames everything around three algorithms: single-leader, multi-leader, and leaderless replication.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Three approaches</strong> — single-leader (one node accepts writes), multi-leader (several do), and leaderless (clients write to many nodes directly). Almost every distributed datastore is a variation on these.</li>
+        <li><strong>Sync vs async is a durability/availability trade</strong> — synchronous replication guarantees an up-to-date copy but blocks if a follower is down; asynchronous is fast but can lose recently-acknowledged writes on failover.</li>
+        <li><strong>Failover is dangerous</strong> — promoting a new leader risks lost writes, split brain (two leaders), and bad timeout tuning. Automatic failover is genuinely hard to get right.</li>
+        <li><strong>Replication lag breaks intuitive guarantees</strong> — you need read-after-write, monotonic reads, and consistent-prefix reads to paper over an asynchronous follower that has fallen behind.</li>
+        <li><strong>Multi-leader's core problem is write conflicts</strong> — the same record edited on two leaders must be reconciled (LWW, CRDTs, custom merge).</li>
+        <li><strong>Leaderless uses quorums</strong> — if w + r &gt; n, read and write sets overlap, so a read sees the latest write. Read repair and anti-entropy heal stale replicas.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Single-leader replication is simple and the default (most relational DBs): writes go to a leader, which streams a change log to followers. Multi-leader adds write availability across datacenters at the cost of conflict resolution. Leaderless (Dynamo-style) drops the leader entirely and relies on quorums plus repair. The recurring theme is the tension between consistency and availability when the network is unreliable and replication is asynchronous.</p>
+    </div>
+
+    <h2>Single-Leader Replication</h2>
+    <p>The most common approach, used by PostgreSQL, MySQL, SQL Server, MongoDB, and many others, is <strong>leader-based</strong> replication (also called active/passive or master/slave). One replica is designated the <strong>leader</strong>. All writes must go to the leader, which first writes the new data to its own local storage. The other replicas are <strong>followers</strong>: whenever the leader writes, it also sends the change to every follower as part of a <strong>replication log</strong> or change stream. Each follower applies the changes <em>in the same order</em> the leader processed them. Reads can be served by either the leader or any follower, but writes are leader-only.</p>
+
+    <h3>Synchronous vs Asynchronous Replication</h3>
+    <p>A crucial configuration knob is whether replication happens synchronously or asynchronously:</p>
+    <ul>
+      <li><strong>Synchronous</strong> — the leader waits until a follower confirms it received the write before reporting success to the client. The follower is guaranteed to have an up-to-date copy, but if it doesn't respond (crash, network fault), the write can't proceed — the leader must block all writes.</li>
+      <li><strong>Asynchronous</strong> — the leader sends the change and does not wait. Writes are fast and the leader keeps working even if followers fall behind, but if the leader fails before a write propagates, that write is <strong>lost</strong> even though it was confirmed to the client.</li>
+    </ul>
+    <p>Making every follower synchronous is impractical — a single slow node would halt the whole system. A common compromise is <strong>semi-synchronous</strong>: one follower is synchronous, and if it gets too slow, another follower is made synchronous in its place. This guarantees at least two nodes have the latest data. In practice, many leader-based systems run fully asynchronous, accepting the risk of losing recent writes in exchange for performance and availability.</p>
+
+    <h3>Setting Up New Followers</h3>
+    <p>To add a follower without downtime, you can't just copy files while writes are happening. The standard procedure: take a consistent <strong>snapshot</strong> of the leader's database (most DBs support this without locking), copy it to the new follower, then have the follower connect to the leader and request all changes that happened since the snapshot — identified by an exact position in the replication log (PostgreSQL calls it a log sequence number, MySQL a binlog coordinate). Once the follower has caught up, it processes changes live.</p>
+
+    <h2>Handling Node Outages</h2>
+    <p>Any node can go down, and a goal of replication is to keep the system running through individual failures. How you recover depends on which node failed.</p>
+
+    <h3>Follower Failure: Catch-Up Recovery</h3>
+    <p>This is the easy case. Each follower keeps a log of the changes it has received. After a crash or a network blip, it knows the last transaction it processed; it reconnects to the leader and requests every change since then, applies them, and is back in sync. No human intervention needed.</p>
+
+    <h3>Leader Failure: Failover</h3>
+    <p>This is the hard case. If the leader fails, one of the followers must be promoted to be the new leader, clients must be reconfigured to send writes to it, and the other followers must start consuming changes from it. This process — called <strong>failover</strong> — can be manual or automatic, and it is riddled with pitfalls:</p>
+    <ul>
+      <li><strong>Lost writes.</strong> With asynchronous replication, the promoted follower may not have received the leader's most recent writes. If the old leader rejoins, those writes conflict with new ones. The usual resolution is to discard the old leader's unreplicated writes — which violates clients' durability expectations.</li>
+      <li><strong>Dangerous interactions with other systems.</strong> Kleppmann's cautionary tale: at GitHub, an out-of-date MySQL follower was promoted; it had reused primary keys (autoincrement) that the old leader had already assigned, and those keys were also used in Redis, causing private data to leak to the wrong users.</li>
+      <li><strong>Split brain.</strong> Two nodes may both believe they're the leader and both accept writes, with no way to reconcile — data is corrupted or lost. Some systems shut one down, but a careless mechanism can shut down both.</li>
+      <li><strong>Timeout tuning.</strong> How long before you declare a leader dead? Too long means a longer outage; too short means unnecessary failovers that make things worse, especially under load spikes.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">why this matters</div>
+      <p>There are no easy answers to any of these failover problems — which is exactly why many operations teams prefer to perform failover <strong>manually</strong>, even though that means a longer outage. The deep reason these issues are so thorny is the unreliability of networks, clocks, and the difficulty of agreeing on a single truth — the subjects of Chapters 8 and 9.</p>
+    </div>
+
+    <h2>Implementation of Replication Logs</h2>
+    <p>How does the leader actually communicate changes to followers? There are several methods, each with trade-offs.</p>
+    <ul>
+      <li><strong>Statement-based</strong> — the leader ships the literal write statements (e.g. each <code>INSERT</code>/<code>UPDATE</code>). Compact, but breaks on nondeterminism: <code>NOW()</code>, <code>RAND()</code>, autoincrement columns, and statements with side effects produce different results on each replica. Largely abandoned for this reason.</li>
+      <li><strong>Write-ahead log (WAL) shipping</strong> — replicate the exact byte-level log the storage engine already writes. Very precise, but tightly couples replication to the storage engine's internal format, so the leader and followers usually must run the <em>same database version</em> — making zero-downtime upgrades hard.</li>
+      <li><strong>Logical (row-based) log</strong> — a separate log describing changes at the row level (which row, which columns, new values), decoupled from the storage engine internals. This decoupling allows version mismatches and lets external systems consume the stream — the basis of <strong>change data capture (CDC)</strong>.</li>
+      <li><strong>Trigger-based</strong> — application-level replication using database triggers/stored procedures. Most flexible (you can transform or filter data) but has more overhead and is more bug-prone.</li>
+    </ul>
+
+    <h2>Problems with Replication Lag</h2>
+    <p>Reading from asynchronous followers lets you scale reads cheaply, but a follower may lag behind the leader. If you read from a lagging follower, you may see <strong>stale</strong> data — the system is <em>eventually</em> consistent, but "eventually" is deliberately vague and could be seconds or minutes under load. Three specific anomalies, and the guarantees that fix them, come up constantly in interviews:</p>
+
+    <h3>Read-After-Write Consistency</h3>
+    <p>A user submits a change, then reloads — and if their read hits a follower that hasn't received the write yet, their own update appears to have vanished. <strong>Read-after-write</strong> (or read-your-writes) consistency guarantees a user always sees their own writes. Techniques: read things the user may have modified from the leader; track the timestamp of the user's last write and only read from a follower that's caught up to it.</p>
+
+    <h3>Monotonic Reads</h3>
+    <p>If a user makes several reads from different replicas, they might see a value, then a moment later see an <em>older</em> value — time appearing to move backwards. <strong>Monotonic reads</strong> guarantees that once you've read newer data, you won't later read older data. A simple implementation: each user always reads from the same replica (e.g. chosen by a hash of their user ID).</p>
+
+    <h3>Consistent Prefix Reads</h3>
+    <p>If a sequence of writes happens in a certain order, anyone reading them should see them in that same order. Violations are jarring — you might see an answer to a question before the question itself. <strong>Consistent prefix reads</strong> guarantees causally-related writes are read in order. This is especially a problem in partitioned (sharded) databases where different partitions replicate at different speeds.</p>
+
+    <div class="callout">
+      <div class="callout-label">key takeaway</div>
+      <p>"Eventual consistency" is a weak guarantee that pushes a lot of complexity onto application developers. Rather than hoping the lag stays small and being surprised when it doesn't, it's better to think in terms of these specific guarantees — and to recognize that providing stronger guarantees is exactly what transactions and consensus (later chapters) are for.</p>
+    </div>
+
+    <h2>Multi-Leader Replication</h2>
+    <p>Single-leader has one obvious downside: all writes funnel through one node. <strong>Multi-leader</strong> replication allows more than one node to accept writes; each leader simultaneously acts as a follower to the other leaders. The main use cases:</p>
+    <ul>
+      <li><strong>Multi-datacenter operation</strong> — a leader in each datacenter, so writes are local (low latency) and each DC keeps working if another, or the link between them, fails.</li>
+      <li><strong>Clients with offline operation</strong> — e.g. a calendar app on your phone is effectively a leader (it accepts writes offline) that syncs with the server when reconnected.</li>
+      <li><strong>Collaborative editing</strong> — real-time tools like Google Docs are a form of multi-leader replication.</li>
+    </ul>
+
+    <h3>Write Conflicts</h3>
+    <p>The big problem multi-leader introduces is <strong>write conflicts</strong>: the same data can be modified on two different leaders concurrently, and the conflict isn't detected until the changes are asynchronously merged. Approaches:</p>
+    <ul>
+      <li><strong>Conflict avoidance</strong> — route all writes for a given record to the same leader, sidestepping conflicts. Breaks down when that leader fails or the user moves.</li>
+      <li><strong>Converge to a consistent state</strong> — every replica must arrive at the same final value. Options include <strong>last-write-wins (LWW)</strong> (pick the write with the highest timestamp — simple but loses data), giving each write a unique ID and picking the highest, or recording the conflict and resolving it later.</li>
+      <li><strong>Custom resolution logic</strong> — let the application code merge conflicts, on write or on read.</li>
+      <li><strong>Automatic data structures</strong> — <strong>CRDTs</strong> (conflict-free replicated data types) and operational transformation are designed to merge concurrent edits sensibly.</li>
+    </ul>
+
+    <h3>Replication Topologies</h3>
+    <p>With more than two leaders, you must decide the path writes take between them. <strong>All-to-all</strong> (every leader sends to every other) is the most robust but can suffer causality problems if some links are faster than others. <strong>Circular</strong> and <strong>star</strong> topologies reduce traffic but introduce a single point of failure and can break if a node goes down. To prevent infinite loops, each write is tagged with the identifiers of the nodes it has already passed through.</p>
+
+    <h2>Leaderless Replication</h2>
+    <p>The third approach abandons the concept of a leader entirely: any replica can accept writes directly from clients. This style was popularized by Amazon's Dynamo and is used by Cassandra, Riak, and Voldemort (often called Dynamo-style). The client (or a coordinator node acting on its behalf) sends each write to <em>several</em> replicas and reads from <em>several</em> replicas in parallel.</p>
+
+    <h3>Quorum Reads and Writes</h3>
+    <p>To know that a read sees the latest write despite some nodes being down, leaderless systems use <strong>quorums</strong>. With <code>n</code> replicas, a write must be confirmed by <code>w</code> nodes and a read must query <code>r</code> nodes. As long as <code>w + r &gt; n</code>, the set of nodes written and the set read are guaranteed to <strong>overlap</strong> by at least one node — so a read will see at least one up-to-date copy.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">quorum condition</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>n = 3 replicas
+
+  w + r &gt; n   guarantees the write set and read set overlap
+
+  example:  w = 2, r = 2,  n = 3
+            2 + 2 = 4 &gt; 3   ✓  every read sees the latest write
+
+  tune for reads:   w = 3, r = 1   (fast reads, slow/fragile writes)
+  tune for writes:  w = 1, r = 3   (fast writes, must read widely)</code></pre>
+    </div>
+
+    <h3>Keeping Replicas in Sync</h3>
+    <p>When a down node comes back, it has missed writes. Two mechanisms heal this:</p>
+    <ul>
+      <li><strong>Read repair</strong> — when a client reads from several nodes and notices one has a stale value, it writes the newer value back to that node. Works well for frequently-read data.</li>
+      <li><strong>Anti-entropy</strong> — a background process continuously looks for differences between replicas and copies missing data. Unlike WAL-based replication, it doesn't preserve write order and may have significant delay.</li>
+    </ul>
+
+    <h3>Limitations of Quorums and Detecting Concurrent Writes</h3>
+    <p>Quorums are not airtight. <strong>Sloppy quorums</strong> (with hinted handoff) let writes go to other reachable nodes when the "home" nodes are unavailable, increasing availability but weakening the overlap guarantee. And because multiple clients can write concurrently to a leaderless store, conflicts arise just like in multi-leader. Detecting them requires reasoning about the <strong>"happens-before"</strong> relationship: two operations are concurrent if neither knew about the other. Systems use <strong>version numbers per key</strong>, or <strong>version vectors</strong> across replicas, to tell whether one write supersedes another or whether they're truly concurrent (in which case the conflicting values, called <em>siblings</em>, must be merged by the application).</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>Single-leader</th><th>Multi-leader</th><th>Leaderless</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Who accepts writes</td><td class="col-a">One node</td><td class="col-b">Several nodes</td><td>Any replica</td></tr>
+        <tr><td>Write conflicts</td><td class="col-a">None (serialized)</td><td class="col-b">Yes — must resolve</td><td>Yes — must resolve</td></tr>
+        <tr><td>Handling node loss</td><td class="col-a">Failover (hard)</td><td class="col-b">Other leaders continue</td><td>Quorum tolerates loss</td></tr>
+        <tr><td>Consistency</td><td class="col-a">Strong-ish (if read leader)</td><td class="col-b">Eventual</td><td>Eventual (tunable quorum)</td></tr>
+        <tr><td>Examples</td><td class="col-a">PostgreSQL, MySQL</td><td class="col-b">Multi-DC, CouchDB</td><td>Cassandra, Riak, Dynamo</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Replication is the foundation of every distributed datastore, and the three strategies are a spectrum of trade-offs between write availability and the cost of resolving conflicts. Single-leader avoids conflicts but bottlenecks and fails awkwardly; multi-leader and leaderless buy availability by forcing you to reconcile concurrent writes. Knowing where a given database sits — and what it does about lag and conflicts — is the heart of a strong distributed-systems interview answer.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Sync vs async replication?</strong> Sync guarantees a durable up-to-date copy but blocks on a slow follower; async is fast but can lose acknowledged writes on failover. Semi-sync (one sync follower) is the common compromise.<br>
+      <strong>Why is failover hard?</strong> Lost async writes, split brain (two leaders), bad timeout tuning, and dangerous interactions with external systems — which is why many teams do it manually.<br>
+      <strong>What does w + r &gt; n give you?</strong> The read and write quorums overlap by at least one node, so a read is guaranteed to see the most recent write — the core leaderless consistency knob.<br>
+      <strong>How do you detect concurrent writes?</strong> Track the happens-before relation with version numbers or version vectors; writes where neither saw the other are concurrent siblings that need merging.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-4/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Encoding &amp; Evolution</div>
+      </a>
+      <a href="/ddia/chapter-6/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Partitioning</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

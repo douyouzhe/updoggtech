@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.7 of DDIA: transactions and ACID, weak isolation levels (read committed, snapshot isolation/MVCC), lost updates, write skew and phantoms, and serializability via serial execution, two-phase locking, and SSI.">
+<title>DDIA Ch.7 — Transactions | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-7/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.7 — Transactions">
+<meta property="og:description" content="ACID, weak isolation levels, lost updates, write skew and phantoms, and serializability (serial execution, 2PL, SSI).">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-7/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.7 — Transactions">
+<meta name="twitter:description" content="ACID, isolation levels and their anomalies, and how databases achieve serializability.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.7 — Transactions","description":"ACID, weak isolation levels, lost updates, write skew and phantoms, and serializability (serial execution, 2PL, SSI).","datePublished":"2023-04-06","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-7/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-7</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.7</span>
+    <h1 class="article-title">Transactions</h1>
+    <div class="article-meta">
+      <span>Apr 06, 2023</span>
+      <span class="separator">·</span>
+      <span>34 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 7 is about one of the most important abstractions in databases: the <strong>transaction</strong>. A transaction groups several reads and writes into one logical unit that either entirely succeeds (commit) or entirely fails (abort/rollback). This lets the application pretend that concurrency problems and partial failures don't exist — a massive simplification. But transactions are not a law of nature; they're a trade-off, and many distributed datastores weakened or dropped them for performance. This chapter examines what guarantees transactions actually provide, the surprising ways "isolation" can leak, and what it really takes to be fully <strong>serializable</strong>.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>ACID is marketing as much as definition</strong> — Atomicity (all-or-nothing), Consistency (an app concern, the odd one out), Isolation (concurrent txns don't interfere), Durability (committed data survives).</li>
+        <li><strong>Isolation levels are a hierarchy of compromises</strong> — read committed → snapshot isolation → serializable, each preventing more anomalies at higher cost.</li>
+        <li><strong>Read committed</strong> stops dirty reads and dirty writes; <strong>snapshot isolation (MVCC)</strong> gives each transaction a consistent point-in-time view so readers and writers never block each other.</li>
+        <li><strong>Lost updates, write skew, and phantoms</strong> are the classic race conditions — and snapshot isolation does <em>not</em> prevent write skew.</li>
+        <li><strong>Serializability is the only guarantee that rules out all races</strong>, achieved three ways: actual serial execution, two-phase locking (2PL), or serializable snapshot isolation (SSI).</li>
+        <li><strong>SSI is the modern win</strong> — optimistic concurrency that lets transactions run on a snapshot and aborts only those that actually conflict at commit.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>A transaction makes a bundle of operations atomic and isolated so the application doesn't have to reason about partial failure or interleaving. "Isolation" comes in levels: weaker ones (read committed, snapshot isolation) are fast but allow subtle anomalies like lost updates and write skew; serializability forbids them all. Databases reach serializability via literal serial execution, pessimistic locking (2PL), or optimistic conflict detection (SSI) — the last being the best general-purpose approach.</p>
+    </div>
+
+    <h2>The Meaning of ACID</h2>
+    <p>The safety guarantees of transactions are usually summarized by the acronym <strong>ACID</strong> — but Kleppmann stresses that the term has been diluted into a marketing slogan, with each database meaning something slightly different. Taken precisely:</p>
+    <ul>
+      <li><strong>Atomicity</strong> — a transaction's writes are all-or-nothing. If anything goes wrong partway, the whole thing is aborted and any writes already made are discarded. A better name would be <em>abortability</em>: the key feature is the ability to throw everything away on error and safely retry.</li>
+      <li><strong>Consistency</strong> — the application's invariants (e.g. credits equal debits) hold. This is the odd one out: it's a property of the <em>application</em>, not the database. The database can enforce some constraints, but it's ultimately the app's job to define and preserve invariants. (Joe Hellerstein has noted the C was tacked on to make the acronym work.)</li>
+      <li><strong>Isolation</strong> — concurrently executing transactions don't step on each other; the result is as if they ran one at a time. This is the rich, subtle part, and most of the chapter.</li>
+      <li><strong>Durability</strong> — once a transaction commits, its data won't be lost, even on crash. Achieved with write-ahead logs and replication. (Perfect durability doesn't exist — every copy could be destroyed — so it's about reducing risk.)</li>
+    </ul>
+
+    <h3>Single-Object and Multi-Object Operations</h3>
+    <p>Atomicity and isolation are easy to provide for a single object (most datastores do). The hard, valuable case is <strong>multi-object</strong> transactions, where several rows/documents must change together — e.g. transferring money between accounts, or keeping a denormalized counter in sync with the rows it counts. Many distributed stores abandoned multi-object transactions because they're hard to implement across partitions; the chapter argues they're more valuable than the NoSQL movement assumed. When an operation does fail and aborts, retrying is the right recovery — but with caveats (retrying a transaction that actually succeeded but whose acknowledgement was lost can double-apply side effects).</p>
+
+    <h2>Weak Isolation Levels</h2>
+    <p>Serializable isolation has a performance cost, so databases historically offered <strong>weaker</strong> levels that prevent some anomalies but not others. These weak levels are the source of countless subtle bugs, precisely because they look fine in testing and only break under concurrency.</p>
+
+    <h3>Read Committed</h3>
+    <p>The most basic level. It makes two guarantees: <strong>no dirty reads</strong> (you only see data that has been committed — never another transaction's uncommitted writes) and <strong>no dirty writes</strong> (you only overwrite data that has been committed — preventing two transactions' writes from interleaving badly). It's typically implemented by holding a write lock per row, while reads return the last committed value (remembering the old value while a write is in progress) so reads never block.</p>
+
+    <h3>Snapshot Isolation and Repeatable Read</h3>
+    <p>Read committed still allows <strong>read skew</strong> (a nonrepeatable read): if you read two rows at moments straddling another transaction's commit, you can see an inconsistent combination — like a bank balance that appears to have lost money mid-transfer. <strong>Snapshot isolation</strong> fixes this: each transaction reads from a <em>consistent snapshot</em> of the database as of the moment it started, so it sees all-or-nothing of every other transaction. The key implementation idea is <strong>multi-version concurrency control (MVCC)</strong>: the database keeps several committed versions of each object, and each transaction sees the versions that were committed when it began. The big payoff: <strong>readers never block writers and writers never block readers</strong>. Snapshot isolation is invaluable for long-running reads like backups and analytics. (Confusingly, many databases call this "repeatable read.")</p>
+
+    <h3>Preventing Lost Updates</h3>
+    <p>The <strong>lost update</strong> problem is a read-modify-write race: two transactions read a value, each modifies it, and one write clobbers the other.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">lost update — a read-modify-write race</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># two clients incrementing the same counter (starts at 42)</span>
+T1: <span class="fn">read</span>(counter) → 42
+T2: <span class="fn">read</span>(counter) → 42         <span class="cm"># both saw 42</span>
+T1: <span class="fn">write</span>(counter = 43)
+T2: <span class="fn">write</span>(counter = 43)         <span class="cm"># should be 44! one increment lost</span></code></pre>
+    </div>
+
+    <p>Solutions, roughly in order of preference:</p>
+    <ul>
+      <li><strong>Atomic write operations</strong> — let the database do the increment (<code>UPDATE ... SET n = n + 1</code>); the best option when applicable.</li>
+      <li><strong>Explicit locking</strong> — <code>SELECT ... FOR UPDATE</code> locks the rows you're about to modify.</li>
+      <li><strong>Automatic lost-update detection</strong> — some databases (with snapshot isolation) detect the race and abort the offending transaction.</li>
+      <li><strong>Compare-and-set</strong> — only write if the value hasn't changed since you read it.</li>
+      <li><strong>Conflict resolution</strong> — for replicated data, allow concurrent writes and merge them (avoiding LWW, which simply drops one).</li>
+    </ul>
+
+    <h3>Write Skew and Phantoms</h3>
+    <p><strong>Write skew</strong> is a generalization of the lost update: two transactions read the same set of objects, then each updates <em>different</em> objects based on what it read — and together they violate an invariant that each alone would have preserved. The canonical example: a hospital requires at least one doctor on call. Two doctors, both currently on call, simultaneously request to go off call; each transaction checks "is someone else still on call? yes" and proceeds — leaving nobody on call. This is a <strong>phantom</strong>: a write in one transaction changes the result of a search query in another. Snapshot isolation <em>does not</em> prevent write skew, because the two transactions read and wrote different rows and never directly conflicted. Defenses include explicit locks on the queried rows, or <strong>materializing conflicts</strong> by introducing rows to lock on.</p>
+
+    <div class="callout">
+      <div class="callout-label">interview-grade point</div>
+      <p>The most common trap is assuming snapshot isolation (a.k.a. "repeatable read") is safe for everything. It prevents dirty/nonrepeatable reads and read skew, but <strong>not write skew or phantoms</strong>. If your correctness depends on a check-then-act over a set of rows ("only if no one else has booked this slot"), weak isolation will eventually bite you — you need serializability or an explicit lock.</p>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Anomaly</th><th>Read Committed</th><th>Snapshot Isolation</th><th>Serializable</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Dirty read</td><td class="col-a">Prevented</td><td class="col-b">Prevented</td><td>Prevented</td></tr>
+        <tr><td>Dirty write</td><td class="col-a">Prevented</td><td class="col-b">Prevented</td><td>Prevented</td></tr>
+        <tr><td>Read skew (nonrepeatable)</td><td class="col-a">Possible</td><td class="col-b">Prevented</td><td>Prevented</td></tr>
+        <tr><td>Lost update</td><td class="col-a">Possible</td><td class="col-b">Sometimes detected</td><td>Prevented</td></tr>
+        <tr><td>Write skew / phantom</td><td class="col-a">Possible</td><td class="col-b">Possible</td><td>Prevented</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Serializability</h2>
+    <p>Serializable isolation is the strongest: it guarantees that even though transactions may run concurrently, the end result is the same as if they had run <strong>one at a time, serially</strong>, in some order. It rules out <em>all</em> the race conditions above. There are three ways to implement it.</p>
+
+    <h3>Actual Serial Execution</h3>
+    <p>The simplest idea: literally execute one transaction at a time, on a single thread. This was impractical for decades, but two changes made it viable: RAM got cheap enough to hold many datasets entirely in memory, and OLTP transactions are usually short and few. Systems like VoltDB and Redis do this. To make it work you must avoid interactive multi-statement transactions (network round-trips would stall the single thread), so transactions are submitted as <strong>stored procedures</strong> that run to completion. Throughput is limited to a single CPU core, so to scale you <strong>partition</strong> the data — but cross-partition transactions then need coordination and are much slower.</p>
+
+    <h3>Two-Phase Locking (2PL)</h3>
+    <p>For ~30 years the standard algorithm for serializability. The rule: <strong>readers and writers block each other</strong>. To read an object you take a shared lock; to write it you take an exclusive lock; a write must wait for all readers' shared locks to release, and vice versa (this is the difference from snapshot isolation, where readers and writers never block). Locks are held until the transaction ends. To prevent phantoms, 2PL uses <strong>predicate locks</strong> or, more practically, <strong>index-range locks</strong> that cover a range of possible matches. 2PL is correct but has real downsides: lots of locking overhead, frequent <strong>deadlocks</strong> (transactions waiting on each other, requiring detection and abort), and highly variable, often poor, latency.</p>
+
+    <h3>Serializable Snapshot Isolation (SSI)</h3>
+    <p>A newer algorithm (2008) that delivers full serializability with much better performance, used by PostgreSQL's serializable level and FoundationDB. It's <strong>optimistic</strong>: rather than blocking on locks, transactions proceed on a consistent snapshot (as in snapshot isolation), and the database <em>tracks</em> the reads and writes. At commit time it checks whether the transaction's reads are still valid — i.e. whether a concurrent transaction wrote something that would have changed this transaction's decisions. If a dangerous read-write dependency is detected, the database <strong>aborts</strong> the offending transaction and lets it retry. SSI performs well when contention is low (few aborts) and avoids the lock contention of 2PL, while still ruling out write skew and phantoms.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Transactions trade a little throughput for an enormous reduction in application complexity. The practical wisdom: don't reinvent isolation in application code, know exactly which isolation level your database gives you by default (often read committed or snapshot isolation, <em>not</em> serializable), and reach for serializable — ideally SSI — whenever correctness depends on concurrent decisions over shared data.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What does the C in ACID really mean?</strong> Application-level invariants — it's the app's responsibility, not really a database guarantee, unlike A, I, and D.<br>
+      <strong>Dirty read vs nonrepeatable read?</strong> Dirty read = seeing uncommitted data (stopped by read committed). Nonrepeatable read/read skew = seeing inconsistent values across a transaction (stopped by snapshot isolation).<br>
+      <strong>Does snapshot isolation prevent write skew?</strong> No. Two transactions reading the same set and writing different rows can violate an invariant; you need serializability or explicit locks.<br>
+      <strong>2PL vs SSI?</strong> 2PL is pessimistic (readers/writers block, deadlocks, slow); SSI is optimistic (run on a snapshot, detect conflicts at commit, abort losers) and usually faster under low contention.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-6/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Partitioning</div>
+      </a>
+      <a href="/ddia/chapter-8/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">The Trouble with Distributed Systems</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

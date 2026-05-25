@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.4 of DDIA: how data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protocol Buffers, Thrift, and Avro, and the three modes of dataflow — databases, services, and message passing.">
+<title>DDIA Ch.4 — Encoding &amp; Evolution | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-4/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.4 — Encoding &amp; Evolution">
+<meta property="og:description" content="How data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-4/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.4 — Encoding &amp; Evolution">
+<meta name="twitter:description" content="Backward vs forward compatibility, schema evolution, and the three modes of dataflow.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.4 — Encoding & Evolution","description":"How data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.","datePublished":"2023-04-03","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-4/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-4</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.4</span>
+    <h1 class="article-title">Encoding &amp; Evolution</h1>
+    <div class="article-meta">
+      <span>Apr 03, 2023</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 4 closes Part I of DDIA by tackling a problem that every long-lived system faces: <strong>applications change, and when code changes, the shape of the data it produces changes too</strong>. New features add fields, refactors rename them, and old features get removed. Meanwhile the data already written to disk and in flight over the network doesn't magically update itself. This chapter is about how data is <strong>encoded</strong> (turned into bytes), how those encodings can <strong>evolve</strong> without breaking running systems, and the three ways data flows between processes — through databases, through services, and through message brokers.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Two directions of compatibility</strong> — <em>backward</em>: new code can read old data (usually easy); <em>forward</em>: old code can read new data (harder — it must ignore fields it doesn't understand).</li>
+        <li><strong>Rolling upgrades force both at once</strong> — during a staged deploy, old and new versions run side by side, so the format must be readable in both directions simultaneously.</li>
+        <li><strong>Language-specific serialization is a trap</strong> — Java Serializable, Python pickle, and friends bring lock-in, security holes, poor versioning, and bloat. Avoid for anything persisted or shared.</li>
+        <li><strong>JSON/XML/CSV are ubiquitous but sloppy</strong> — ambiguous numbers, no binary strings, optional schemas. Great for openness, weak for precision and size.</li>
+        <li><strong>Schema-based binary formats win at scale</strong> — Protobuf and Thrift use numbered field tags; Avro matches a writer's schema against a reader's schema. Both encode evolution rules explicitly.</li>
+        <li><strong>"Data outlives code"</strong> — your encoding choice decides how painful it is to evolve a system that's already running in production.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Encoding turns in-memory objects into bytes; decoding reverses it. Because old and new code coexist during rolling upgrades, formats must be both backward- and forward-compatible. Schema-based binary formats (Protobuf, Thrift, Avro) make evolution safe and compact. Data flows three ways — databases (writer and reader separated by time), services (REST/RPC, separated by the network), and message brokers (asynchronous, decoupled) — and every one of them is an encoding boundary.</p>
+    </div>
+
+    <h2>Why Encoding Matters</h2>
+    <p>Programs work with data in (at least) two different representations. <strong>In memory</strong>, data lives in objects, structs, lists, arrays, hash tables, and trees — structures optimized for efficient access and manipulation by the CPU, full of pointers. To write data to a file or send it over the network, you must translate it into a <strong>self-contained sequence of bytes</strong> — there are no pointers in a byte stream that another process can follow. The translation from the in-memory representation to a byte sequence is called <strong>encoding</strong> (also serialization or marshalling), and the reverse is <strong>decoding</strong> (parsing, deserialization, unmarshalling).</p>
+    <p>Because this happens constantly — every database write, every API call, every message — the choice of encoding has outsized effects on efficiency, and, crucially, on how easily the system can change over time.</p>
+
+    <h3>Rolling Upgrades and Coexisting Versions</h3>
+    <p>Large applications are rarely deployed all at once. Server-side systems use a <strong>rolling upgrade</strong> (staged rollout): a few nodes get the new version, you check nothing is broken, then you continue until all nodes are updated. Client-side apps are at the mercy of users who may not update for weeks. The consequence is unavoidable: <strong>old and new versions of the code, and old and new data formats, all coexist in the system at the same time</strong>.</p>
+    <p>For the system to keep running smoothly, compatibility has to hold in both directions:</p>
+    <ul>
+      <li><strong>Backward compatibility</strong> — newer code can read data that was written by older code. This is usually easy: you know the old format, so you write the new code to handle it.</li>
+      <li><strong>Forward compatibility</strong> — older code can read data written by newer code. This is harder, because old code must <em>ignore</em> additions made by a version it knows nothing about, rather than choking on them.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">key distinction</div>
+      <p><strong>Backward</strong> compatibility looks <em>back</em> in time: new code reading old data. <strong>Forward</strong> compatibility looks <em>forward</em>: old code reading data from the future. The tricky one is forward compatibility — it requires the format and the code to gracefully skip unknown fields. Schema-based formats build this in; ad-hoc parsing usually doesn't.</p>
+    </div>
+
+    <h2>Language-Specific Formats</h2>
+    <p>Many languages ship built-in serialization: Java has <code>java.io.Serializable</code>, Python has <code>pickle</code>, Ruby has <code>Marshal</code>. They're tempting because they let you save and restore in-memory objects with minimal code. But Kleppmann is blunt about why they're a bad choice for anything beyond throwaway use:</p>
+    <ul>
+      <li><strong>Language lock-in</strong> — the encoding is tied to one programming language, making it very hard for another system (perhaps written in a different language) to read your data. You've coupled your data format to a language choice that may not survive a decade.</li>
+      <li><strong>Security</strong> — to restore objects, the decoder must instantiate arbitrary classes. This is a notorious source of remote-code-execution vulnerabilities: an attacker who can get your app to deserialize hostile bytes can often run arbitrary code.</li>
+      <li><strong>Versioning is an afterthought</strong> — because these libraries aim for quick convenience, forward and backward compatibility are usually neglected.</li>
+      <li><strong>Efficiency</strong> — Java's built-in serialization is famous for being both bloated and slow.</li>
+    </ul>
+    <p>The verdict: language-specific formats are fine for transient, same-process, same-version use, and a liability for anything you persist or send across a boundary.</p>
+
+    <h2>Textual Formats: JSON, XML, CSV</h2>
+    <p>The standardized, language-independent encodings most developers reach for are <strong>JSON, XML, and CSV</strong>. They're human-readable, supported everywhere, and great for openness. They also have real flaws that bite at scale:</p>
+    <ul>
+      <li><strong>Number ambiguity.</strong> XML and CSV can't distinguish a number from a string of digits without a schema. JSON distinguishes strings and numbers but not integers from floats, and has no notion of precision. Numbers larger than 2^53 lose precision in IEEE 754 doubles — which is exactly why Twitter returns tweet IDs as both a number <em>and</em> a string, to survive JavaScript parsers.</li>
+      <li><strong>No binary strings.</strong> JSON and XML have no native binary type. The workaround is Base64-encoding the data — which works but inflates the size by ~33% and is a hack.</li>
+      <li><strong>Optional, awkward schemas.</strong> XML and JSON have schema languages (XSD, JSON Schema) that are powerful but complicated, and many tools skip them entirely. Without a schema, the application code must hardcode the interpretation of the data.</li>
+      <li><strong>CSV has no schema at all</strong> and is famously vague about escaping, quoting, and what a row even means.</li>
+    </ul>
+    <p>Despite all this, textual formats remain an excellent default for many purposes — for public APIs and human-facing data, ubiquity and tooling usually outweigh the inefficiency. The problems matter most when you're encoding huge volumes or need precise, compact, evolvable data internally.</p>
+
+    <h2>Binary Encoding</h2>
+    <p>For data used only inside your organization, you can choose a format that's far more compact and faster to parse. A first step is a <strong>binary encoding of JSON</strong> — formats like MessagePack, BSON, and others. These shrink the data somewhat, but because they don't have a schema, they must still include all the object's <em>field names</em> in the encoded bytes. That's the key inefficiency the next family of formats removes.</p>
+    <p>The insight: if both the writer and the reader agree on a <strong>schema</strong> ahead of time, the field names never have to travel with the data. You can replace each field name with a compact numeric tag, and you gain type information for free. This is the foundation of Thrift, Protocol Buffers, and Avro.</p>
+
+    <h2>Thrift and Protocol Buffers</h2>
+    <p>Apache Thrift (originally from Facebook) and Protocol Buffers (Protobuf, from Google) are closely related binary encoding libraries. Both require the data to be described by a <strong>schema</strong> written in an interface definition language (IDL), and both ship a code-generation tool that produces classes in many languages from that schema.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">person.proto — Protocol Buffers schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">message</span> <span class="ty">Person</span> {
+  <span class="kw">required</span> <span class="ty">string</span> user_name       = <span class="num">1</span>;   <span class="cm">// tag 1</span>
+  <span class="kw">optional</span> <span class="ty">int64</span>  favorite_number = <span class="num">2</span>;   <span class="cm">// tag 2 — safe to add later</span>
+  <span class="kw">repeated</span> <span class="ty">string</span> interests       = <span class="num">3</span>;   <span class="cm">// 0..n values</span>
+}</code></pre>
+    </div>
+
+    <h3>Field Tags and the Encoding</h3>
+    <p>The crucial detail is that each field has a <strong>numeric tag</strong> (the <code>= 1</code>, <code>= 2</code>, <code>= 3</code>). In the encoded bytes, the tag — not the field name — identifies the field, along with the field's type and value. Field names exist only in the schema, so they cost nothing at runtime. This is what makes the encoding compact.</p>
+
+    <h3>Schema Evolution Rules</h3>
+    <p>Because tags carry the meaning, the rules for changing a schema safely fall out naturally:</p>
+    <ul>
+      <li><strong>You can add a new field</strong> as long as you give it a new tag number. Old code reading new data simply ignores tags it doesn't recognize (forward compatibility). New code reading old data sees the field is missing and uses a default or null (backward compatibility) — which is why <strong>new fields must be optional or have a default</strong>, never <code>required</code>.</li>
+      <li><strong>You can never change a field's tag number</strong>, because that would invalidate every byte stream already written.</li>
+      <li><strong>You can remove a field</strong> only if it was optional, and you must never reuse its tag number afterward.</li>
+      <li><strong>Changing a field's datatype</strong> is possible in limited cases but risks losing precision or truncating values (e.g. 64-bit to 32-bit).</li>
+    </ul>
+    <p>Thrift and Protobuf differ in details — Thrift offers several encoding flavors (BinaryProtocol, CompactProtocol) and a richer set of container types — but the field-tag mechanism and the evolution rules are essentially the same.</p>
+
+    <h2>Avro</h2>
+    <p>Apache Avro (born from the Hadoop ecosystem) takes a different approach. It also uses a schema, but the encoded bytes contain <strong>nothing but values</strong> — no tag numbers, no field names, no type annotations. That makes Avro encodings the most compact of the three, but it raises an obvious question: how does the reader know what the bytes mean?</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">person.avsc — Avro schema (JSON form)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"type"</span>: <span class="str">"record"</span>,
+  <span class="str">"name"</span>: <span class="str">"Person"</span>,
+  <span class="str">"fields"</span>: [
+    {<span class="str">"name"</span>: <span class="str">"userName"</span>,       <span class="str">"type"</span>: <span class="str">"string"</span>},
+    {<span class="str">"name"</span>: <span class="str">"favoriteNumber"</span>, <span class="str">"type"</span>: [<span class="str">"null"</span>, <span class="str">"long"</span>], <span class="str">"default"</span>: null},
+    {<span class="str">"name"</span>: <span class="str">"interests"</span>,      <span class="str">"type"</span>: {<span class="str">"type"</span>: <span class="str">"array"</span>, <span class="str">"items"</span>: <span class="str">"string"</span>}}
+  ]
+}</code></pre>
+    </div>
+
+    <h3>Writer's Schema vs Reader's Schema</h3>
+    <p>Avro's answer is the key idea of the chapter. When data is encoded, it's encoded with the <strong>writer's schema</strong> — whatever version the producing code had. When data is decoded, the reader expects a <strong>reader's schema</strong> — whatever version the consuming code has. These two schemas need <em>not</em> be identical; they only need to be <strong>compatible</strong>. The Avro library resolves the differences by looking at both schemas side by side:</p>
+    <ul>
+      <li>Fields are matched <strong>by name</strong>, not by position or tag, so the order can differ.</li>
+      <li>A field in the writer's schema but not the reader's is <strong>ignored</strong>.</li>
+      <li>A field in the reader's schema but not the writer's is filled in with the reader's <strong>default value</strong>.</li>
+    </ul>
+    <p>This is why every field you add or remove must have a default — that default is exactly what lets schema resolution paper over the version gap, giving both backward and forward compatibility.</p>
+
+    <h3>How the Reader Learns the Writer's Schema</h3>
+    <p>The reader needs the writer's schema to decode. Avro handles this differently per context:</p>
+    <ul>
+      <li><strong>Large files with many records</strong> (the Hadoop case) — the writer's schema is included once at the start of the file, amortized over millions of records.</li>
+      <li><strong>A database of records, each possibly written with a different schema</strong> — store a version number with each record and keep a registry of schema versions (this is exactly what Confluent's Schema Registry does for Kafka).</li>
+      <li><strong>Sending records over a network connection</strong> — the two processes negotiate the schema version on connection setup (an RPC handshake).</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">why avro shines</div>
+      <p>Because Avro has no tag numbers and matches fields by name, it's ideal when schemas are <strong>generated dynamically</strong> — for example, auto-derived from a relational database's columns. If the DB schema changes, you just generate a new Avro schema; there are no tag numbers to assign by hand and no risk of accidentally reusing one. That property is a big reason Avro is popular in Hadoop, Kafka, and data-pipeline tooling.</p>
+    </div>
+
+    <h2>The Merits of Schemas</h2>
+    <p>Stepping back, the schema-based binary formats share a set of advantages that explain why they dominate at scale, even though they're less convenient than dumping JSON:</p>
+    <ul>
+      <li><strong>Compactness</strong> — they can omit field names from the encoded data entirely.</li>
+      <li><strong>Documentation that can't drift</strong> — the schema is a precise, always-up-to-date description of the data, and code is generated from it.</li>
+      <li><strong>Compatibility checking</strong> — keeping a database of schema versions lets you check forward and backward compatibility of a change <em>before</em> you deploy it.</li>
+      <li><strong>Code generation</strong> — for statically typed languages, generated classes give compile-time type checking and IDE autocompletion.</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Textual (JSON/XML)</th><th>Schema binary (Protobuf/Thrift/Avro)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Readability</td><td class="col-a">Human-readable</td><td class="col-b">Opaque bytes (need schema)</td></tr>
+        <tr><td>Size</td><td class="col-a">Verbose; field names repeat</td><td class="col-b">Compact; names dropped</td></tr>
+        <tr><td>Schema</td><td class="col-a">Optional, often skipped</td><td class="col-b">Required and enforced</td></tr>
+        <tr><td>Field identity</td><td class="col-a">By name in the data</td><td class="col-b">By tag (PB/Thrift) or schema (Avro)</td></tr>
+        <tr><td>Evolution</td><td class="col-a">Ad-hoc, error-prone</td><td class="col-b">Explicit rules, checkable</td></tr>
+        <tr><td>Best for</td><td class="col-a">Open/public APIs, debugging</td><td class="col-b">High-volume internal data</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Modes of Dataflow</h2>
+    <p>The second half of the chapter zooms out: whenever you send data to another process that doesn't share your memory, you encode it. There are three main <strong>modes of dataflow</strong>, and each is a place where compatibility matters.</p>
+
+    <h3>Dataflow Through Databases</h3>
+    <p>With a database, the process that <strong>writes</strong> encodes the data and the process that <strong>reads</strong> decodes it. Those two processes may be the same application at different times — so in a sense <em>you are sending a message to your future self</em>. Backward compatibility is clearly needed (future code must read what past code wrote). But forward compatibility matters too, and in a sticky way: during a rolling upgrade, new code may write a record with a new field, and then <strong>old code may read that record, modify it, and write it back</strong>. If the old code doesn't understand the new field, the danger is that it <strong>drops the field it didn't recognize</strong> — silently losing data. The fix is for the format and the code to <em>preserve unknown fields</em> on a round trip.</p>
+    <p>Kleppmann's slogan for this section is <strong>"data outlives code."</strong> You might deploy a new version of your code in minutes, but the data in your database can be years old. Rewriting (migrating) every old record to a new schema is expensive, so most databases instead allow simple schema changes — adding a column with a null default, for example — and decode old rows on the fly. LinkedIn's document store Espresso uses Avro precisely to get these evolution properties.</p>
+
+    <h3>Dataflow Through Services: REST and RPC</h3>
+    <p>When processes communicate over a network, the common arrangement is <strong>clients and servers</strong>: servers expose an API, clients call it. The web works this way (browsers and web servers), and server-side applications are increasingly decomposed into smaller services that call each other — <strong>service-oriented or microservices architecture</strong>. A key goal is that services can be <strong>deployed and evolved independently</strong>, which means old and new versions of clients and servers must interoperate — the same compatibility problem again.</p>
+    <p>Two broad philosophies for web services:</p>
+    <ul>
+      <li><strong>REST</strong> — a design philosophy built on the principles of HTTP: resources identified by URLs, manipulated with the standard verbs (GET, POST, PUT, DELETE), simple formats, and cacheability. RESTful APIs are simple and dominant for public APIs.</li>
+      <li><strong>SOAP</strong> — an XML-based protocol that deliberately avoids using HTTP features, described by a verbose machine-readable contract (WSDL) with heavy tooling and code generation. Now largely out of favor outside legacy enterprise systems.</li>
+    </ul>
+
+    <h3>The Problems with RPC</h3>
+    <p>Remote Procedure Call (RPC) frameworks try to make a network request <strong>look like calling a local function</strong> in your own process (this is called <em>location transparency</em>). Kleppmann argues this abstraction is fundamentally flawed, because a network request differs from a local call in ways you can't paper over:</p>
+    <ul>
+      <li>A local call is <strong>predictable</strong> — it succeeds or fails based only on your code. A network request can fail for reasons outside your control: the request or response may be lost, or the remote machine may be slow or unavailable.</li>
+      <li>A local call returns a result, throws an exception, or never returns (infinite loop / crash). A network request has another outcome: it may <strong>time out with no answer at all</strong>, and you simply don't know whether it succeeded.</li>
+      <li>Retrying a failed request is dangerous if the request actually got through but only the response was lost — you'd execute the action twice unless it's <strong>idempotent</strong>.</li>
+      <li>Latency is wildly variable, and every parameter must be <strong>encoded</strong> into bytes — easy for primitives, fraught for large objects or pointers.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview-grade point</div>
+      <p>This is the chapter's connection to the "fallacies of distributed computing." Pretending the network is reliable, fast, and homogeneous — the lie that location-transparent RPC tells — is precisely what causes systems to behave badly in production. A good answer names the difference: a remote call can time out with an <em>unknown</em> outcome, which a local call never does, and that uncertainty drives the need for idempotency, retries, and timeouts.</p>
+    </div>
+    <p>Modern RPC frameworks are more honest about this: gRPC (built on Protobuf), Thrift, Finagle, and Avro RPC expose the asynchronous nature with futures/promises and streams, and add service discovery. RPC is still a fine fit for requests between services owned by the same organization, typically within one datacenter. For API <strong>evolution</strong>, services have it easier than databases: you can often update all the servers before the clients, so it's reasonable to maintain compatibility only across a few versions, signalling the version in the URL or an HTTP header.</p>
+
+    <h3>Message-Passing Dataflow</h3>
+    <p>The third mode sits between RPC and databases: <strong>asynchronous message passing</strong> via a <strong>message broker</strong> (RabbitMQ, ActiveMQ, Kafka, NATS, and others). A sender (producer) posts a message to a named queue or topic; the broker stores it and delivers it to one or more consumers. Like RPC, the message goes to another process with low latency; like a database, it goes through an intermediary that holds the data temporarily. The advantages over direct RPC:</p>
+    <ul>
+      <li><strong>Buffering</strong> — the broker acts as a buffer if the recipient is unavailable or overloaded, improving reliability.</li>
+      <li><strong>Redelivery</strong> — it can automatically redeliver messages to a process that crashed, preventing message loss.</li>
+      <li><strong>Decoupling</strong> — the sender doesn't need to know the recipient's IP address or port, which is especially useful in a cloud where instances come and go.</li>
+      <li><strong>One-to-many</strong> — one message can be delivered to several consumers (publish/subscribe).</li>
+      <li><strong>Sender independence</strong> — the sender simply publishes and forgets; it usually doesn't expect a reply.</li>
+    </ul>
+    <p>Because messages are just byte sequences with some metadata, all the same encoding and compatibility concerns apply — and the asynchronous, decoupled nature actually makes forward/backward compatibility <em>more</em> important, since producers and consumers are deployed and upgraded entirely independently.</p>
+
+    <h3>Distributed Actor Frameworks</h3>
+    <p>A related model is the <strong>actor model</strong>: concurrency is expressed as actors — independent entities that hold local state and communicate only by sending each other asynchronous messages, sidestepping shared-memory threading problems. In a <strong>distributed actor framework</strong> (Akka, Microsoft Orleans, Erlang OTP), this message-passing model is extended transparently across nodes; because messages are already the unit of communication, the same framework scales an application from one machine to many. The catch returns one last time: when you do a rolling upgrade of an actor-based application, you must still ensure messages encoded by one version can be decoded by another.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Encoding is where the abstract idea of "evolving a system" meets concrete bytes. Pick a format that makes compatibility explicit (schema-based binary for high-volume internal data; JSON for open APIs), and remember that databases, services, and message brokers are all encoding boundaries where old and new code meet. Get this right and you can change a running system fearlessly; get it wrong and every deploy risks silently corrupting or dropping data.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Backward vs forward compatibility?</strong> Backward = new code reads old data (easy). Forward = old code reads new data (hard; it must ignore unknown fields). Rolling upgrades need both at once.<br>
+      <strong>Why are field tags so important in Protobuf/Thrift?</strong> The numeric tag, not the name, identifies a field in the bytes — that's what keeps it compact and what makes the evolution rules (add optional fields with new tags, never reuse a tag) safe.<br>
+      <strong>What's special about Avro?</strong> It matches a writer's schema against a reader's schema by field name, with defaults filling gaps — no tag numbers — which is perfect for dynamically generated schemas like Kafka + Schema Registry.<br>
+      <strong>Why is location-transparent RPC criticized?</strong> A network call can time out with an unknown result, unlike a local call; pretending otherwise ignores partial failure and forces you to design for idempotency, retries, and timeouts.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-3/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Storage &amp; Retrieval</div>
+      </a>
+      <a href="/ddia/chapter-5/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Replication</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

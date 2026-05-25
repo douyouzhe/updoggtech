@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.10 of DDIA: batch processing — the Unix philosophy, MapReduce and distributed filesystems, joins and grouping, dataflow engines like Spark and Flink, and the output of batch workflows.">
+<title>DDIA Ch.10 — Batch Processing | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-10/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.10 — Batch Processing">
+<meta property="og:description" content="The Unix philosophy, MapReduce, joins and grouping, dataflow engines (Spark, Flink), and the output of batch jobs.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-10/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.10 — Batch Processing">
+<meta name="twitter:description" content="From Unix pipes to MapReduce to dataflow engines: how large bounded datasets are processed.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.10 — Batch Processing","description":"The Unix philosophy, MapReduce, joins and grouping, dataflow engines (Spark, Flink), and the output of batch jobs.","datePublished":"2023-04-09","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-10/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-10</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.10</span>
+    <h1 class="article-title">Batch Processing</h1>
+    <div class="article-meta">
+      <span>Apr 09, 2023</span>
+      <span class="separator">·</span>
+      <span>32 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Chapter 10 opens Part III, "Derived Data," which is about systems that take data from one place and transform it into another — indexes, caches, aggregates, models. It starts with <strong>batch processing</strong>: jobs that take a large, <em>bounded</em> input, crunch it, and produce an output, with no expectation of low latency. Kleppmann builds the ideas from the ground up — starting with humble Unix command-line tools, whose design philosophy turns out to be the conceptual ancestor of MapReduce and the modern dataflow engines that power large-scale analytics.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Three system types</strong> — services (online, latency-bound), batch (offline, bounded input, throughput-bound), and stream (near-real-time, unbounded input). This chapter is batch.</li>
+        <li><strong>The Unix philosophy scales up</strong> — do one thing well, compose with a uniform interface (text over pipes), expect to be plugged together. MapReduce is this idea across thousands of machines.</li>
+        <li><strong>MapReduce = map + shuffle + reduce</strong> — mappers extract key-value pairs, the framework sorts and groups by key (the shuffle), reducers process each group. Jobs chain into workflows.</li>
+        <li><strong>Joins are the hard part</strong> — reduce-side (sort-merge) joins are general; map-side (broadcast/partitioned hash) joins are faster when one input is small or co-partitioned. Hot keys cause skew.</li>
+        <li><strong>Immutable inputs make fault tolerance trivial</strong> — jobs are deterministic with no side effects, so a failed task is just rerun.</li>
+        <li><strong>Dataflow engines (Spark, Flink, Tez) beat plain MapReduce</strong> — they model the whole workflow as one job and avoid writing every intermediate step to disk.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Batch processing transforms a big bounded dataset into a derived output. The Unix philosophy — small composable tools with a uniform interface — is the template; MapReduce applies it across a cluster on a distributed filesystem, with map/shuffle/reduce and chained workflows. Joins and skew are the main challenges. Because inputs are immutable and jobs deterministic, fault tolerance is just "rerun the failed task." Dataflow engines improve on MapReduce by keeping intermediate data in memory and scheduling the whole pipeline together.</p>
+    </div>
+
+    <h2>Batch Processing with Unix Tools</h2>
+    <p>Kleppmann begins with a deceptively simple task: find the five most popular pages in a web server log. You can do it with a chain of standard Unix tools, and the example carries surprising depth.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">top 5 URLs from a web log — a Unix pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="fn">cat</span> access.log |             <span class="cm"># stream the log</span>
+  <span class="fn">awk</span> <span class="str">'{print $7}'</span> |          <span class="cm"># extract the URL field</span>
+  <span class="fn">sort</span> |                     <span class="cm"># group identical URLs together</span>
+  <span class="fn">uniq</span> -c |                  <span class="cm"># count each run of duplicates</span>
+  <span class="fn">sort</span> -rn |                 <span class="cm"># order by count, descending</span>
+  <span class="fn">head</span> -n 5                  <span class="cm"># take the top 5</span></code></pre>
+    </div>
+
+    <p>The magic is in the <strong>Unix philosophy</strong>: each program does one thing well, programs are expected to be composed, and they share a <strong>uniform interface</strong> — a stream of text on stdin/stdout. That uniformity is exactly why <code>sort</code> can feed <code>uniq</code> without either knowing about the other. A subtle but important detail: <code>sort</code> handles datasets <em>larger than memory</em> by spilling sorted chunks to disk and merging them (an external merge sort) — the same trick distributed systems use at scale.</p>
+
+    <h2>MapReduce and Distributed Filesystems</h2>
+    <p><strong>MapReduce</strong> is, in spirit, the Unix pipeline spread across thousands of machines. Instead of reading and writing local files, jobs read and write a <strong>distributed filesystem</strong> like HDFS — a shared-nothing pool of disks across many machines, with files split into blocks that are replicated for fault tolerance. A MapReduce job has two callbacks the programmer writes, and one step the framework provides:</p>
+    <ul>
+      <li><strong>Map</strong> — called once per input record; it extracts and emits key-value pairs (e.g. emit <code>(url, 1)</code> for each log line).</li>
+      <li><strong>Shuffle</strong> — the framework sorts all emitted pairs by key and partitions them so that every value for a given key arrives at the same reducer. This sort-and-group step is the heart of MapReduce.</li>
+      <li><strong>Reduce</strong> — called once per distinct key with all its values; it produces the output (e.g. sum the 1s to get a count).</li>
+    </ul>
+    <p>A single map-reduce step is limited, so real jobs are <strong>workflows</strong>: chains of MapReduce jobs where the output of one becomes the input of the next, stitched together by tools like Oozie or Airflow.</p>
+
+    <h3>Joins and Grouping</h3>
+    <p>Bringing related records together — joins — is where most of the engineering lives:</p>
+    <ul>
+      <li><strong>Reduce-side (sort-merge) join.</strong> Both inputs are mapped to emit the join key, the shuffle brings records with the same key to the same reducer, and the reducer joins them. Fully general, but pays the cost of sorting and shuffling all the data.</li>
+      <li><strong>Map-side joins.</strong> Avoid the shuffle when possible. A <strong>broadcast hash join</strong> loads a small input entirely into memory in every mapper. A <strong>partitioned hash join</strong> works when both inputs are already partitioned the same way on the join key, so each mapper only needs the matching partition.</li>
+      <li><strong>Handling skew.</strong> A "hot" key (a celebrity in a social graph) sends a huge amount of data to one reducer, which becomes a straggler. Techniques like skewed/sharded joins split the hot key's load across several reducers.</li>
+    </ul>
+
+    <h3>MapReduce vs Distributed Databases</h3>
+    <p>MapReduce embodies a different philosophy from MPP (massively parallel processing) analytic databases. MPP databases want data loaded into a schema first and run optimized SQL. MapReduce (and the Hadoop ecosystem) embraces <strong>schema-on-read</strong>: dump raw data into the distributed filesystem and figure out its structure when you read it, enabling diverse, evolving processing (SQL, ML, custom code) over the same raw data. This made Hadoop a flexible "data lake" at the cost of MPP's query optimization.</p>
+
+    <h3>The Output and Fault Tolerance</h3>
+    <p>Batch jobs typically produce <em>bulk</em> outputs: building a search index (how Google originally used MapReduce), training a recommendation/ML model, or constructing read-only key-value stores to be loaded into serving systems. The crucial design principle is that <strong>inputs are immutable and jobs have no side effects</strong> — a job only reads its input and writes a fresh output, never modifying the input in place. This gives fault tolerance almost for free: if a task fails (machine crash), the framework simply <strong>reruns it</strong> on another machine, because the deterministic computation on the same immutable input yields the same result. It also makes experimentation safe — a buggy job can be rerun without having corrupted anything.</p>
+
+    <h2>Beyond MapReduce: Dataflow Engines</h2>
+    <p>MapReduce's biggest inefficiency: it <strong>materializes intermediate state to disk</strong> (the distributed filesystem) between every map-reduce step. For a workflow of many steps, this means writing and re-reading (and re-replicating) gigabytes repeatedly, and each step can't start until the previous fully finishes. <strong>Dataflow engines</strong> — Spark, Tez, Flink — fix this by modeling the entire workflow as a single job of connected operators:</p>
+    <ul>
+      <li>They avoid unnecessary materialization, <strong>pipelining</strong> data between operators and keeping it in memory where possible.</li>
+      <li>They schedule the whole graph together, so operators can overlap and the engine can optimize across step boundaries.</li>
+      <li>Sorting (the expensive shuffle) is done only where actually needed, not at every boundary.</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>MapReduce</th><th>Dataflow engine (Spark/Flink)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Intermediate state</td><td class="col-a">Written to disk every step</td><td class="col-b">Pipelined / kept in memory</td></tr>
+        <tr><td>Job model</td><td class="col-a">Independent map+reduce steps</td><td class="col-b">One operator graph (DAG)</td></tr>
+        <tr><td>Latency</td><td class="col-a">High (disk + step barriers)</td><td class="col-b">Lower (overlap, memory)</td></tr>
+        <tr><td>Fault tolerance</td><td class="col-a">Re-read materialized output</td><td class="col-b">Recompute from lineage (Spark RDDs)</td></tr>
+        <tr><td>Iterative jobs</td><td class="col-a">Painful (re-read each pass)</td><td class="col-b">Efficient (cache in memory)</td></tr>
+      </tbody>
+    </table>
+
+    <p>The trade-off is fault tolerance: with no materialized intermediate state to fall back on, dataflow engines must <strong>recompute</strong> lost data. Spark tracks the <em>lineage</em> of each dataset (the operations that produced it) so it can recompute just the lost partitions — provided the computation was deterministic. For graph and iterative algorithms (e.g. PageRank), specialized models like Pregel's "think like a vertex" approach pass messages between vertices across iterations far more efficiently than re-running MapReduce each pass.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Batch processing's enduring lessons are about <em>design discipline</em>, not just throughput: immutable inputs and side-effect-free, deterministic jobs make fault tolerance, retries, and experimentation trivial. MapReduce proved the model at scale by borrowing the Unix philosophy; dataflow engines refined it by not touching the disk between every step. The same "derived data from immutable inputs" idea reappears, in continuous form, in stream processing.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What are the three stages of MapReduce?</strong> Map (emit key-value pairs), shuffle (framework sorts and groups by key), reduce (process each key's values). The shuffle is the expensive, essential middle.<br>
+      <strong>Reduce-side vs map-side join?</strong> Reduce-side (sort-merge) is general but shuffles everything; map-side (broadcast or partitioned hash) skips the shuffle when one input is small or both are co-partitioned.<br>
+      <strong>Why is batch fault tolerance easy?</strong> Inputs are immutable and jobs deterministic with no side effects, so a failed task is simply rerun and produces the same result.<br>
+      <strong>Why are Spark/Flink faster than MapReduce?</strong> They model the workflow as one operator graph and pipeline data in memory instead of materializing every intermediate step to disk.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-9/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Consistency &amp; Consensus</div>
+      </a>
+      <a href="/ddia/chapter-11/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Stream Processing</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>

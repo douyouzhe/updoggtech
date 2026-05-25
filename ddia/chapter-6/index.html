@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Ch.6 of DDIA: partitioning (sharding) — key-range vs hash partitioning, hot spots and skew, partitioning secondary indexes by document vs term, rebalancing, and request routing.">
+<title>DDIA Ch.6 — Partitioning | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-6/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.6 — Partitioning">
+<meta property="og:description" content="Key-range vs hash partitioning, hot spots, secondary indexes by document vs term, rebalancing, and request routing.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-6/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="DDIA Ch.6 — Partitioning">
+<meta name="twitter:description" content="How databases split data across nodes: partitioning schemes, rebalancing, and routing.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.6 — Partitioning","description":"Key-range vs hash partitioning, hot spots, secondary indexes by document vs term, rebalancing, and request routing.","datePublished":"2023-04-05","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-6/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/">home</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-6</span>
+    </div>
+    <span class="article-tag">DDIA · Ch.6</span>
+    <h1 class="article-title">Partitioning</h1>
+    <div class="article-meta">
+      <span>Apr 05, 2023</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Replication (Chapter 5) keeps copies of the same data on several nodes. But if a dataset is too big or a query load too heavy for any single node, you need to break the data into pieces called <strong>partitions</strong> (also known as shards). Chapter 6 is about how to split data sensibly so that each piece can live on a different node, letting you scale storage and throughput roughly linearly with the number of machines. Partitioning is almost always combined with replication: each partition is itself replicated across several nodes for fault tolerance.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Partitioning = scalability</strong> — spread data and query load across many nodes so no single machine is the bottleneck. Combined with replication for fault tolerance.</li>
+        <li><strong>Key-range partitioning</strong> keeps keys sorted, enabling efficient range scans, but risks hot spots when access is skewed (e.g. a timestamp key sends all of today's writes to one partition).</li>
+        <li><strong>Hash partitioning</strong> spreads load evenly but destroys key ordering, so range queries must hit every partition.</li>
+        <li><strong>Hot spots can survive hashing</strong> — a single celebrity key still lands on one partition; the app must split it (e.g. random suffix).</li>
+        <li><strong>Secondary indexes don't map cleanly to partitions</strong> — local (by document) indexes make writes cheap but reads scatter/gather; global (by term) indexes make reads cheap but writes touch many partitions.</li>
+        <li><strong>Never use hash mod N for rebalancing</strong> — changing N moves almost everything. Use a fixed large number of partitions, or dynamic split/merge instead.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Choose a partitioning scheme (key-range for range scans, hash for even load) and watch for skew and hot spots. Secondary indexes force a trade-off between cheap writes (local/document-partitioned) and cheap reads (global/term-partitioned). Rebalancing should move as little data as possible — fixed partition counts or dynamic splitting, never <code>hash mod N</code>. Finally, something must route each request to the right partition: a routing tier, a partition-aware client, or a coordination service like ZooKeeper.</p>
+    </div>
+
+    <h2>Partitioning and Replication, Together</h2>
+    <p>Partitioning and replication are orthogonal and usually combined. The data is split into partitions, and each partition is stored on multiple nodes per the replication scheme of Chapter 5. A node may store more than one partition; in a leader-follower setup, each node can be the leader for some partitions and a follower for others. Keeping the two ideas separate in your head is essential — partitioning is about <em>splitting</em>, replication is about <em>copying</em>.</p>
+
+    <h2>Partitioning of Key-Value Data</h2>
+    <p>The goal is to spread the data and the query load evenly. If the split is unfair, some partitions get more data or queries than others — this is called <strong>skew</strong>, and a partition with disproportionately high load is a <strong>hot spot</strong>. A hot spot defeats the purpose of partitioning: one overloaded node bottlenecks the whole system while others sit idle. The simplest way to avoid skew would be to assign records to nodes randomly, but then you'd have no way to find a particular record without querying every node. So we need a scheme that's both even and lookup-friendly. Two main approaches.</p>
+
+    <h3>Partitioning by Key Range</h3>
+    <p>Assign a continuous <strong>range of keys</strong> (from some minimum to some maximum) to each partition, like the volumes of a paper encyclopedia (A–B, C–D, …). If you know the boundaries, you know which partition holds a key. The boundaries need not be evenly spaced — they're chosen to balance the data. The big advantage is that <strong>keys stay sorted within each partition</strong>, so range scans are efficient. The big risk is hot spots from a skewed access pattern: if the key is a timestamp, then every write for the current day goes to the same partition, overloading it while historical partitions are idle. Used by HBase and Bigtable. A common mitigation is to prefix the key with something else (e.g. a sensor name) so writes spread out.</p>
+
+    <h3>Partitioning by Hash of Key</h3>
+    <p>Apply a hash function to each key and assign hash ranges to partitions. A good hash function turns skewed input into a uniform distribution, so data and load spread evenly. The cost: you <strong>lose the ability to do efficient range queries</strong>, because adjacent keys are now scattered across all partitions — a range scan must query every partition. Used by Cassandra and MongoDB (with hash-based sharding). Cassandra offers a compromise with <strong>compound primary keys</strong>: the first column is hashed to choose the partition, and the remaining columns are used to sort data <em>within</em> that partition — so you get even distribution across partitions but efficient range scans within one.</p>
+
+    <h3>Hot Spots Even with Hashing</h3>
+    <p>Hashing reduces but doesn't eliminate hot spots. A single heavily-accessed key — a celebrity's user ID receiving millions of interactions — still hashes to a single partition, and no hash function helps because it's one key. Today most systems can't compensate automatically; it's left to the application. A typical trick is to add a random two-digit suffix to the hot key, splitting its writes across, say, 100 keys on different partitions — at the cost of having to read and combine all 100 on reads.</p>
+
+    <div class="callout">
+      <div class="callout-label">key trade-off</div>
+      <p>Key-range vs hash is fundamentally a trade between <strong>range-query efficiency</strong> and <strong>even load distribution</strong>. Range partitioning gives you cheap scans but invites hot spots on sequential keys; hash partitioning gives you even load but makes range scans expensive. Cassandra's compound key is the clever middle ground.</p>
+    </div>
+
+    <h2>Partitioning and Secondary Indexes</h2>
+    <p>Everything so far assumed a key-value model where you look up records by primary key. Real systems also have <strong>secondary indexes</strong> (find all records where color = red). Secondary indexes don't map neatly onto partitions, and there are two ways to handle them.</p>
+
+    <h3>By Document (Local Index)</h3>
+    <p>Each partition maintains its own secondary index covering only the documents <em>in that partition</em> — a <strong>local index</strong>. Writes are simple: you only touch the one partition holding the document. But reads are expensive: since the matching documents could be in any partition, a query on the secondary index must be sent to <em>all</em> partitions and the results combined. This <strong>scatter/gather</strong> approach makes read latency hostage to the slowest partition and is prone to tail-latency amplification. Most databases (MongoDB, Cassandra, Elasticsearch, Riak) use document-partitioned indexes.</p>
+
+    <h3>By Term (Global Index)</h3>
+    <p>Construct a <strong>global index</strong> that covers all partitions, but partition the index itself — by the term being looked up. For example, all records with color = red are listed in one index partition regardless of where the documents live. Reads are now efficient: a query goes to just the partition holding that term. But writes are slower and more complex: a single document write may affect multiple terms, and thus multiple index partitions, often requiring a distributed transaction. In practice global secondary indexes are usually updated <strong>asynchronously</strong>, so the index may briefly lag the data.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Aspect</th><th>Local (by document)</th><th>Global (by term)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Index scope</td><td class="col-a">One partition's own docs</td><td class="col-b">All partitions, split by term</td></tr>
+        <tr><td>Writes</td><td class="col-a">Cheap — one partition</td><td class="col-b">Costly — many partitions</td></tr>
+        <tr><td>Reads</td><td class="col-a">Scatter/gather all partitions</td><td class="col-b">Hit one partition</td></tr>
+        <tr><td>Freshness</td><td class="col-a">Synchronous</td><td class="col-b">Often async (lags)</td></tr>
+        <tr><td>Used by</td><td class="col-a">MongoDB, Cassandra, ES</td><td class="col-b">DynamoDB global indexes</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Rebalancing Partitions</h2>
+    <p>Over time things change: query throughput grows (add CPUs), the dataset grows (add disks), or a machine fails (others must take over). All of these require moving data and load from one node to another — <strong>rebalancing</strong>. A good rebalancing scheme has three properties: load ends up fairly shared, the database keeps serving reads and writes during the move, and only the <em>necessary</em> data is moved (to limit network and disk I/O).</p>
+
+    <h3>The hash mod N Trap</h3>
+    <p>The tempting naive scheme — assign key to <code>hash(key) mod N</code> nodes — is exactly the wrong choice, because changing <code>N</code> reshuffles almost every key.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">why hash mod N is bad</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>key 123456,  hash = 123456
+
+  N = 10 :  123456 mod 10 = 6    → node 6
+  N = 11 :  123456 mod 11 = 3    → node 3   (moved!)
+  N = 12 :  123456 mod 12 = 0    → node 0   (moved again!)
+
+  adding ONE node remaps almost every key → huge data movement</code></pre>
+    </div>
+
+    <h3>Better Strategies</h3>
+    <ul>
+      <li><strong>Fixed number of partitions.</strong> Create many more partitions than nodes up front (say 1,000 partitions for 10 nodes) and assign several to each node. When a node is added, it steals whole partitions from existing nodes until balance is restored; only entire partitions move, not individual keys. Used by Riak, Elasticsearch, Couchbase. The catch: you must pick the partition count wisely at the start, since it's fixed.</li>
+      <li><strong>Dynamic partitioning.</strong> Partitions split when they grow past a size threshold and merge when they shrink, like a B-tree — so the number of partitions adapts to the data volume. Used by HBase and RethinkDB. Avoids guessing the count in advance.</li>
+      <li><strong>Proportional to nodes.</strong> Have a fixed number of partitions <em>per node</em>; adding a node splits some existing partitions to take over. Used by Cassandra.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">operational gotcha</div>
+      <p>Fully <strong>automatic</strong> rebalancing combined with automatic failure detection is dangerous: if a node is merely slow (not dead), automatically moving its load elsewhere adds load to an already-stressed system and can cascade into a wider outage. Many systems keep a human in the loop to approve rebalancing — slower, but far safer.</p>
+    </div>
+
+    <h2>Request Routing</h2>
+    <p>Once data is spread across nodes and partitions move around, a client needs to know <strong>which node to contact</strong> for a given key — an instance of the general <em>service discovery</em> problem. There are three broad approaches:</p>
+    <ul>
+      <li><strong>Contact any node</strong> (e.g. via a round-robin load balancer); if that node doesn't own the key, it forwards the request to the right node and relays the reply.</li>
+      <li><strong>Send all requests to a routing tier</strong> that knows the partition assignment and acts as a partition-aware load balancer.</li>
+      <li><strong>Make clients partition-aware</strong> so they connect directly to the owning node.</li>
+    </ul>
+    <p>The hard part is that whoever makes the routing decision must have up-to-date knowledge of partition assignments, which change during rebalancing. Many systems delegate this to a separate <strong>coordination service like ZooKeeper</strong>, which authoritatively tracks the cluster's partition-to-node mapping and notifies routers of changes. (Cassandra and Riak instead use a gossip protocol so nodes share state among themselves, avoiding the external dependency.) For analytic workloads, <strong>massively parallel processing (MPP)</strong> query engines take this further, splitting a single complex query into stages that run across many partitions in parallel.</p>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Partitioning is how databases scale beyond one machine, and the recurring enemy is skew: an uneven split that creates a hot spot and wastes your cluster. Pick the scheme that matches your queries (range vs hash), handle secondary indexes deliberately (cheap writes vs cheap reads), rebalance by moving whole partitions rather than rehashing the world, and have a robust story for routing requests as partitions move.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Key-range vs hash partitioning?</strong> Range keeps keys sorted (cheap scans) but risks hot spots on sequential keys; hash spreads load evenly but kills range queries. Cassandra's compound key gets both.<br>
+      <strong>Local vs global secondary index?</strong> Local (by document) = cheap writes, scatter/gather reads; global (by term) = cheap reads, expensive multi-partition writes (usually async).<br>
+      <strong>Why not hash mod N?</strong> Changing N remaps almost every key. Use a fixed large partition count or dynamic split/merge so only whole partitions move.<br>
+      <strong>How are requests routed?</strong> Via a routing tier, partition-aware clients, or any-node forwarding — usually backed by a coordination service (ZooKeeper) or gossip to track assignments.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-5/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Replication</div>
+      </a>
+      <a href="/ddia/chapter-7/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Transactions</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+</body>
+</html>
