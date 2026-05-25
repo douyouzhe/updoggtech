@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
-<title>NoSQL — updoggtech</title>
+<title>NoSQL — Document, Key-Value, Column-Family & CAP Theorem | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/nosql/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="NoSQL — Document, Key-Value, Column-Family & CAP Theorem">
+<meta property="og:description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/nosql/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/nosql-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NoSQL — Document, Key-Value, Column-Family & CAP Theorem">
+<meta name="twitter:description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"NoSQL — Document, Key-Value, Column-Family & CAP Theorem","description":"A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/nosql/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +105,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -135,6 +156,18 @@
 
   <div class="article-body">
     <p>NoSQL ("Not Only SQL") is a broad category of database systems that abandon the relational table model in exchange for flexible schemas, horizontal scalability, and data models tuned for specific access patterns. They emerged as web-scale companies ran into the limits of relational databases under massive read/write throughput and rapidly evolving schemas.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Key-value</strong> — O(1) reads/writes by exact key; no schema, no queries; ideal for sessions, caching, rate limiting.</li>
+        <li><strong>Document</strong> — self-describing JSON/BSON; flexible schema, nested objects without joins; ideal for user profiles, catalogs.</li>
+        <li><strong>Column-family</strong> — rows keyed by row key, columns grouped by family stored together; ideal for time-series and high-write analytics workloads.</li>
+        <li><strong>Graph</strong> — native traversal of nodes and edges; ideal for social graphs, recommendations, fraud detection.</li>
+        <li><strong>CAP theorem</strong> — partition tolerance is mandatory; the real choice is CP (HBase, ZooKeeper) vs AP (Cassandra, DynamoDB in eventual mode).</li>
+        <li><strong>Default to SQL</strong>; reach for NoSQL only when you have a specific bottleneck that a specialized data model addresses.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -235,6 +268,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>NoSQL is not a replacement for relational databases — it is a set of specialized tools. Start with SQL; it handles most use cases well. Reach for NoSQL when you have a specific bottleneck: key-value for cache-speed lookups, document for flexible hierarchical data, column-family for high-write time-series, graph for deep relationship traversal. Always model your data around your query patterns, not the other way around.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Explain CAP theorem and what "P is mandatory" means.</strong> In any distributed system, network partitions will occur — so you can't sacrifice P. The real tradeoff is CP (return an error or block during partition to stay consistent, e.g. HBase) vs AP (return possibly stale data to stay available, e.g. Cassandra).<br>
+      <strong>When would you choose column-family over document stores?</strong> When your write throughput is very high and your read patterns are known upfront — column-family stores like Cassandra excel at time-series and analytics because columns in the same family are stored together on disk.<br>
+      <strong>Why can't you just use NoSQL for everything?</strong> NoSQL trades multi-table ACID transactions and flexible ad-hoc queries for scale and schema flexibility. If your domain has complex relationships and you need joins or cross-entity transactions, SQL is almost always simpler and safer.</p>
     </div>
 
     <div class="article-nav">

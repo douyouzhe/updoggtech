@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
-<title>Caching — updoggtech</title>
+<title>Caching — Cache-Aside, Eviction Policies & Redis vs Memcached | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/caching/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Caching — Cache-Aside, Eviction Policies & Redis vs Memcached">
+<meta property="og:description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/caching/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/caching-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Caching — Cache-Aside, Eviction Policies & Redis vs Memcached">
+<meta name="twitter:description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Caching — Cache-Aside, Eviction Policies & Redis vs Memcached","description":"A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/caching/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +105,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -135,6 +156,18 @@
 
   <div class="article-body">
     <p>Caching stores the result of an expensive operation — a database query, an API call, a computed value — in fast storage so subsequent requests can be served without repeating the work. It is one of the highest-leverage performance techniques in distributed systems: a well-placed cache can reduce database load by orders of magnitude and cut response times from hundreds of milliseconds to single digits.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Cache-aside</strong> (lazy loading) is the safest default — only cache what's actually requested, and degrade gracefully on cache failure.</li>
+        <li><strong>Write-through</strong> keeps cache and DB in sync but wastes space on data that's never read; <strong>write-behind</strong> maximizes write throughput but risks data loss on crash.</li>
+        <li><strong>LRU</strong> is the general-purpose eviction policy; use <strong>LFU</strong> for stable hot-key workloads; add <strong>TTL jitter</strong> to prevent avalanche.</li>
+        <li><strong>Cache stampede</strong> — when a popular key expires, many threads hit the DB simultaneously; fix with mutex locking or probabilistic early refresh.</li>
+        <li><strong>Redis vs Memcached</strong> — Redis wins for rich data structures, persistence, and pub/sub; Memcached wins for pure simple string throughput at scale.</li>
+        <li><strong>Bloom filter</strong> prevents cache penetration for non-existent keys without a DB lookup.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -251,6 +284,13 @@ r = redis.<span class="fn">Redis</span>(host=<span class="str">'localhost'</span
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Cache-aside is the safest starting point — it is simple, only caches what is actually needed, and degrades gracefully on cache failure. Add TTL jitter from day one to avoid avalanche. Reach for Redis when you need persistence, pub/sub, or rich data structures; Memcached when you need the absolute simplest key-value store with minimal operational overhead.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Cache stampede vs cache avalanche — what's the difference?</strong> Stampede: one popular key expires and many threads hit the DB at once. Avalanche: many keys expire simultaneously sending a flood of misses. Both are solved with TTL jitter; stampede additionally needs mutex locking or early probabilistic refresh.<br>
+      <strong>How do you handle cache penetration?</strong> Cache negative results (a sentinel like "__null__" with a short TTL) or place a Bloom filter in front to reject invalid keys before hitting the cache or DB.<br>
+      <strong>Redis or Memcached?</strong> Redis for anything beyond simple string caching — it supports persistence, pub/sub, sorted sets for leaderboards, and streams. Memcached only when you need the absolute highest throughput for plain string lookups with minimal ops overhead.</p>
     </div>
 
     <div class="article-nav">

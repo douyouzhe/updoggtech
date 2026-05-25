@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
-<title>Design a URL Shortener — updoggtech</title>
+<title>Design a URL Shortener (TinyURL) — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/url-shortener/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design a URL Shortener (TinyURL) — System Design">
+<meta property="og:description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
+<meta property="og:url" content="https://updoggtech.com/system-design/url-shortener/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/url-shortener-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Design a URL Shortener (TinyURL) — System Design">
+<meta name="twitter:description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a URL Shortener (TinyURL)","description":"A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/url-shortener/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +127,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -157,6 +178,17 @@
 
   <div class="article-body">
     <p>A URL shortener is a deceptively simple service: take a long URL, return a short one, and redirect the short one back to the original. The design challenge lies in generating short IDs that are unique at scale, handling collisions, keeping redirect latency near zero, and purging expired links without impacting hot-path performance.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>6-char base-62 slug</strong> — 62⁶ &gt; 56 billion unique slugs; sufficient for years of URL volume at this scale.</li>
+        <li><strong>ID generation beats hashing</strong> — Snowflake or range assignment avoids collisions at the source; MD5/SHA-1 prefix collisions require detection + retry loops.</li>
+        <li><strong>Bloom filter for collision check</strong> — Redis Bloom filter: negative = definitely new (safe to write); positive = maybe exists (fall back to DB lookup). Keeps the fast path cheap.</li>
+        <li><strong>Redis caching on reads</strong> — absorbs the 10:1 read-to-write ratio; most redirects never hit the database.</li>
+        <li><strong>301 vs. 302 is a product decision</strong> — 301 caches in browser (fewer hits, no analytics); 302 hits shortener every time (full analytics, higher load).</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -272,6 +304,13 @@ GET /{slug}
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>URL shortener design is a study in making boring things scale: ID generation beats hashing (avoid collisions at the source), Bloom filters make collision checks cheap, Redis caching absorbs the 10:1 read amplification, and slug length arithmetic confirms 6 characters is sufficient. The subtle choices — 301 vs. 302, which purge strategy — are driven by product requirements, not technical constraints.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why prefer ID generation over hashing for slug generation?</strong> Hash functions (MD5, SHA-1) can produce the same 6-character prefix for different URLs — collision detection and retry add complexity. Snowflake or range-based ID generation eliminates collisions at the source.<br>
+      <strong>How does the Bloom filter speed up collision detection?</strong> A Bloom filter negative (bit not set) guarantees the slug is new — no DB lookup needed. Only positives require a DB fallback, and positives are rare. This keeps the write fast path O(1) in memory.<br>
+      <strong>301 or 302 redirect?</strong> 301 (permanent) is browser-cached — lower server load but click analytics are lost after the first visit. 302 (temporary) hits the shortener on every click — full analytics at higher cost. Choose based on whether analytics are a product requirement.</p>
     </div>
 
     <div class="article-nav">

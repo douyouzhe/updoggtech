@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
-<title>Design a Video Streaming Platform — updoggtech</title>
+<title>Design a Video Streaming Platform (Netflix/YouTube) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/video-streaming/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design a Video Streaming Platform (Netflix/YouTube)">
+<meta property="og:description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
+<meta property="og:url" content="https://updoggtech.com/system-design/video-streaming/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/video-streaming-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Design a Video Streaming Platform (Netflix/YouTube)">
+<meta name="twitter:description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Video Streaming Platform (Netflix/YouTube)","description":"A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/video-streaming/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +127,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -157,6 +178,18 @@
 
   <div class="article-body">
     <p>A video streaming platform like YouTube or Netflix must handle massive storage (hundreds of terabytes of daily uploads), complex multi-format transcoding, global CDN delivery with minimal buffering, and ML-driven recommendations that keep users engaged. The upload pipeline and the playback pipeline are effectively two separate systems with very different constraints.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>TCP over UDP for on-demand</strong> — retransmission eliminates packet-loss artifacts; UDP dominates live streaming where latency beats quality.</li>
+        <li><strong>Upload pipeline via Kafka</strong> — raw video fans out to content filtering, classification, and multi-resolution transcoding in parallel before landing in blob storage.</li>
+        <li><strong>Blob storage (S3) + Cassandra</strong> — binary files in object storage; video metadata (fixed query patterns by ID) in Cassandra for high write throughput.</li>
+        <li><strong>CDN + lazy segment loading</strong> — serve only the segments being watched; dramatically cuts bandwidth and startup latency.</li>
+        <li><strong>Recommendations offline</strong> — pre-compute from Kafka-buffered watch signals; serve from key-value store at O(1) lookup.</li>
+        <li><strong>Redis cache-aside for auth</strong> — load on first miss; lazy loading avoids caching data that is never requested.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -267,6 +300,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Video streaming is two systems: upload (complex multi-stage pipeline optimized for throughput) and playback (optimized for latency via CDN and lazy loading). TCP's no-packet-loss guarantee is worth the latency tradeoff for on-demand streaming. Recommendations belong offline — pre-compute once, serve fast from key-value store, retrain continuously from Kafka-buffered behavior signals.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why TCP over UDP for on-demand video?</strong> TCP retransmission eliminates dropped-packet artifacts (pixelation, blocking); the slight latency increase is acceptable for buffered on-demand content. UDP is preferred for live streaming where low latency matters more than perfect quality.<br>
+      <strong>Why store recommendations in a key-value store rather than computing them on-the-fly?</strong> Recommendation models are expensive to run; pre-computing offline and serving from a key-value store by user ID gives O(1) lookup with no inference latency on the critical path.<br>
+      <strong>Why use Cassandra for video metadata?</strong> Queries are fixed-pattern (by video ID), write throughput is high, and there are no relational joins needed — Cassandra's wide-column model is ideal.</p>
     </div>
 
     <div class="article-nav">

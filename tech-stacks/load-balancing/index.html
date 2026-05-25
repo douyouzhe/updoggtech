@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
-<title>Load Balancing — updoggtech</title>
+<title>Load Balancing — Algorithms, Layer 4 vs 7, Health Checks | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/load-balancing/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Load Balancing — Algorithms, Layer 4 vs 7, Health Checks">
+<meta property="og:description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/load-balancing/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/load-balancing-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Load Balancing — Algorithms, Layer 4 vs 7, Health Checks">
+<meta name="twitter:description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Load Balancing — Algorithms, Layer 4 vs 7, Health Checks","description":"A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/load-balancing/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -96,6 +109,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -139,6 +160,17 @@
 
   <div class="article-body">
     <p>A <strong>load balancer</strong> sits between clients and a pool of backend servers, distributing incoming traffic so no single server becomes a bottleneck. It is the cornerstone of horizontal scalability: add more servers and the load balancer spreads the work automatically. Without one, scaling out is operationally impossible and a single server failure takes down the entire service.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Layer 4 vs Layer 7</strong> — L4 routes on TCP/UDP headers (fast, no content inspection); L7 routes on HTTP path/headers/cookies (smarter, slightly more CPU).</li>
+        <li><strong>Round Robin</strong> works well for uniform workloads; <strong>Least Connections</strong> adapts to variable-duration requests.</li>
+        <li><strong>IP Hash</strong> gives session affinity without storing state, but reshuffles all clients when a server is removed.</li>
+        <li><strong>Sticky sessions</strong> are a workaround for stateful servers — the real fix is externalizing session state to Redis.</li>
+        <li><strong>LB redundancy</strong> — run active-passive or active-active pairs with a VIP; the LB itself must not be a SPOF.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -230,6 +262,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Choose Layer 7 for HTTP workloads that need path routing, TLS termination, or header inspection. Choose Layer 4 for raw TCP throughput or non-HTTP protocols. Pick your algorithm based on request homogeneity: round-robin for uniform workloads, least-connections for variable ones, IP hash for session affinity. Always run at least two load balancers to avoid introducing the very SPOF you set out to eliminate.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Layer 4 vs Layer 7 — when do you pick each?</strong> Layer 4 for raw TCP throughput or non-HTTP protocols; Layer 7 when you need path-based routing, TLS termination, or header-based decisions.<br>
+      <strong>How does a load balancer detect a failed server?</strong> Active health checks (synthetic probes to /health on a schedule) or passive health checks (infer from 5xx error rates on real traffic).<br>
+      <strong>Why are sticky sessions a problem?</strong> They reduce load distribution and mean all session data is lost if that server goes down — the fix is moving session state to a shared store like Redis.</p>
     </div>
 
     <div class="article-nav">

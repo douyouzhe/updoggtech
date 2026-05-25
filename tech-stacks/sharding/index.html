@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
-<title>Sharding — updoggtech</title>
+<title>Sharding — Consistent Hashing, Shard Keys & Database Partitioning | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/sharding/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
+<meta property="og:description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/sharding/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/sharding-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
+<meta name="twitter:description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Sharding — Consistent Hashing, Shard Keys & Database Partitioning","description":"A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/sharding/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +105,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -135,6 +156,17 @@
 
   <div class="article-body">
     <p>Sharding is a technique for <strong>horizontally partitioning</strong> a database across multiple independent nodes, each called a shard, so that the dataset and the write load are distributed rather than concentrated on a single machine. When a single database server can no longer handle the volume of data or query throughput — and vertical scaling (bigger CPU, more RAM) has hit its ceiling — sharding is the next step.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Hash-based sharding</strong> gives even distribution but breaks range queries and requires full data migration when node count changes.</li>
+        <li><strong>Range-based sharding</strong> enables efficient range scans but risks write hotspots on sequential keys like timestamps or auto-increment IDs.</li>
+        <li><strong>Consistent hashing</strong> minimizes data movement to ~k/n keys when adding one node; virtual nodes smooth out uneven distribution.</li>
+        <li><strong>Shard key design is the most consequential decision</strong> — high cardinality, even write distribution, aligned with query patterns.</li>
+        <li><strong>Cross-shard joins</strong> must be done in the application layer (fetch + merge in memory) — avoid them by designing the shard key around your access patterns.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -233,6 +265,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Shard only when you have exhausted vertical scaling and read replicas. The added operational complexity is real. When you do shard, invest heavily in shard key design — a well-chosen key keeps queries single-shard and writes balanced. Use consistent hashing to minimize data movement during topology changes, and plan your cross-shard query strategy before the schema is set in stone.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Hash vs range sharding — when to pick each?</strong> Hash for even write distribution across many keys (user_id); range when you need efficient time-window or contiguous key scans and can tolerate hotspot risk.<br>
+      <strong>Why is consistent hashing better than modulo sharding?</strong> Adding a node with modulo hashing remaps nearly all keys (k−k/n move); consistent hashing moves only ~k/n keys to the new node, minimizing data migration.<br>
+      <strong>What makes a bad shard key?</strong> Low cardinality (e.g., boolean), monotonically increasing values (timestamps/auto-increment) with hash sharding, or keys misaligned with query patterns — all create hotspots or force scatter-gather fan-out.</p>
     </div>
 
     <div class="article-nav">

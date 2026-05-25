@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://updoggtech.com/</loc><priority>1.0</priority></url>
+
+  <url><loc>https://updoggtech.com/system-design/</loc><priority>0.8</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/</loc><priority>0.8</priority></url>
+  <url><loc>https://updoggtech.com/ddia/</loc><priority>0.8</priority></url>
+  <url><loc>https://updoggtech.com/contact/</loc><priority>0.5</priority></url>
+
+  <url><loc>https://updoggtech.com/system-design/ecommerce-platform/</loc><lastmod>2023-03-31</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/map-webapp/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/video-streaming/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/chat-app/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/ride-share/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/url-shortener/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/system-design/hotel-booking/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+
+  <url><loc>https://updoggtech.com/tech-stacks/kafka/</loc><lastmod>2023-03-31</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/kubernetes/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/load-balancing/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/caching/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/sharding/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/message-queue/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/nosql/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/oauth/</loc><lastmod>2023-06-17</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/spark-joins/</loc><lastmod>2023-07-15</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/tech-stacks/graphql-rest-comparison/</loc><lastmod>2023-09-08</lastmod><priority>0.7</priority></url>
+
+  <url><loc>https://updoggtech.com/ddia/chapter-1/</loc><lastmod>2023-04-01</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ddia/chapter-2/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+  <url><loc>https://updoggtech.com/ddia/chapter-3/</loc><lastmod>2023-04-02</lastmod><priority>0.7</priority></url>
+</urlset>

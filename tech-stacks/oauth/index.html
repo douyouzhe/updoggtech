@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
-<title>OAuth 2.0 — updoggtech</title>
+<title>OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/oauth/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained">
+<meta property="og:description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/oauth/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/oauth-1.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained">
+<meta name="twitter:description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained","description":"A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.","datePublished":"2023-06-17","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/oauth/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +105,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -135,6 +156,18 @@
 
   <div class="article-body">
     <p>OAuth 2.0 is an <strong>authorization framework</strong> that allows third-party applications to obtain limited access to a user's resources on a web service, without needing to know the user's login credentials. Before OAuth, the only way to give a third-party app access to your data was to hand over your username and password — a serious security risk. OAuth solves this by introducing a delegated-access model built around scoped, expiring tokens.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>OAuth 2.0 is authorization, not authentication</strong> — it says what you can do, not who you are. Add OpenID Connect (OIDC) on top for identity (the ID token).</li>
+        <li><strong>Authorization Code + PKCE</strong> is the secure default for all user-facing flows (web and mobile); the authorization code is exchanged server-side, keeping tokens out of the browser.</li>
+        <li><strong>Client Credentials</strong> for machine-to-machine — no user involved; service authenticates as itself with client_id + client_secret.</li>
+        <li><strong>Implicit grant is deprecated</strong> — it returns tokens in the URL fragment, exposing them to browser history and JavaScript. Use Authorization Code + PKCE instead.</li>
+        <li><strong>Access tokens should be short-lived</strong> (minutes to an hour); refresh tokens must be stored server-side and rotated on each use.</li>
+        <li><strong>Always validate the state parameter</strong> in the Authorization Code flow to prevent CSRF attacks.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -254,6 +287,13 @@ grant_type=<span class="str">authorization_code</span>
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Use Authorization Code + PKCE for all user-facing flows — web and mobile alike. Use Client Credentials for service-to-service. Never use Implicit or Password grant for new systems. Keep access tokens short-lived, rotate refresh tokens, and always validate the <code>state</code> parameter to prevent CSRF. Remember: OAuth 2.0 is authorization — layer OpenID Connect on top if you need identity.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>OAuth vs OpenID Connect — what's the difference?</strong> OAuth 2.0 is authorization (can this app access your calendar?). OIDC adds authentication on top — it issues an ID token (JWT) with identity claims like name and email. "Login with Google" uses OIDC over OAuth.<br>
+      <strong>Why is the Implicit grant deprecated?</strong> Tokens are returned in the URL fragment, exposing them to browser history, referrer headers, and any JavaScript on the page. Authorization Code + PKCE achieves the same goal for SPAs without this exposure.<br>
+      <strong>What does PKCE protect against?</strong> Authorization code interception attacks. The code_challenge proves the token exchange came from the same party that initiated the auth request, even without a client secret.</p>
     </div>
 
     <div class="article-nav">

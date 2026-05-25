@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Ch.2 of DDIA: relational vs document vs graph data models, impedance mismatch, schema-on-read vs schema-on-write, and declarative vs imperative query languages.">
-<title>Data Models &amp; Query Languages — updoggtech</title>
+<title>DDIA Ch.2 — Data Models &amp; Query Languages | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-2/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.2 — Data Models &amp; Query Languages">
+<meta property="og:description" content="Ch.2 of DDIA: relational vs document vs graph data models, impedance mismatch, schema-on-read vs schema-on-write, and declarative vs imperative query languages.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-2/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/chapter-2-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DDIA Ch.2 — Data Models &amp; Query Languages">
+<meta name="twitter:description" content="Ch.2 of DDIA: relational vs document vs graph data models, impedance mismatch, schema-on-read vs schema-on-write, and declarative vs imperative query languages.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.2 — Data Models & Query Languages","description":"Ch.2 of DDIA: relational vs document vs graph data models, impedance mismatch, schema-on-read vs schema-on-write, and declarative vs imperative query languages.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-2/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -122,6 +135,14 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -158,6 +179,18 @@
 
   <div class="article-body">
     <p>Data models are the most consequential decision in any system. They shape not only how software is written, but how we <em>think</em> about the problem at all. Chapter 2 surveys the three dominant families — relational, document, and graph — and examines the query languages that each naturally pairs with.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Relational model (1970, Codd)</strong> — data as tables of tuples; SQL is declarative; the query optimizer picks the access path. Best for many-to-many joins and enforced schema.</li>
+        <li><strong>Impedance mismatch</strong> — objects in code vs rows in tables require an ORM translation layer, which can hide performance problems like the N+1 query issue.</li>
+        <li><strong>Document model</strong> — stores self-contained JSON/BSON blobs; great for one-to-many (embed children); poor at many-to-many (requires application-level joins).</li>
+        <li><strong>Schema-on-read ≠ schemaless</strong> — the schema exists implicitly in application code; like dynamic type checking vs static type checking.</li>
+        <li><strong>Graph model</strong> — vertices + labeled directed edges + property maps; no schema restriction on which vertices can connect. Best when relationships are the data.</li>
+        <li><strong>Declarative wins</strong> — SQL/Cypher let the optimizer decide the execution plan, enabling transparent performance improvements without changing queries.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -229,6 +262,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>No single data model wins universally. Relational normalizes and joins; document embeds and shards by document; graph traverses relationships efficiently. In interviews: lead with the data's relationship structure. One-to-many self-contained data → document. Complex many-to-many → relational or graph. Schema flexibility needs → document (schema-on-read). Always mention the impedance mismatch and the cost of application-level joins when document stores lack native join support.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>When would you choose a document DB over a relational DB?</strong> When your data is self-contained hierarchical records (e.g. a user profile with embedded addresses and positions) and you rarely need cross-document joins. Schema flexibility also helps when fields evolve frequently.<br>
+      <strong>What is the impedance mismatch?</strong> The translation gap between in-memory objects (OOP) and relational rows/tables, handled by ORMs. It can hide performance issues like the N+1 query problem where fetching N parent records triggers N separate child queries.<br>
+      <strong>Why is SQL declarative and why does it matter?</strong> You describe <em>what</em> you want, not <em>how</em> to get it. The query optimizer can freely choose indexes, join algorithms, and parallelism — so database improvements are transparent to application code.</p>
     </div>
 
     <div class="article-nav">

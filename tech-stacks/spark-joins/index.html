@@ -4,7 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to Spark join strategies — broadcast join, shuffle hash join, sort-merge join, cartesian join, bucketing, and when to use each.">
-<title>Spark Join Strategy — updoggtech</title>
+<title>Spark Join Strategy — Broadcast, Sort-Merge, Shuffle Hash & Bucketing | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/spark-joins/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Spark Join Strategy — Broadcast, Sort-Merge, Shuffle Hash & Bucketing">
+<meta property="og:description" content="A practical guide to Spark join strategies — broadcast join, shuffle hash join, sort-merge join, cartesian join, bucketing, and when to use each.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/spark-joins/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Spark Join Strategy — Broadcast, Sort-Merge, Shuffle Hash & Bucketing">
+<meta name="twitter:description" content="A practical guide to Spark join strategies — broadcast join, shuffle hash join, sort-merge join, cartesian join, bucketing, and when to use each.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Spark Join Strategy — Broadcast, Sort-Merge, Shuffle Hash & Bucketing","description":"A practical guide to Spark join strategies — broadcast join, shuffle hash join, sort-merge join, cartesian join, bucketing, and when to use each.","datePublished":"2023-07-15","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/spark-joins/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +104,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -132,6 +152,17 @@
 
   <div class="article-body">
     <p>Joins are among the most expensive operations in distributed data processing. In Apache Spark, the choice of join strategy determines whether a job runs in minutes or hours. Spark's Catalyst optimizer selects a strategy automatically based on dataset size and available statistics, but understanding each strategy — and when to override the optimizer — is a core data engineering interview skill.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Broadcast Join</strong> — replicate the small side to every executor; zero shuffle on the large side. Default threshold is 10 MB (configurable via <code>autoBroadcastJoinThreshold</code>).</li>
+        <li><strong>Sort-Merge Join</strong> — Spark's robust default for large-large joins; sorts both sides after shuffle, merges in constant memory regardless of dataset size.</li>
+        <li><strong>Shuffle Hash Join</strong> — builds an in-memory hash table from the smaller side after shuffle; faster than sort-merge when the build side fits, but spills to disk if it doesn't.</li>
+        <li><strong>Bucketing</strong> pre-partitions tables at write time so repeated joins on the same key skip the shuffle entirely — one-time write cost, permanent benefit.</li>
+        <li><strong>Always check <code>df.explain()</code></strong> first; override the optimizer with hints only when you have evidence it chose wrong or statistics are stale.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -246,6 +277,13 @@ result = spark.<span class="fn">table</span>(<span class="str">"orders_bucketed"
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Always check the physical plan first — let Spark's optimizer do its job, and only override when you have evidence it chose wrong. The decision tree: small side fits in memory → Broadcast; both sides are large but build side fits in hash table → Shuffle Hash; both sides are truly large → Sort-Merge. Bucket frequently-joined large tables at write time to eliminate shuffle permanently on those join paths.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why is shuffle the enemy in Spark joins?</strong> A shuffle forces serialization, disk write, network transfer, and deserialization — for large datasets this dominates total job runtime. Every join optimization aims to minimize unnecessary shuffling.<br>
+      <strong>Broadcast vs Sort-Merge — when does each win?</strong> Broadcast wins when one side fits in executor memory (eliminates all large-side network traffic); Sort-Merge wins for large-large joins because it merges in bounded memory via sequential scan, handling datasets that exceed total available RAM.<br>
+      <strong>How does bucketing eliminate shuffle?</strong> If both tables are pre-bucketed on the same join key with the same bucket count, Spark's Catalyst optimizer detects that matching rows are already co-located and skips the shuffle stage entirely.</p>
     </div>
 
     <div class="article-nav">

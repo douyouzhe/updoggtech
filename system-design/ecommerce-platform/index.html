@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A system design deep dive into building a scalable e-commerce platform covering microservices, inventory, search, and event-driven order processing.">
-<title>Design an E-commerce Platform — updoggtech</title>
+<title>Design an E-commerce Platform — System Design | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/ecommerce-platform/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design an E-commerce Platform — System Design">
+<meta property="og:description" content="A system design deep dive into building a scalable e-commerce platform covering microservices, inventory, search, and event-driven order processing.">
+<meta property="og:url" content="https://updoggtech.com/system-design/ecommerce-platform/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/ecommerce-platform-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Design an E-commerce Platform — System Design">
+<meta name="twitter:description" content="A system design deep dive into building a scalable e-commerce platform covering microservices, inventory, search, and event-driven order processing.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design an E-commerce Platform","description":"A system design deep dive into building a scalable e-commerce platform covering microservices, inventory, search, and event-driven order processing.","datePublished":"2023-03-31","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/ecommerce-platform/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +127,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -157,6 +178,18 @@
 
   <div class="article-body">
     <p>An e-commerce platform is one of the most demanding distributed systems to design. It combines real-time inventory management, financial transaction processing, high-traffic search and discovery, and ML-driven recommendations — all under strict consistency requirements where an oversold item or a lost order directly translates to lost revenue and user trust.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Microservices + API gateway</strong> — each service owns its data store; no cross-service direct DB access.</li>
+        <li><strong>SQL for money, NoSQL for catalogs</strong> — ACID for orders/users; document store for heterogeneous product schemas.</li>
+        <li><strong>Redis cart hold (TTL ~10 min)</strong> — soft-reserves inventory without permanently blocking stock; auto-released on expiry.</li>
+        <li><strong>Kafka decouples checkout</strong> — user gets instant acknowledgement; inventory deduction, payment, and notifications happen async downstream.</li>
+        <li><strong>CDC → Elasticsearch</strong> — search index stays eventually consistent without coupling write latency to indexing.</li>
+        <li><strong>Cassandra for archival</strong> — horizontally scalable, high write throughput for historical order records.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -277,6 +310,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>E-commerce system design is fundamentally about isolating consistency domains: use SQL + ACID for money and orders, document stores for flexible catalogs, Cassandra for archival scale, and Kafka to decouple the checkout critical path from all downstream effects. The Redis TTL cart hold is the canonical answer to the oversell vs. lost-sale tradeoff.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do you prevent overselling during flash sales?</strong> Redis TTL hold (~10 min) soft-reserves inventory on cart add; permanent deduction only on confirmed checkout; expired holds auto-release.<br>
+      <strong>Why Kafka between checkout and payment?</strong> Decouples user-facing latency from downstream processing — user gets instant order confirmation while inventory, payment, and notifications proceed asynchronously.<br>
+      <strong>Why CDC into Elasticsearch instead of dual-writes?</strong> CDC guarantees the search index stays consistent with the primary DB without coupling write latency to indexing; dual-writes risk divergence if the index write fails.</p>
     </div>
 
     <div class="article-nav">

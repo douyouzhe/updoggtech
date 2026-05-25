@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
-<title>Design a Hotel Booking App — updoggtech</title>
+<title>Design a Hotel Booking System | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/system-design/hotel-booking/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Design a Hotel Booking System">
+<meta property="og:description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
+<meta property="og:url" content="https://updoggtech.com/system-design/hotel-booking/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/hotel-booking-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Design a Hotel Booking System">
+<meta name="twitter:description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Hotel Booking System","description":"A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/hotel-booking/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +127,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -157,6 +178,17 @@
 
   <div class="article-body">
     <p>A hotel booking platform is a two-sided marketplace with strict correctness requirements on the critical path: double-booking a room is a severe UX failure, while incorrectly blocking available inventory costs revenue. The core design challenge is maintaining accurate room availability under concurrent bookings across a global user base.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>SQL throughout</strong> — hotel/room catalog is bounded and structured; booking demands ACID; volume doesn't justify NoSQL complexity.</li>
+        <li><strong>DB-level constraint prevents oversell</strong> — <code>CHECK (available_count &gt;= 0)</code> on the room_availability table; concurrent decrements to -1 fail at the database, not the application layer.</li>
+        <li><strong>Redis TTL hold (~10 min)</strong> — soft-reserves a room during checkout; auto-releases on TTL expiry if user abandons without completing payment.</li>
+        <li><strong>Kafka → Elasticsearch</strong> — hotel/room create or update events feed the search index asynchronously; fully-booked rooms are removed from results automatically.</li>
+        <li><strong>S3 + CDN for media</strong> — hotel images live in object storage; CDN edge nodes serve them globally with low latency.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -301,6 +333,13 @@ GET    /hotels/{id}/rooms             <span class="cm">-- list rooms for hotel</
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Hotel booking design is all about consistency: SQL + row-level constraints prevent double-booking at the database level; Redis TTL holds solve the checkout gap without permanently blocking inventory; Kafka feeds Elasticsearch asynchronously to keep search accurate. The "why not NoSQL" answer here is simple — booking volume doesn't justify sacrificing ACID, and hotel counts are bounded.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do you prevent double-booking under concurrent requests?</strong> A <code>CHECK (available_count &gt;= 0)</code> constraint on the room_availability table makes any transaction that would decrement below zero fail at the DB level — no application-level locking required.<br>
+      <strong>Why not use Cassandra for bookings like e-commerce uses it for order history?</strong> Hotel booking volume is low enough for SQL to retain full history; ACID transactions cleanly prevent double-bookings; Cassandra's eventual consistency model would require complex application-level conflict resolution.<br>
+      <strong>What happens if a user abandons checkout after selecting a room?</strong> The Redis TTL (~10 min) expires automatically, releasing the soft hold and restoring the available_count — no manual cleanup or cron job needed.</p>
     </div>
 
     <div class="article-nav">

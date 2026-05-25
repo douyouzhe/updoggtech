@@ -4,7 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — updoggtech</title>
+<title>GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each">
+<meta property="og:description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each">
+<meta name="twitter:description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each","description":"A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.","datePublished":"2023-09-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/graphql-rest-comparison/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +126,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -154,6 +174,17 @@
 
   <div class="article-body">
     <p>GraphQL is often portrayed as a revolutionary approach to API design. Rather than interacting with fixed server-defined endpoints, it lets you send queries to retrieve precisely the data you need in a single request. While this is true, in practice both GraphQL and REST transmit HTTP requests and receive JSON results. The real differences are subtler — and more interesting.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>REST</strong> — resource identity is the URL; the server decides the response shape; reads use GET, writes use POST/PUT/PATCH/DELETE.</li>
+        <li><strong>GraphQL</strong> — client specifies exactly which fields to return in a single query; decouples resource shape from how you fetch it via a typed schema.</li>
+        <li><strong>Over-fetching vs under-fetching</strong> — REST commonly returns too many fields or requires multiple round trips; GraphQL solves both with a single precise query.</li>
+        <li><strong>Introspection</strong> — GraphQL schemas are self-describing; clients can query the schema itself. REST requires external tools like Swagger/OpenAPI.</li>
+        <li><strong>Use GraphQL</strong> for complex, deeply nested data needs (mobile apps, product pages); <strong>use REST</strong> for simple CRUD APIs, public APIs, or when HTTP caching is critical.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -325,6 +356,13 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>The biggest practical difference: GraphQL lets you fetch deeply nested related data in a single request, while REST typically requires multiple round trips or over-fetching. For complex frontend data needs, GraphQL wins. For simple CRUD APIs with predictable clients, REST is often cleaner.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>GraphQL vs REST — when would you pick GraphQL?</strong> When clients have complex, varied data needs (e.g., a mobile app and web app needing different fields from the same data) — GraphQL eliminates over-fetching and multiple round trips with a single typed query.<br>
+      <strong>What is the N+1 problem in GraphQL?</strong> A query for a list of items where each item triggers a separate resolver call — fetching 100 movies each fires a separate DB query for the director. The fix is DataLoader (batching + caching resolver calls within a request).<br>
+      <strong>REST advantage over GraphQL?</strong> HTTP caching is straightforward with REST (GET requests cache by URL); GraphQL uses POST by default, making HTTP-level caching harder. REST is also simpler for public APIs with stable, predictable consumers.</p>
     </div>
 
     <div class="article-nav">

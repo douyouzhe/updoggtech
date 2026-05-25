@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
-<title>Storage &amp; Retrieval — updoggtech</title>
+<title>DDIA Ch.3 — Storage &amp; Retrieval | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-3/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.3 — Storage &amp; Retrieval">
+<meta property="og:description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-3/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/chapter-3-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DDIA Ch.3 — Storage &amp; Retrieval">
+<meta name="twitter:description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.3 — Storage & Retrieval","description":"Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-3/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -122,6 +135,14 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -158,6 +179,18 @@
 
   <div class="article-body">
     <p>Chapter 3 answers the question every backend engineer should be able to answer in an interview: "How does a database actually store and retrieve data?" Kleppmann walks through two fundamentally different storage engine families, explains how indexes work, and then pivots to the analytical world of data warehouses and column stores.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>LSM-tree favors writes</strong> — sequential appends to memtable then flushed SSTables; Bloom filters skip unnecessary disk reads. Used by Cassandra, RocksDB, HBase.</li>
+        <li><strong>B-tree favors reads</strong> — one path root-to-leaf; in-place page updates with WAL for crash recovery. Used by PostgreSQL, MySQL/InnoDB, SQLite.</li>
+        <li><strong>Write-ahead log (WAL)</strong> — both B-trees and LSM-trees use a WAL for durability; B-tree WAL is for crash recovery of in-place writes; LSM-tree WAL recovers the unflushed memtable.</li>
+        <li><strong>Clustered vs non-clustered indexes</strong> — clustered stores row data inside the index leaf (InnoDB primary key); non-clustered stores a pointer to the heap file; a covering index includes extra columns to avoid the heap lookup entirely.</li>
+        <li><strong>OLTP vs OLAP are fundamentally different access patterns</strong> — OLTP: random small point queries; OLAP: full sequential scans over millions of rows. Run them on separate systems.</li>
+        <li><strong>Column-oriented storage</strong> — stores all values for one column together; reads only needed columns; compresses aggressively (bitmap, RLE, dictionary); enables CPU SIMD vectorized execution.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -252,6 +285,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>For OLTP writes: LSM-tree beats B-tree on write throughput; B-tree beats LSM on read latency and predictability. For analytics: column-oriented storage is a near-universal win — less I/O, better compression, and CPU-friendly vectorized execution. Know that a data warehouse's star schema (fact + dimension tables) is the foundation for every SQL analytics query you will ever see in a BI tool or interview whiteboard.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>LSM-tree vs B-tree — when do you pick each?</strong> LSM-tree for write-heavy workloads (Cassandra, RocksDB): sequential append + compaction give higher write throughput, better compression, but slower and less predictable reads. B-tree for read-heavy or mixed workloads (PostgreSQL, MySQL): one root-to-leaf path for fast predictable reads, but random in-place page writes have higher write amplification.<br>
+      <strong>Why does column-oriented storage make analytics faster?</strong> An OLAP query typically touches 3–5 columns out of hundreds. Row storage must load entire rows to extract those columns. Column storage reads only the needed columns — a fraction of total I/O. Combined with high compression (repetitive column values) and CPU SIMD vectorized execution on compressed chunks, it dramatically reduces both I/O and CPU cycles.<br>
+      <strong>What is a Bloom filter and why do LSM-trees use one?</strong> A Bloom filter is a probabilistic data structure that definitively answers "key definitely not here" with no false negatives. LSM-trees attach one per SSTable so reads can skip disk seeks to SSTables that cannot contain the key — avoiding expensive I/O for non-existent keys.</p>
     </div>
 
     <div class="article-nav">

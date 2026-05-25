@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
-<title>Kubernetes (k8s) — updoggtech</title>
+<title>Kubernetes (k8s) — Pods, Services & Cluster Architecture | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/kubernetes/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Kubernetes (k8s) — Pods, Services & Cluster Architecture">
+<meta property="og:description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/kubernetes/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/kubernetes-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Kubernetes (k8s) — Pods, Services & Cluster Architecture">
+<meta name="twitter:description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s) — Pods, Services & Cluster Architecture","description":"A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/kubernetes/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -114,6 +127,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -157,6 +178,18 @@
 
   <div class="article-body">
     <p>Kubernetes is an open-source <strong>container orchestration platform</strong> that automates the deployment, scaling, and management of containerized applications. As the industry shifted from monolithic services toward microservices, the need emerged for an orchestrator that could run independent, lightweight application containers with <strong>high availability, scalability, and robustness</strong> — that is exactly what Kubernetes delivers.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Pod</strong> — the smallest deployable unit; wraps one or more containers and gets a shared virtual IP inside the cluster.</li>
+        <li><strong>Service</strong> — gives Pods a stable IP/DNS name that survives Pod restarts; doubles as an internal load balancer.</li>
+        <li><strong>Control plane</strong> — API Server (single gateway), Scheduler (places Pods), Controller Manager (reconciliation loops), etcd (source of truth).</li>
+        <li><strong>Deployment vs StatefulSet</strong> — Deployments for stateless apps; StatefulSets for databases that need stable ordered identities.</li>
+        <li><strong>Secrets are base64, not encrypted</strong> — pair with HashiCorp Vault or a KMS for real secret management.</li>
+        <li><strong>Helm</strong> — the Kubernetes package manager; bundles YAML manifests into versioned, parameterized Charts.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -290,6 +323,13 @@ helm rollback my-redis <span class="num">1</span></code></pre>
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Think of Kubernetes as a self-healing, declarative control loop: you describe <em>what</em> you want in YAML, and the master node's Controller Manager continuously drives actual state toward it. Pods give you isolation; Services give you stable addressing; etcd gives you durable cluster memory; and Helm gives you reusable, versioned packaging.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What happens when a Pod crashes?</strong> The Controller Manager detects divergence from the desired replica count and instructs the Scheduler to place a new Pod — the Service's IP stays unchanged throughout.<br>
+      <strong>Deployment vs StatefulSet?</strong> Deployments treat Pods as interchangeable; StatefulSets give each Pod a stable identity (pod-0, pod-1) and ordered rollouts — required for databases that need leader/follower sync.<br>
+      <strong>Why is etcd critical?</strong> It is the single source of truth for all cluster state; losing etcd without a backup means losing the entire cluster configuration.</p>
     </div>
 
     <div class="article-nav">

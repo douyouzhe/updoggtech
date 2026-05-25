@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
-<title>Reliable, Scalable &amp; Maintainable — updoggtech</title>
+<title>DDIA Ch.1 — Reliable, Scalable &amp; Maintainable | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/ddia/chapter-1/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="DDIA Ch.1 — Reliable, Scalable &amp; Maintainable">
+<meta property="og:description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
+<meta property="og:url" content="https://updoggtech.com/ddia/chapter-1/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/chapter-1-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DDIA Ch.1 — Reliable, Scalable &amp; Maintainable">
+<meta name="twitter:description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.1 — Reliable, Scalable & Maintainable","description":"Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-1/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -122,6 +135,14 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -158,6 +179,18 @@
 
   <div class="article-body">
     <p>Chapter 1 sets the vocabulary for the entire book. Kleppmann argues that modern applications are <strong>data-intensive</strong> rather than compute-intensive — the real challenges are the volume, complexity, and speed of data. Three properties define a good data system: it must be reliable, scalable, and maintainable. This chapter unpacks each one with concrete examples.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Fault vs failure</strong> — a fault is one component deviating from spec; a failure is the whole system going down. Design to tolerate faults before they become failures.</li>
+        <li><strong>Hardware faults are independent; software bugs are correlated</strong> — a bug in one node's binary is likely on every node, making software faults far more dangerous.</li>
+        <li><strong>Load parameters, not vague terms</strong> — describe load precisely (requests/sec, fan-out ratio) before reasoning about scalability.</li>
+        <li><strong>Tail latency over averages</strong> — use p95/p99; your slowest users are often your most engaged. SLOs and SLAs are defined in percentiles.</li>
+        <li><strong>Horizontal &gt; vertical scaling</strong> — shared-nothing commodity hardware beats single-machine scale-up once you hit the cost/ceiling curve.</li>
+        <li><strong>Maintainability costs more than initial development</strong> — invest in operability, simplicity, and evolvability from day one; technical debt compounds.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -232,6 +265,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Use load parameters (not vague terms like "lots of traffic") to describe your system's behavior. Measure tail latency (p95/p99), not averages. Design for the fault types most likely in your context — hardware failure is independent, software bugs are correlated. And invest in operability and simplicity from day one; the cost of poor maintainability compounds over time.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What's the difference between fault and failure?</strong> A fault is one component deviating from its spec; a failure is when the whole system stops providing the required service. Fault-tolerant systems prevent faults from cascading into failures.<br>
+      <strong>Why use p99 instead of average latency?</strong> Averages hide tail behavior. The slowest 1% of users are often your highest-value customers (most data, most active). SLAs are written in percentiles, not averages, for exactly this reason.<br>
+      <strong>Fan-out on write vs read — how did Twitter solve it?</strong> Fan-out on write pre-computes home timelines at write time (fast reads, expensive for celebrities). Twitter uses a hybrid: fan-out on write for normal users, pull on read for high-follower accounts.</p>
     </div>
 
     <div class="article-nav">

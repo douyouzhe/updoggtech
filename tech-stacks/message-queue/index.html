@@ -4,7 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="A practical guide to message queues — why they exist, delivery semantics, pull vs push, dead-letter queues, and how they compare to Kafka.">
-<title>Message Queue — updoggtech</title>
+<title>Message Queue — Delivery Semantics, DLQ & Kafka Comparison | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/tech-stacks/message-queue/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Message Queue — Delivery Semantics, DLQ & Kafka Comparison">
+<meta property="og:description" content="A practical guide to message queues — why they exist, delivery semantics, pull vs push, dead-letter queues, and how they compare to Kafka.">
+<meta property="og:url" content="https://updoggtech.com/tech-stacks/message-queue/">
+<meta property="og:image" content="https://updoggtech.com/assets/img/message-queue-1.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Message Queue — Delivery Semantics, DLQ & Kafka Comparison">
+<meta name="twitter:description" content="A practical guide to message queues — why they exist, delivery semantics, pull vs push, dead-letter queues, and how they compare to Kafka.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Message Queue — Delivery Semantics, DLQ & Kafka Comparison","description":"A practical guide to message queues — why they exist, delivery semantics, pull vs push, dead-letter queues, and how they compare to Kafka.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/message-queue/"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -92,6 +105,14 @@
   .footer-links a:hover { color: var(--text); }
   .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
 
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
   @media (max-width: 768px) {
     .nav-links { display: none; }
     .article-nav { grid-template-columns: 1fr; }
@@ -135,6 +156,17 @@
 
   <div class="article-body">
     <p>A <strong>message queue</strong> is a durable buffer that decouples the producer of a message from its consumer. The producer sends a message to the queue and moves on; one or more consumers process it asynchronously, at their own pace. This asynchronous handoff is what makes message queues a fundamental building block for resilient, loosely-coupled distributed systems.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>At-least-once</strong> is the practical default — design consumers to be idempotent (check a dedup ID or use natural idempotency like upserts).</li>
+        <li><strong>Pull model</strong> (Kafka, SQS) naturally rate-limits to consumer capacity; mitigate polling latency with long polling.</li>
+        <li><strong>Dead-letter queue</strong> — wire it up from day one; poison messages will happen and you want them surfaced, not silently blocking your pipeline.</li>
+        <li><strong>MQ vs Kafka</strong> — traditional queues delete messages after consumption; Kafka retains them so multiple independent consumer groups can replay.</li>
+        <li><strong>Idempotency key pattern</strong> — include a unique message ID; consumer checks a processed-IDs store before acting.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
@@ -216,6 +248,13 @@
     <div class="callout">
       <div class="callout-label">takeaway</div>
       <p>Use message queues to decouple services in time and protect downstream systems from traffic spikes. Design consumers to be idempotent by default — at-least-once delivery is the realistic guarantee in any distributed system. Wire up a dead-letter queue from day one so poison messages surface immediately rather than silently blocking your processing pipeline.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why is exactly-once so hard?</strong> It requires coordinating both the broker (no duplicate delivery) and the consumer (idempotent processing) — typically via distributed transactions or two-phase commit, adding significant latency and complexity.<br>
+      <strong>What is a dead-letter queue?</strong> A secondary queue where messages are routed after exceeding a max delivery attempt count. It keeps the main queue flowing while preserving failed messages for inspection and replay.<br>
+      <strong>Traditional MQ vs Kafka?</strong> MQ deletes messages after consumption — one consumer per message. Kafka retains messages so multiple independent consumer groups can each read all events at their own pace.</p>
     </div>
 
     <div class="article-nav">
