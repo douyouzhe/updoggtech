@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解 Apache Spark Join 策略:执行模型与 shuffle、为何 join 策略重要、广播 join、shuffle hash join、sort-merge join、笛卡尔 join、数据倾斜的检测与加盐、Skew Join Hint、Bucketing、Adaptive Query Execution (AQE)、读查询计划与调优参数,以及 join 决策树。">
+<title>Spark Join 策略 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/spark-joins/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Spark Join 策略">
+<meta property="og:description" content="Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/spark-joins/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Spark Join 策略">
+<meta name="twitter:description" content="Spark join 怎么选:广播 vs sort-merge vs shuffle hash、倾斜处理、Bucketing、AQE。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Spark Join 策略","description":"Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/spark-joins/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/spark-joins/">EN</a>
+        <a href="/zh/tech-stacks/spark-joins/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">spark-joins</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">Spark Join 策略</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Join 是分布式数据处理中最昂贵的操作之一。在 Apache Spark 里,join 策略的选择决定一个作业是几分钟还是几小时跑完——或是否因 OOM 错误或失控的 shuffle 而崩溃集群。Spark 的 Catalyst 优化器基于数据集大小和可用统计自动选策略,但理解每种策略的机制、shuffle 的真实成本、数据倾斜如何悄无声息地摧毁一个选得好的策略,以及自适应查询执行如何在运行时改变局面——这些技能区分了资深数据工程师与那些只调 <code>df.join()</code> 并祈祷的人。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>广播 Join(Broadcast Join)</strong>——把小的一侧复制到每个 executor;大侧零 shuffle。默认阈值 10 MB(通过 <code>autoBroadcastJoinThreshold</code> 可配)。</li>
+        <li><strong>Sort-Merge Join</strong>——Spark 大-大 join 的稳健默认;shuffle 后排序两侧,无论数据集多大都在常量内存里合并。</li>
+        <li><strong>Shuffle Hash Join</strong>——shuffle 后从较小侧建内存哈希表;build 侧装得下时比 sort-merge 快,装不下则溢出到磁盘。</li>
+        <li><strong>Bucketing</strong> 在写时预分区表,让对同一 key 的重复 join 完全跳过 shuffle——一次性写成本,永久收益。</li>
+        <li><strong>先查 <code>df.explain()</code></strong>;只在有证据它选错或统计陈旧时才用 hint 覆盖优化器。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>一侧小到能装进内存时用广播 join——它完全消除网络 shuffle。大-大 join 用 sort-merge join;它是该场景下 Spark 的稳健默认。build 侧装得进哈希表时 shuffle hash join 对大数据集快。除非显式需要叉积,避免笛卡尔 join。Bucketing 预分区数据以消除重复 join 中的 shuffle。</p>
+    </div>
+
+    <h2>Spark 的执行模型——Stage 与 Shuffle</h2>
+    <p>理解 join 策略前,你必须理解 Spark 如何执行查询。Spark 把逻辑计划翻译成 <strong>stage</strong> 的有向无环图(DAG)。每个 stage 是一组能在同一数据的不同分区上并行运行的任务——一个 stage 内任务间无数据移动。stage 由 <strong>shuffle 边界</strong>分隔:数据必须跨分区重分布的点。</p>
+    <p>shuffle 是 Spark 执行模型中最昂贵的操作。它涉及:(1) map 侧把 shuffle 数据按目标分区排序写到本地磁盘;(2) reduce 侧通过网络从所有 map 任务读那些数据;(3) 反序列化并重分区数据。对 1 TB 数据集,一次 shuffle 意味着 1 TB 写磁盘、1 TB 经网络发送、1 TB 从网络读——单个操作 3 TB 的 I/O。这就是为什么每个 join 优化从根本上都是关于减少 shuffle 量或完全消除 shuffle。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 读物理计划——永远是第一步诊断</span>
+df.<span class="fn">explain</span>(mode=<span class="str">"extended"</span>)  <span class="cm"># 显示逻辑、优化后、物理计划</span>
+
+<span class="cm"># 要找的关键物理计划节点:</span>
+<span class="cm"># BroadcastHashJoin  → 选了广播 join(大侧无 shuffle)</span>
+<span class="cm"># ShuffledHashJoin   → shuffle hash join(两侧 shuffle,建哈希)</span>
+<span class="cm"># SortMergeJoin      → sort-merge join(两侧 shuffle 并排序)</span>
+<span class="cm"># CartesianProduct   → cross join(危险:O(M×N) 输出)</span>
+<span class="cm"># Exchange           → shuffle 边界(每个 Exchange = 一次 shuffle)</span>
+
+<span class="cm"># 数 Exchange 节点:0 = 无 shuffle,1 = 单侧 shuffle(广播),2 = 全 shuffle</span></code></pre>
+    </div>
+
+    <p>Spark UI 里的 DAG 可视化把 stage 映射到执行计划。每个 stage 边界对应一次 shuffle。两个大数据集间的 Sort-Merge Join 产生两个 Exchange 节点(每侧一个),并被拆成至少三个 stage:读两侧(stage 1 和 2)、shuffle+排序两侧(stage 3)、合并(stage 4)。广播 join 在大侧产生零个 Exchange 节点——它通常装进两个 stage。</p>
+
+    <h2>为什么 Join 策略重要</h2>
+    <p>在分布式集群里,join 的主要成本是跨网络移动数据——叫 <strong>shuffle</strong>。shuffle 强迫 Spark 序列化数据、写磁盘、经网络发到正确的 executor,并在接收端反序列化。对大数据集这能以一个数量级主导总作业运行时。每个 join 优化的目标都是最小化不必要的 shuffle——要么完全消除 shuffle(广播 join、Bucketing),要么在 shuffle 不可避免时选最高效的策略(sort-merge vs shuffle hash,取决于 build 侧是否装进内存)。</p>
+
+    <h2>广播 Join——消除大侧的 Shuffle</h2>
+    <p>当两个数据集之一小到能装进每个 worker 的内存,Spark 把较小数据集<strong>广播</strong>(复制)到所有 executor 节点。每个 executor 随后对它那部分较大数据集本地执行 join——大侧无需 shuffle。大表从不移动。小表通过类 BitTorrent 的点对点广播协议每 executor 发一次(不是从 driver 逐个发给每个 executor,那会让 driver 成瓶颈)。</p>
+    <ul>
+      <li><strong>优势:</strong>完全消除大数据集的网络 shuffle。每行直接内存哈希查找,无磁盘 I/O。小-大 join 的最佳性能——对同样数据常比 sort-merge 快 10–100 倍。</li>
+      <li><strong>局限:</strong>广播的数据集必须装进 executor 内存。若超过阈值,广播本身会在所有 worker 上同时造成 OOM。默认阈值是 10 MB——对现代集群保守;若 executor 堆大小合适,100–500 MB 常安全。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> pyspark.sql <span class="kw">import</span> functions <span class="kw">as</span> F
+
+<span class="cm"># 提高广播阈值——executor 有足够堆则安全</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">104857600</span>)  <span class="cm"># 100 MB</span>
+
+<span class="cm"># 手动广播 hint——无视大小估计强制广播</span>
+<span class="cm"># 当你知道表小但 Catalyst 不知(统计陈旧)时用</span>
+result = orders.<span class="fn">join</span>(
+    F.<span class="fn">broadcast</span>(country_codes),   <span class="cm"># 把 country_codes 复制到每个 executor</span>
+    on=<span class="str">"country_code"</span>,
+    how=<span class="str">"left"</span>
+)
+
+<span class="cm"># SQL hint 语法(等价)</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ BROADCAST(c) */ o.*, c.country_name
+  FROM orders o
+  JOIN country_codes c ON o.country_code = c.code
+"""</span>)
+
+<span class="cm"># 禁用自动广播——为测试强制 sort-merge</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.autoBroadcastJoinThreshold"</span>, <span class="num">-1</span>)</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">广播出问题时</div>
+      <p>广播一个大于 executor 内存的数据集会在每个 worker 上同时造成 OOM——一次集群级崩溃。当一个上月还小的表已增长时要警惕。检查 Spark UI 广播 stage 的 "Input" 大小。若它接近 executor 堆大小(扣除开销后 executor 堆通常是总 executor 内存的 60–70%),要么增加 executor 内存,要么用 <code>autoBroadcastJoinThreshold=-1</code> 切到 sort-merge。</p>
+    </div>
+
+    <h2>Shuffle Hash Join——全 Shuffle 后的哈希表 Join</h2>
+    <p>两个数据集都通过网络 shuffle 按 join key 重分区,所以同 key 的所有行落到同一 executor。Spark 随后从一侧("build" 侧,选较小的分区集)建内存哈希表,并用另一侧("probe" 侧)的每行探测它。probe 侧每行的哈希查找是 O(1)——比 sort-merge join 里的顺序合并扫描快。</p>
+    <ul>
+      <li><strong>优势:</strong>当 build 侧完全装进每个 executor 内存时比 sort-merge 快——无排序开销、直接哈希查找。两个数据集都大但每分区 build 侧可控时很合适。</li>
+      <li><strong>局限:</strong>需要两侧全网络 shuffle(计划里两个 Exchange 节点)。若 build 侧装不进 executor 的内存分区,Spark 溢出到磁盘——性能显著退化并接近或超过 sort-merge 成本。因这种溢出风险,Spark 默认禁用 Shuffle Hash Join 而倾向 sort-merge。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 启用 Shuffle Hash Join——默认禁用</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.join.preferSortMergeJoin"</span>, <span class="kw">False</span>)
+
+<span class="cm"># SQL hint 在特定查询上强制 Shuffle Hash Join</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ SHUFFLE_HASH(orders) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># 什么时候值得?</span>
+<span class="cm"># 每分区 build 侧(较小表)装进 executor 内存</span>
+<span class="cm"># 且 join key 高基数(无倾斜)</span>
+<span class="cm"># 且你想避免 sort-merge 的排序开销</span></code></pre>
+    </div>
+
+    <h2>Sort-Merge Join——Spark 大-大 Join 的稳健默认</h2>
+    <p>当广播不可能时,Spark 大-大 join 的默认策略。两侧都按 join key shuffle(两个 Exchange 节点),然后在每个分区内排序。排序后的分区被顺序合并——同时穿过两个有序流的单次线性扫描,以同步前进的方式按记录匹配。这与外部归并排序的归并阶段是同一算法,且无论分区大小都在常量内存里工作:它从不需要把整个分区放进 RAM,每次每侧只一条记录。</p>
+    <ul>
+      <li><strong>优势:</strong>处理超过总可用内存的数据集——排序和合并是对有界块的流式操作。对高基数 key 正确。最通用、生产最安全的 Spark join 策略。抗倾斜:即使一个 key 比其他多得多的行,合并扫描也能处理而无需建可能 OOM 的哈希表。</li>
+      <li><strong>局限:</strong>两次全 shuffle(昂贵)加两侧排序(CPU 开销)。总 I/O 大约是合并数据集大小的 3 倍(写 shuffle 数据、读 shuffle 数据、写排序输出)。在小-大场景不如广播快,哈希表装得下时不如 shuffle hash 快。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Sort-Merge 是 Spark 默认——无需配置</span>
+<span class="cm"># SQL hint 显式强制 Sort-Merge</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ MERGE(orders, transactions) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># 调 Sort-Merge:shuffle 分区数</span>
+<span class="cm"># 默认 200——对大数据常太少,对小数据太多</span>
+<span class="cm"># 经验法则:每个 shuffle 分区大小应 ~128–256 MB</span>
+<span class="cm"># total_data_size_GB * 1024 / 200 MB_每分区 → 目标分区数</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.shuffle.partitions"</span>, <span class="num">2000</span>)  <span class="cm"># 对 ~400 GB shuffle 数据</span>
+
+<span class="cm"># 启用 AQE(Spark 3.0+),这会自动调优——见下方 AQE 节</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)</code></pre>
+    </div>
+
+    <h2>笛卡尔(Cross)Join——O(M×N)——极度小心使用</h2>
+    <p>把左数据集每行与右数据集每行配对,产生 M×N 结果。无需 join key。输出大小二次增长——即便中等大的输入也产生不可管理的巨大输出。一张 100 万行的表与一张 100 万行的表叉乘产生 1 万亿行。Spark 要求显式 <code>crossJoin()</code> 调用或 <code>spark.sql.crossJoin.enabled=true</code> 以防意外的 cross join。</p>
+    <ul>
+      <li><strong>恰当用途:</strong>为小数据集生成所有成对组合(如所有可能的 A/B 测试变体组合)、对小特征向量的 ML 特征叉积计算、"把单行展开到所有分区"模式。</li>
+      <li><strong>警告:</strong>在大表上意外触发笛卡尔 join——通常因省略 join 条件或写了坏 SQL 查询——是 Spark 作业失败的常见原因。提交大作业前总是检查 <code>explain()</code> 里的 <code>CartesianProduct</code> 节点。</li>
+    </ul>
+
+    <h2>策略对比</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>策略</th><th>最适合</th><th>网络 Shuffle</th><th>内存压力</th><th>触发条件</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>广播 Join</strong></td><td>小(&lt; 阈值)× 大</td><td>仅小侧(一次)</td><td>低(若小侧装得下)</td><td>一侧 &lt; autoBroadcastJoinThreshold 或 BROADCAST hint</td></tr>
+        <tr><td><strong>Shuffle Hash Join</strong></td><td>中 × 大(build 装进哈希)</td><td>两侧全 shuffle</td><td>中–高(哈希表)</td><td>preferSortMergeJoin=false;build 侧装进内存</td></tr>
+        <tr><td><strong>Sort-Merge Join</strong></td><td>大 × 大(默认)</td><td>两侧全 shuffle + 排序</td><td>低(流式合并)</td><td>超过广播阈值时默认</td></tr>
+        <tr><td><strong>笛卡尔 Join</strong></td><td>叉积(仅极小数据集)</td><td>所有数据重分布</td><td>极端(O(M×N) 输出)</td><td>无 join key;需 crossJoin.enabled=true</td></tr>
+      </tbody>
+    </table>
+
+    <h2>数据倾斜——沉默的性能杀手</h2>
+    <p>数据倾斜发生在行在 join key 值上分布不均时。若一个 key 有 1000 万行而其他都 1000 行,一个 executor 的任务会处理比同伴多 1 万倍的数据,而其余空闲。这是 Spark 作业在"99% 完成"卡几小时的最常见原因——一个掉队任务拖住整个 stage。</p>
+
+    <h3>检测倾斜</h3>
+    <p>检查 Spark UI 的 Stage 详情页。按 Duration 或 Input Size 排序任务。若少数任务(或就一个)耗时比中位数戏剧性地长,你有倾斜。代码里这样验证:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># join 前剖析 key 分布</span>
+df.<span class="fn">groupBy</span>(<span class="str">"join_key"</span>) \
+  .<span class="fn">count</span>() \
+  .<span class="fn">orderBy</span>(F.<span class="fn">col</span>(<span class="str">"count"</span>).<span class="fn">desc</span>()) \
+  .<span class="fn">show</span>(<span class="num">20</span>)
+
+<span class="cm"># 若前 5 个 key 含 > 50% 所有行:你有倾斜</span>
+
+<span class="cm"># 技术 1:加盐(Salting)——人为分散热 key</span>
+<span class="cm"># 在两侧给倾斜 key 追加随机盐(0-9)</span>
+<span class="kw">import</span> pyspark.sql.functions <span class="kw">as</span> F
+
+<span class="cm"># 热 key 表:为所有盐值复制每行</span>
+hot_keys = F.<span class="fn">broadcast</span>(
+    small_dimension.<span class="fn">crossJoin</span>(
+        spark.<span class="fn">range</span>(<span class="num">10</span>).<span class="fn">toDF</span>(<span class="str">"salt"</span>)  <span class="cm"># 10 个盐值</span>
+    ).<span class="fn">withColumn</span>(<span class="str">"salted_key"</span>,
+        F.<span class="fn">concat</span>(F.<span class="fn">col</span>(<span class="str">"join_key"</span>), F.<span class="fn">lit</span>(<span class="str">"_"</span>), F.<span class="fn">col</span>(<span class="str">"salt"</span>)))
+)
+
+<span class="cm"># 大表:给每行随机分配一个盐</span>
+salted_large = large_fact.<span class="fn">withColumn</span>(
+    <span class="str">"salted_key"</span>,
+    F.<span class="fn">concat</span>(F.<span class="fn">col</span>(<span class="str">"join_key"</span>),
+             F.<span class="fn">lit</span>(<span class="str">"_"</span>),
+             (F.<span class="fn">rand</span>() * <span class="num">10</span>).<span class="fn">cast</span>(<span class="str">"int"</span>).<span class="fn">cast</span>(<span class="str">"string"</span>))
+)
+
+<span class="cm"># 在加盐 key 上 join——倾斜分散到 10 倍多的分区</span>
+result = salted_large.<span class="fn">join</span>(hot_keys, on=<span class="str">"salted_key"</span>)</code></pre>
+    </div>
+
+    <h3>Skew Join Hint(Spark 3.0+)</h3>
+    <p>Spark 3.0 引入 <code>SKEW_JOIN</code> hint,告诉 Catalyst 优化器把倾斜分区拆成更小子分区并独立 join,而无需手动加盐:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># SQL 倾斜 hint——告诉 Catalyst 哪张表倾斜</span>
+spark.<span class="fn">sql</span>(<span class="str">"""
+  SELECT /*+ SKEW_JOIN(orders) */ *
+  FROM orders
+  JOIN transactions ON orders.order_id = transactions.order_id
+"""</span>)
+
+<span class="cm"># 基于 AQE 的自动倾斜处理(Spark 3.2+)</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># 倾斜阈值:一个分区被视为倾斜,若</span>
+<span class="cm"># 其大小 > skewFactor × 中位数分区大小 且 > skewedPartitionThresholdInBytes</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionFactor"</span>, <span class="num">5</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes"</span>, <span class="str">"256MB"</span>)</code></pre>
+    </div>
+
+    <h2>Bucketing——消除重复 Join 的 Shuffle</h2>
+    <p><strong>Bucketing</strong> 在表写到存储时按 join key 预分区。若 join 两侧用相同桶数按同一 key bucketing,Spark 能完全跳过 shuffle——数据已按 key 共置。表 A 的每个桶与表 B 对应的桶在同一 executor 上 join,零网络传输。这是一次性写成本,在数据集生命周期内对该表的每次后续 join 都受益。</p>
+    <p>问题:桶数必须两侧精确匹配,且 bucketing 只在从 Hive Metastore 支撑的表格式(通过 <code>saveAsTable</code> 的 Parquet/ORC)读时工作——不是从裸文件读。最优桶数是数据大小的函数:目标每桶文件 ~128–256 MB,这样文件既不太小(任务太多)也不太大(掉队任务)。对 1 TB 表,4,000–8,000 桶是合理起点。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 把 orders 按 customer_id bucketing 写出——一次性成本</span>
+orders.<span class="fn">write</span> \
+    .<span class="fn">bucketBy</span>(<span class="num">256</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \     <span class="cm"># 桶内排序,Sort-Merge 无需重排</span>
+    .<span class="fn">saveAsTable</span>(<span class="str">"orders_bucketed"</span>)
+
+<span class="cm"># 用相同桶数 + key 写 customers——关键要求</span>
+customers.<span class="fn">write</span> \
+    .<span class="fn">bucketBy</span>(<span class="num">256</span>, <span class="str">"customer_id"</span>) \
+    .<span class="fn">sortBy</span>(<span class="str">"customer_id"</span>) \
+    .<span class="fn">saveAsTable</span>(<span class="str">"customers_bucketed"</span>)
+
+<span class="cm"># 现在 join 无 shuffle——Catalyst 检测到桶共置</span>
+<span class="cm"># 物理计划会显示 SortMergeJoin 而前面没有 Exchange 节点</span>
+result = spark.<span class="fn">table</span>(<span class="str">"orders_bucketed"</span>).<span class="fn">join</span>(
+    spark.<span class="fn">table</span>(<span class="str">"customers_bucketed"</span>),
+    on=<span class="str">"customer_id"</span>
+)
+
+<span class="cm"># 验证:查 explain()——无 Exchange 节点 = shuffle 已消除</span>
+result.<span class="fn">explain</span>()</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">Bucketing 的坑</div>
+      <p>Bucketing 在实践中脆弱。若你给一张表加分区(用不同桶数重新 bucketing),共置保证被打破,Spark 静默退回全 shuffle。schema 或分区变更后总用 <code>explain()</code> 确认。另外:bucketing 只在用 <code>spark.table("name")</code> 读时被识别,而非用 <code>spark.read.parquet("path")</code> 直接读 Parquet 文件时。</p>
+    </div>
+
+    <h2>自适应查询执行(AQE)——Spark 3.0+</h2>
+    <p>AQE 通过允许 Spark 在<em>运行时</em>用实际 shuffle 统计而非执行前估计来做计划决策,从根本上改变了 join 优化局面。三个直接影响 join 性能的能力:</p>
+
+    <h3>1. 动态 Join 策略切换</h3>
+    <p>若一个数据集被估计为大(于是计划了 sort-merge),但首个 shuffle stage 后实际数据比预期小得多,AQE 能在执行中途切到广播 join——而无需重启查询。这抓住了统计陈旧或不存在、优化器过于保守的常见情况。</p>
+
+    <h3>2. 动态合并 Shuffle 分区</h3>
+    <p>默认 200 的 shuffle 分区数是任意的且常错:对小数据集太多(造成数千个小任务),对大数据集太少(造成分区过大的掉队任务)。AQE 测量 shuffle 后的实际分区大小,把相邻小分区合并成更少、更大的——自动为实际数据分布调正并行度。</p>
+
+    <h3>3. 自动倾斜处理</h3>
+    <p>AQE 检测倾斜分区(那些显著大于中位数的)并自动把它们拆成子分区,从另一侧复制匹配的非倾斜分区以对每个子分区 join。这消除掉队任务而无需手动加盐——对有真实世界倾斜数据的生产管道最有影响力的 AQE 特性。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 启用 AQE——Spark 3.2+ 默认 True,3.0/3.1 须手动设</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># 动态 join 策略切换</span>
+<span class="cm"># AQE 会在运行时大小 < 阈值时把 Sort-Merge → 广播</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.localShuffleReader.enabled"</span>, <span class="kw">True</span>)
+
+<span class="cm"># 动态分区合并</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.coalescePartitions.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.advisoryPartitionSizeInBytes"</span>, <span class="str">"128MB"</span>)
+
+<span class="cm"># 自动倾斜 join 处理</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.enabled"</span>, <span class="kw">True</span>)
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionFactor"</span>, <span class="num">5</span>)  <span class="cm"># 5× 中位数 = 倾斜</span>
+spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str">"spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes"</span>, <span class="str">"256MB"</span>)</code></pre>
+    </div>
+
+    <h2>读查询计划与诊断问题</h2>
+    <p>用 <code>df.explain(mode='extended')</code>(或就 <code>df.explain(True)</code>)检查 Spark 选了哪个 join 策略。物理计划是实际执行的——聚焦它。要找的关键节点:</p>
+    <ul>
+      <li><code>BroadcastHashJoin</code>——广播 join;看 <code>BuildRight</code> 或 <code>BuildLeft</code> 知道哪侧被广播。</li>
+      <li><code>ShuffledHashJoin</code>——shuffle hash join;一侧建哈希表。</li>
+      <li><code>SortMergeJoin</code>——sort-merge join;两侧被排序。</li>
+      <li><code>CartesianProduct</code>——cross join;若意外则是红旗。</li>
+      <li><code>Exchange</code>——shuffle 边界;数它们以理解总 shuffle 成本。</li>
+      <li><code>BroadcastExchange</code> vs <code>ShuffleExchange</code>——广播把数据一次发给所有 executor;shuffle 按 key 重分布。</li>
+    </ul>
+    <p>若 Spark 选错策略——表统计陈旧时常见——用 hint 注解或运行 <code>ANALYZE TABLE &lt;name&gt; COMPUTE STATISTICS FOR ALL COLUMNS</code> 刷新统计让 Catalyst 重新规划。启用 AQE 时,陈旧统计问题较小,因为计划在每个 shuffle stage 边界用实际运行时大小重新优化。</p>
+
+    <h2>关键调优参数</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>参数</th><th>默认</th><th>控制什么</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>spark.sql.autoBroadcastJoinThreshold</code></td><td>10 MB</td><td>自动广播的数据集最大大小。大 executor 集群提到 100–512 MB。</td></tr>
+        <tr><td><code>spark.sql.shuffle.partitions</code></td><td>200</td><td>Sort-Merge/Shuffle Hash 的 shuffle 分区数。启用 AQE 时这成为上限;实际自动合并。</td></tr>
+        <tr><td><code>spark.sql.join.preferSortMergeJoin</code></td><td>true</td><td>设 false 以允许 build 侧装进内存时用 Shuffle Hash Join。</td></tr>
+        <tr><td><code>spark.sql.adaptive.enabled</code></td><td>true (3.2+)</td><td>自适应查询执行的总开关。</td></tr>
+        <tr><td><code>spark.sql.adaptive.advisoryPartitionSizeInBytes</code></td><td>64 MB</td><td>AQE 合并的目标分区大小。128–256 MB 通常最优。</td></tr>
+        <tr><td><code>spark.sql.adaptive.skewJoin.skewedPartitionFactor</code></td><td>5</td><td>分区须比中位数大这么多倍才被视为倾斜。</td></tr>
+        <tr><td><code>spark.executor.memory</code></td><td>1g</td><td>总 executor 堆。广播 join 需小表装进这里。Shuffle Hash 需 build 侧分区装进。</td></tr>
+        <tr><td><code>spark.memory.fraction</code></td><td>0.6</td><td>executor 堆用于执行+存储(vs JVM 开销)的比例。内存重的 join 负载提到 0.7–0.75。</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Join 决策树——何时用什么</h2>
+    <p>实践中,提交任何 join 重的 Spark 作业前应用这个决策树:</p>
+    <ol>
+      <li><strong>检查一侧是否小到能广播</strong>——跑 <code>df.count()</code> 并估计未压缩大小。若它装进 executor 内存(考虑压缩比,Parquet 通常 3–5 倍),用广播。提高 <code>autoBroadcastJoinThreshold</code> 或用 hint。</li>
+      <li><strong>若两侧都大,检查倾斜</strong>——剖析 key 分布。若倾斜,启用 AQE 倾斜 join 处理或在选策略前应用手动加盐。</li>
+      <li><strong>若 join 在同一 key 上重复</strong>——考虑写时把两表都 bucketing。一次性成本,永久消除 shuffle。</li>
+      <li><strong>若启用 AQE(Spark 3.2+)</strong>——带 AQE 的 Sort-Merge 自适应处理大多数情况。除非剖析显示特定问题,信任它。</li>
+      <li><strong>只在以下情况启用 Shuffle Hash Join</strong>:每分区 build 侧明确装进 executor 内存(测量,非估计)且排序开销是可测量的瓶颈。</li>
+      <li><strong>总用 <code>explain()</code> 验证</strong>——在生产数据上跑前确认物理计划匹配你的意图。</li>
+    </ol>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>永远先查物理计划——让 Spark 优化器做它的工作,只在有证据它选错时才覆盖。决策树:一侧装进内存 → 广播(完全消除大侧 shuffle);两侧都大但 build 侧装进哈希表 → Shuffle Hash;两侧真大 → Sort-Merge(常量内存合并,Spark 的安全默认)。在倾斜让好策略失去意义之前检测并处理它。写时给频繁 join 的大表 bucketing 以永久消除 shuffle。Spark 3.0+ 启用 AQE 以获得自适应策略切换、分区合并和自动倾斜处理——它解决了大多数以前需要手动调优的问题。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么 shuffle 是 Spark join 的敌人?</strong>shuffle 强迫序列化、写磁盘、网络传输和反序列化——对 1 TB 数据集是一个操作 3 TB 的 I/O。每个 join 优化都旨在最小化不必要的 shuffle:广播在大侧消除它,Bucketing 完全消除它,Sort-Merge 通过做一次并流式合并来最小化额外工作。<br>
+      <strong>广播 vs Sort-Merge——各自何时胜?</strong>一侧装进 executor 内存时广播胜——它消除所有大侧网络流量,常带来 10–100 倍加速。大-大 join 时 Sort-Merge 胜,因为它通过顺序扫描在有界常量内存里合并,处理超过总可用 RAM 的数据集而无 OOM 风险。<br>
+      <strong>Bucketing 怎么消除 shuffle?</strong>两表在写时用相同桶数按同一 join key 预分区。Spark 的 Catalyst 优化器检测到匹配行已在同一 executor 共置,完全跳过 shuffle Exchange 节点——由物理计划里无 Exchange 确认。<br>
+      <strong>什么是数据倾斜、怎么修?</strong>倾斜是某些 join key 值比其他有多得多的行,造成一个 executor 任务处理比同伴多 1000 倍的数据——一个掉队者拖住整个 stage。修法:(1) AQE 的自动倾斜 join 处理(Spark 3.0+),拆分倾斜分区;(2) 手动加盐——在两侧给倾斜 key 追加随机后缀,为所有盐值复制维度侧;(3) 若倾斜的小维度装进内存就广播它。<br>
+      <strong>AQE 对 join 做什么?</strong>AQE(Spark 3.0+)在每个 shuffle 边界用实际运行时统计重新优化计划:若实际数据比估计小能把 Sort-Merge 切到广播、合并 shuffle 分区以调正并行度,并自动把倾斜分区拆成子分区以均衡执行。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/oauth/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">OAuth 2.0</div>
+      </a>
+      <a href="/tech-stacks/graphql-rest-comparison/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">GraphQL 与 REST 对比</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

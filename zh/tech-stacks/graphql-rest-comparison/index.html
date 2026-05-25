@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入对比 GraphQL 与 REST:资源与 API 设计、过度/不足获取、解析器执行模型与 N+1 问题、DataLoader 批处理、缓存(APQ/cacheControl)、schema 设计、游标分页与 Relay Connection、错误处理与部分响应、订阅、联邦与 schema 拼接、查询复杂度安全,以及 REST vs GraphQL vs gRPC 决策矩阵。">
+<title>GraphQL 与 REST 对比 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="GraphQL 与 REST 对比">
+<meta property="og:description" content="GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="GraphQL 与 REST 对比">
+<meta name="twitter:description" content="GraphQL vs REST:N+1、DataLoader、缓存、订阅、联邦、安全、gRPC 决策矩阵。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL 与 REST 对比","description":"GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-graphql { color: var(--accent2); }
+  .compare-table .col-rest { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/graphql-rest-comparison/">EN</a>
+        <a href="/zh/tech-stacks/graphql-rest-comparison/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">graphql-rest-comparison</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">GraphQL 与 REST 对比</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>GraphQL 常被描绘成 API 设计的革命性方法。与其与固定的、服务端定义的端点交互,它让你发查询、在单个请求里精确取回你需要的数据。虽然这没错,但实践中 GraphQL 和 REST 都传输 HTTP 请求、接收 JSON 结果。真正的差异更微妙——也更有趣。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>REST</strong>——资源身份就是 URL;服务端决定响应形状;读用 GET,写用 POST/PUT/PATCH/DELETE。</li>
+        <li><strong>GraphQL</strong>——客户端在单个查询里精确指定返回哪些字段;通过类型化 schema 把资源形状与你如何取它解耦。</li>
+        <li><strong>过度获取 vs 不足获取</strong>——REST 常返回过多字段或需要多次往返;GraphQL 用单个精确查询同时解决两者。</li>
+        <li><strong>内省(Introspection)</strong>——GraphQL schema 自描述;客户端能查询 schema 本身。REST 需要 Swagger/OpenAPI 等外部工具。</li>
+        <li><strong>用 GraphQL</strong>应对复杂、深层嵌套的数据需求(移动应用、商品页);<strong>用 REST</strong>应对简单 CRUD API、公开 API,或 HTTP 缓存关键时。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>GraphQL 和 REST 没看起来那么不同。GraphQL 引入了微妙的修改——主要围绕资源如何被描述和获取——显著改善了开发者体验。</p>
+    </div>
+
+    <h2>资源(Resources)</h2>
+    <p>REST 的核心概念是<strong>资源</strong>。每个资源由一个 URL 唯一标识,你通过对该 URL 发 GET 请求访问它。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">REST response</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// GET /api/movies/123</span>
+{
+  <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>,
+  <span class="str">"director"</span>: {
+    <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span>,
+    <span class="str">"dob"</span>: <span class="str">"1970/07/30"</span>
+  },
+  <span class="str">"released"</span>: <span class="str">"2023/08/30"</span>
+}</code></pre>
+    </div>
+
+    <p>GraphQL 把资源形状与你如何取它解耦。你独立于检索方法在 schema 里定义类型:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
+  id: <span class="ty">ID</span>
+  title: <span class="ty">String</span>
+  released: <span class="ty">Date</span>
+  director: <span class="ty">Director</span>
+}
+
+<span class="kw">type </span><span class="ty">Director</span> {
+  id: <span class="ty">ID</span>
+  name: <span class="ty">String</span>
+  dob: <span class="ty">Date</span>
+  movies: [<span class="ty">Movie</span>]
+}
+
+<span class="kw">type </span><span class="ty">Query</span> {
+  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
+  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
+}</code></pre>
+    </div>
+
+    <h2>API 设计</h2>
+    <p>REST API 被描述为一份端点目录。形状是线性的——一个你可调用的扁平 URL 列表:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">REST endpoints</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">GET</span>    <span class="str">/movies/:id</span>
+<span class="kw">GET</span>    <span class="str">/director/:id</span>
+<span class="kw">GET</span>    <span class="str">/movies/:id/review</span>
+<span class="kw">POST</span>   <span class="str">/movies/:id/review</span></code></pre>
+    </div>
+
+    <p>GraphQL 转而用 schema——API 里一切可访问内容的类型化图。读操作用 <code>Query</code>,写用 <code>Mutation</code>:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
+  <span class="fn">movie</span>(id: <span class="ty">ID!</span>): <span class="ty">Movie</span>
+  <span class="fn">director</span>(id: <span class="ty">ID!</span>): <span class="ty">Director</span>
+}
+
+<span class="kw">type </span><span class="ty">Mutation</span> {
+  <span class="fn">addMovieReview</span>(input: <span class="ty">AddMovieReviewInput</span>): <span class="ty">Review</span>
+}</code></pre>
+    </div>
+
+    <h2>关键差异速览</h2>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>方面</th>
+          <th class="col-graphql">GraphQL</th>
+          <th class="col-rest">REST</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>资源身份</td>
+          <td>与你如何取它分离</td>
+          <td>URL 就是资源身份</td>
+        </tr>
+        <tr>
+          <td>响应形状</td>
+          <td>客户端决定返回哪些字段</td>
+          <td>服务端决定包含什么</td>
+        </tr>
+        <tr>
+          <td>关联数据</td>
+          <td>通过 schema 遍历一个请求搞定</td>
+          <td>多个请求或自定义参数</td>
+        </tr>
+        <tr>
+          <td>读 vs 写</td>
+          <td>Query / Mutation 关键字</td>
+          <td>GET / POST / PUT / DELETE 动词</td>
+        </tr>
+        <tr>
+          <td>Schema / 文档</td>
+          <td>内建内省</td>
+          <td>外部工具(Swagger、OpenAPI)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>请求处理器 vs 解析器</h2>
+    <p>REST 里,每个端点映射到一个处理函数。这是个简单的 Express 例子:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Node.js / Express</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// REST——每个端点一个处理器</span>
+app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="kw">function</span>(req, res) {
+  res.<span class="fn">send</span>(<span class="str">'Hello World!'</span>)
+})
+
+<span class="cm">// GraphQL——每个字段一个解析器</span>
+<span class="kw">const</span> resolvers = {
+  <span class="ty">Query</span>: {
+    <span class="fn">movie</span>: (parent, { id }) => <span class="fn">getMovieById</span>(id),
+    <span class="fn">director</span>: (parent, { id }) => <span class="fn">getDirectorById</span>(id),
+  }
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>最大的实际差异:GraphQL 让你在单个请求里取深层嵌套的关联数据,而 REST 通常需要多次往返或过度获取。对复杂前端数据需求,GraphQL 胜。对客户端可预测的简单 CRUD API,REST 常更清爽。</p>
+    </div>
+
+    <h2>解析器执行模型</h2>
+    <p>理解 GraphQL 实际如何运行你的查询——逐字段地——对写出高性能服务器至关重要。请求到达时,GraphQL 运行时把查询文档解析成抽象语法树,对照 schema 校验,然后通过为每个被选字段调用一个<strong>解析器函数</strong>来执行它。解析器是签名为 <code>(parent, args, context, info)</code> 的纯函数:<code>parent</code> 是父字段的解析值,<code>args</code> 是查询参数,<code>context</code> 是请求作用域对象(auth token、DataLoader 实例、DB 连接),<code>info</code> 暴露当前字段的 AST。</p>
+    <p>执行是深度优先的:根 <code>Query</code> 字段先解析,然后运行时扇出在同一深度层级内并行解析每个子字段。这意味着同层级的兄弟字段能并发解析,但子字段在其父返回值前无法开始。实际含义是深查询树会链式调用解析器,而解析器里任何同步 IO 都阻塞整个链。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript / Apollo Server</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">const</span> resolvers = {
+  <span class="ty">Query</span>: {
+    <span class="cm">// 根解析器——收到 null parent、查询 args</span>
+    <span class="fn">movies</span>: async (parent, args, context) => {
+      <span class="kw">return</span> context.db.<span class="fn">query</span>(<span class="str">'SELECT * FROM movies LIMIT ?'</span>, [args.limit])
+    },
+  },
+  <span class="ty">Movie</span>: {
+    <span class="cm">// 字段解析器——parent 是上面的 movie 行</span>
+    <span class="fn">director</span>: async (movie, args, context) => {
+      <span class="kw">return</span> context.db.<span class="fn">query</span>(<span class="str">'SELECT * FROM directors WHERE id = ?'</span>, [movie.directorId])
+    },
+  },
+}</code></pre>
+    </div>
+
+    <h3>N+1 问题</h3>
+    <p>解析器模型有个众所周知的失效模式。若你查 100 部电影的列表、每部有一个 <code>director</code> 字段,GraphQL 运行时会调 <code>Movie.director</code> 解析器<em>100 次</em>——每个电影对象一次。每次调用发一个新数据库查询。那是列表 1 个查询加 directors 100 个查询:经典的 <strong>N+1 问题</strong>。规模化时这把一个亚毫秒操作变成数百次顺序往返。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么比 REST 更糟</div>
+      <p><code>GET /movies</code> 的 REST 处理器通常做单个 JOIN 或工程师控制下手动批量查找。GraphQL 的每字段解析器架构使 N+1 模式成为<em>默认</em>结果,若你不主动对抗它——每个嵌套字段都是潜在地雷。</p>
+    </div>
+
+    <h3>DataLoader:批处理与请求级缓存</h3>
+    <p>Facebook 的 <strong>DataLoader</strong> 库(现已是每个 GraphQL 生态的标准)用两个协同机制解决 N+1。首先,它把单个事件循环 tick 内所有 load 调用<strong>批处理</strong>成你提供的单个批函数——所以 100 次单独的 <code>directorLoader.load(id)</code> 调用变成对你的批函数一次带 100 个 ID 数组的调用。其次,它在请求期间<strong>记忆化</strong>结果,所以从查询不同部分加载同一 director ID 两次只打数据库一次。</p>
+    <p>关键地,DataLoader 实例应在 <code>context</code> 工厂里<em>每请求</em>创建——跨请求共享 DataLoader 会在用户间泄露数据。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — DataLoader</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> DataLoader <span class="kw">from</span> <span class="str">'dataloader'</span>
+
+<span class="cm">// 批函数:每 tick 带所有累积的 key 调用一次</span>
+<span class="kw">const</span> <span class="fn">batchDirectors</span> = <span class="kw">async</span> (directorIds) => {
+  <span class="kw">const</span> rows = <span class="kw">await</span> db.<span class="fn">query</span>(
+    <span class="str">'SELECT * FROM directors WHERE id = ANY(?)'</span>,
+    [directorIds]
+  )
+  <span class="cm">// DataLoader 要求结果顺序与 key 相同</span>
+  <span class="kw">const</span> byId = <span class="ty">Object</span>.<span class="fn">fromEntries</span>(rows.<span class="fn">map</span>(r => [r.id, r]))
+  <span class="kw">return</span> directorIds.<span class="fn">map</span>(id => byId[id] ?? <span class="kw">new</span> <span class="ty">Error</span>(<span class="str">`Director <span class="str">${id}</span> not found`</span>))
+}
+
+<span class="cm">// 在 Apollo 的 context 工厂里每请求创建</span>
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  resolvers: {
+    <span class="ty">Movie</span>: {
+      <span class="fn">director</span>: (movie, _, context) =>
+        context.directorLoader.<span class="fn">load</span>(movie.directorId),  <span class="cm">// 批处理了!</span>
+    },
+  },
+  context: () => ({
+    directorLoader: <span class="kw">new</span> <span class="ty">DataLoader</span>(batchDirectors),   <span class="cm">// 每请求新建</span>
+  }),
+})</code></pre>
+    </div>
+
+    <p>有了这套,单个请求里 100 次 <code>directorLoader.load(id)</code> 调用合并成一个带 100 个 ID 的 SQL 查询。若同一 director ID 出现多次(同导演的多部电影),记忆化层返回缓存值而完全不碰数据库。结果:电影 1 个查询 + 所有 director 1 个批量查询,无论结果集大小。</p>
+
+    <h2>缓存:GraphQL 最难的问题</h2>
+    <p>REST 免费继承几十年的 HTTP 缓存基础设施。<code>GET /movies/123</code> 响应能被浏览器、代理和 CDN 按 URL 为键缓存;<code>Cache-Control</code>、<code>ETag</code>、<code>Last-Modified</code> 头自动接好一切。GraphQL 抛弃了这个,因为几乎所有 GraphQL 请求都经 <code>POST</code> 发到单个端点——HTTP 缓存默认把所有 POST 当不可缓存。这不是小问题;光 CDN 缓存就能在设计良好的 REST API 上吸收 90%+ 的读流量。</p>
+
+    <h3>第 1 层——应用级缓存</h3>
+    <p>最可移植的方案是在数据层而非 HTTP 层缓存。DataLoader 已提供请求级记忆化(上面描述)。对跨请求缓存,解析器能在打数据库前检查 Redis。这与 REST 用的 cache-aside 模式一样,只是移进解析器而非 controller。</p>
+    <p>更 GraphQL 原生的方法是用缓存提示做<strong>响应字段级缓存</strong>。Apollo Server 的 <code>@cacheControl</code> 指令让你给单个类型或字段标注 max-age 和 scope(<code>PUBLIC</code> 或 <code>PRIVATE</code>)。服务器计算所有解析字段中最小的缓存提示并据此发一个 <code>Cache-Control</code> 头——若所有字段都公开且 max-age 非零,允许共享缓存缓存响应。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — cache hints</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Movie</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">3600</span>, scope: PUBLIC) {
+  id:       <span class="ty">ID!</span>
+  title:    <span class="ty">String!</span>
+  director: <span class="ty">Director!</span>
+}
+
+<span class="kw">type </span><span class="ty">Director</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">86400</span>, scope: PUBLIC) {
+  id:   <span class="ty">ID!</span>
+  name: <span class="ty">String!</span>
+}
+
+<span class="kw">type </span><span class="ty">Viewer</span> <span class="kw">@cacheControl</span>(maxAge: <span class="num">0</span>, scope: PRIVATE) {
+  <span class="cm">// 用户特定——绝不跨用户共享</span>
+  watchlist: [<span class="ty">Movie!</span>]!
+}</code></pre>
+    </div>
+
+    <h3>第 2 层——持久化查询</h3>
+    <p><strong>自动持久化查询(APQ)</strong>同时解决两个问题:它们把 POST 请求转成 GET 请求(解锁 HTTP 缓存和 CDN)并通过发查询哈希而非完整查询字符串来缩小请求体。协议分两步。客户端先发只带哈希的 <code>GET</code>;若服务器以前见过它,执行缓存的查询。若没,服务器返回 <code>PersistedQueryNotFound</code> 错误,客户端用完整查询体重试为 <code>POST</code>,服务器按哈希为键存储该查询供后续请求用。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP — APQ flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 步骤 1:客户端只发哈希(GET = CDN 可缓存)</span>
+<span class="kw">GET</span> <span class="str">/graphql?extensions={"persistedQuery":{"version":1,"sha256Hash":"abc123"}}</span>
+
+<span class="cm"># 步骤 2:哈希未找到则服务器返回错误</span>
+{ <span class="str">"errors"</span>: [{ <span class="str">"message"</span>: <span class="str">"PersistedQueryNotFound"</span> }] }
+
+<span class="cm"># 步骤 3:客户端用完整查询体重试(POST)</span>
+<span class="kw">POST</span> <span class="str">/graphql</span>
+{ <span class="str">"query"</span>: <span class="str">"{ movies { title director { name } } }"</span>,
+  <span class="str">"extensions"</span>: { <span class="str">"persistedQuery"</span>: { <span class="str">"sha256Hash"</span>: <span class="str">"abc123"</span> } } }
+
+<span class="cm"># 后续请求:带哈希的 GET → CDN 缓存命中</span></code></pre>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">CDN 策略</div>
+      <p>有了 APQ + <code>@cacheControl</code> 提示,完全公开的查询(无用户特定数据)能像 REST 一样从 CDN 边缘节点服务。问题:一个混合公开电影数据和观众观看列表的单个查询会得到最差的缓存提示(maxAge 0、PRIVATE)并完全绕过 CDN。设计查询把公开和私有数据分开,或把它们拆成两个请求。</p>
+    </div>
+
+    <h2>Schema 设计最佳实践</h2>
+    <p>GraphQL schema 是公共契约——改它会破坏客户端。深思熟虑的 schema 设计避免日后痛苦的迁移,并让 API 直观易用。</p>
+
+    <h3>默认可空 vs 默认非空</h3>
+    <p>GraphQL SDL 里,每个字段默认可空;<code>!</code> 后缀标记字段为非空。常见错误是为"性能"或人体工学过度使用 <code>!</code>,然后发现一个缺失的嵌套资源迫使你一路向上返回 <code>null</code>,把你承诺非空的字段变成运行时错误。一条有原则的规则:只在服务器<em>总能</em>提供时才标字段非空——主键、总被设置的时间戳、刚创建对象上的字段。可空字段发出"这可能合法地缺失"的信号。</p>
+
+    <h3>为客户端设计,而非数据库</h3>
+    <p>GraphQL schema 应反映产品的领域模型,而非数据库 schema 的 1:1 投影。若数据库有分开的 <code>first_name</code> 和 <code>last_name</code> 列但每个客户端都拼接它们,在 schema 里暴露一个 <code>fullName</code> 字段并在解析器里拼接。这把业务逻辑放在一处,防止客户端各自重新发明同样的转换。</p>
+
+    <h3>Mutation 的输入类型</h3>
+    <p>总是把 mutation 参数包进一个专门的 <code>input</code> 类型,而非内联列出参数。这让你能随时间给输入类型加字段而不改 mutation 签名,让参数列表不至于变得笨重,并让 schema 自描述 mutation 期望什么。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — mutation inputs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 避免:内联参数在你需要加字段时会破坏</span>
+<span class="kw">type </span><span class="ty">Mutation</span> {
+  <span class="fn">createMovie</span>(title: <span class="ty">String!</span>, releaseYear: <span class="ty">Int!</span>): <span class="ty">Movie</span>
+}
+
+<span class="cm"># 推荐:命名输入类型——增量变更非破坏性</span>
+<span class="kw">input </span><span class="ty">CreateMovieInput</span> {
+  title:       <span class="ty">String!</span>
+  releaseYear: <span class="ty">Int!</span>
+  tagline:     <span class="ty">String</span>    <span class="cm"># 后加的——无破坏性变更</span>
+}
+
+<span class="kw">type </span><span class="ty">Mutation</span> {
+  <span class="fn">createMovie</span>(input: <span class="ty">CreateMovieInput!</span>): <span class="ty">CreateMoviePayload!</span>
+}
+
+<span class="kw">type </span><span class="ty">CreateMoviePayload</span> {
+  movie:  <span class="ty">Movie</span>
+  errors: [<span class="ty">UserError!</span>]  <span class="cm"># 领域错误放载荷里,不滥用 HTTP 错误</span>
+}</code></pre>
+    </div>
+
+    <h3>Mutation 返回载荷类型</h3>
+    <p>上面的模式也展示了返回一个<em>载荷类型</em>而非直接返回实体。这让 mutation 能在单个响应里同时返回结果实体和任何面向用户的校验错误,而不滥用 HTTP 错误层。它也留出空间加辅助数据(受影响的计数、被副作用的对象)而无破坏性变更。</p>
+
+    <h2>分页:基于游标与 Relay Connection 规范</h2>
+    <p>REST 通常通过 <code>?page=2&amp;limit=20</code>(偏移分页)或响应里的 <code>next_cursor</code> 字段分页。偏移分页有个众所周知的缺陷:若页间有项被插入或删除,你会看到重复或跳过项。<strong>基于游标的分页</strong>——用一个指向结果集位置的不透明指针——无论请求间是否有变更都稳定。</p>
+    <p>GraphQL 把这个编纂进 <strong>Relay Connection 规范</strong>,它已成为整个生态的非官方标准。connection 模式把节点列表包进一个携带分页元数据的类型化信封,与数据并存。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — Relay connection</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Query</span> {
+  <span class="fn">movies</span>(first: <span class="ty">Int</span>, after: <span class="ty">String</span>, last: <span class="ty">Int</span>, before: <span class="ty">String</span>): <span class="ty">MovieConnection!</span>
+}
+
+<span class="kw">type </span><span class="ty">MovieConnection</span> {
+  edges:    [<span class="ty">MovieEdge</span>]
+  pageInfo: <span class="ty">PageInfo!</span>
+}
+
+<span class="kw">type </span><span class="ty">MovieEdge</span> {
+  node:   <span class="ty">Movie!</span>
+  cursor: <span class="ty">String!</span>   <span class="cm"># 不透明 base64 位置 token</span>
+}
+
+<span class="kw">type </span><span class="ty">PageInfo</span> {
+  hasNextPage:     <span class="ty">Boolean!</span>
+  hasPreviousPage: <span class="ty">Boolean!</span>
+  startCursor:     <span class="ty">String</span>
+  endCursor:       <span class="ty">String</span>
+}</code></pre>
+    </div>
+
+    <p>客户端取下一页时传 <code>after: pageInfo.endCursor</code>。服务器解码游标(通常是 base64 编码的行 ID 或时间戳),把它作为 <code>WHERE id &gt; :cursor</code> 子句应用,并返回下一页。这无论并发插入如何都稳定。<code>edges</code> 包装层存在是为携带每边元数据(如用户跟随用户到用户关系边的时间),这就是为什么数据不直接是节点的扁平数组。</p>
+
+    <div class="callout">
+      <div class="callout-label">偏移 vs 游标取舍</div>
+      <p>偏移分页支持随机访问跳页(跳到第 50 页),游标分页不能。若你的 UI 有编号页或需要"跳到第 N 页"功能,偏移分页务实上没问题——只需接受结果可能在页间移位。游标分页是无限滚动 feed、时间线,以及任何稳定性比随机访问更重要的列表的正确默认。</p>
+    </div>
+
+    <h2>错误处理与部分响应</h2>
+    <p>GraphQL 的错误模型与 REST 根本不同。REST 里错误通常产生非 200 状态码,响应体要么空要么是单个错误对象——整个请求要么成功要么失败。GraphQL 几乎总返回 HTTP 200,即便解析器错误发生。错误改为出现在顶层 <code>errors</code> 数组里,与 <code>data</code> 对象并存。这支持<strong>部分响应</strong>:若一个字段的解析器失败但其他成功,客户端收到所有能解析的数据,连同失败部分的错误细节。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL — partial response</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"data"</span>: {
+    <span class="str">"movies"</span>: [
+      { <span class="str">"title"</span>: <span class="str">"Oppenheimer"</span>, <span class="str">"director"</span>: { <span class="str">"name"</span>: <span class="str">"Christopher Nolan"</span> } },
+      { <span class="str">"title"</span>: <span class="str">"Dune Part Two"</span>, <span class="str">"director"</span>: <span class="kw">null</span> }  <span class="cm">// 解析器失败</span>
+    ]
+  },
+  <span class="str">"errors"</span>: [
+    {
+      <span class="str">"message"</span>: <span class="str">"Director not found"</span>,
+      <span class="str">"locations"</span>: [{ <span class="str">"line"</span>: <span class="num">4</span>, <span class="str">"column"</span>: <span class="num">5</span> }],
+      <span class="str">"path"</span>: [<span class="str">"movies"</span>, <span class="num">1</span>, <span class="str">"director"</span>],
+      <span class="str">"extensions"</span>: { <span class="str">"code"</span>: <span class="str">"NOT_FOUND"</span> }
+    }
+  ]
+}</code></pre>
+    </div>
+
+    <p><code>path</code> 字段精确指出哪个列表项里的哪个字段失败。<code>extensions</code> 对象是放机器可读错误码的标准位置,客户端可据此分支——生产中绝不在 <code>extensions</code> 里放敏感堆栈跟踪。部分响应模型是双刃剑:客户端收到有用的部分数据,但即便 200 响应也必须总检查 <code>errors</code> 数组,这对从 REST 来的团队反直觉。</p>
+
+    <h3>用户错误 vs 系统错误</h3>
+    <p>生产 schema 里一个有用的模式是区分<em>用户错误</em>(输入校验失败、"email 已被占用")和<em>系统错误</em>(数据库不可用、未处理异常)。系统错误出现在顶层 <code>errors</code> 数组里。用户错误应建模为 mutation 载荷里的领域类型——它们是预期结果,不是异常,所以把它们编进 schema 让它们自描述且对客户端代码生成类型安全。</p>
+
+    <h2>订阅:实时 GraphQL</h2>
+    <p>REST 没有内建的服务端推送更新机制;团队把 WebSocket、SSE 或长轮询作为带外协议外挂上去。GraphQL 有一等的 <code>Subscription</code> 操作类型,把实时事件集成进与读写相同的 schema 和查询语言。</p>
+    <p>订阅打开一个持久连接(通常通过用 <code>graphql-ws</code> 协议的 WebSocket),并在订阅事件发生时流式发新结果。客户端写一个看起来与查询完全一样的订阅文档——只选它需要的字段——服务器每个事件只发那些字段。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL — subscription definition and client usage</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Schema</span>
+<span class="kw">type </span><span class="ty">Subscription</span> {
+  <span class="fn">orderStatusChanged</span>(orderId: <span class="ty">ID!</span>): <span class="ty">Order!</span>
+  <span class="fn">newMessage</span>(conversationId: <span class="ty">ID!</span>): <span class="ty">Message!</span>
+}
+
+<span class="cm"># 客户端订阅——收到一个 Order 更新流</span>
+<span class="kw">subscription </span><span class="ty">TrackOrder</span>($orderId: <span class="ty">ID!</span>) {
+  <span class="fn">orderStatusChanged</span>(orderId: $orderId) {
+    id
+    status
+    updatedAt
+    estimatedDelivery
+  }
+}</code></pre>
+    </div>
+
+    <p>服务端,订阅由一个 pub-sub 引擎支撑。Apollo Server 支持开发用的进程内 <code>PubSub</code> 和生产用的 Redis 或 Kafka 支撑的 pub-sub。当一个 mutation 改变订单状态,它发布到一个按 <code>orderId</code> 为键的 topic;订阅解析器监听那个 topic 并在把结果流给已连接客户端前按订阅 ID 过滤进来的事件。</p>
+    <p>订阅带运维开销:每个活跃订阅者持有一个 WebSocket 连接,服务器重启断开所有客户端。生产中,你通常在无状态应用服务器前放一个无状态 WebSocket 网关(如 AWS API Gateway WebSockets,或专用订阅服务器),用 Redis pub-sub 作共享事件总线。</p>
+
+    <h2>联邦与 Schema 拼接</h2>
+    <p>规模化时——尤其在微服务组织里——单个铁板一块的 GraphQL schema 成为协调瓶颈。每个想暴露数据的团队必须给同一个 schema 文件提 PR。<strong>Schema 联邦(federation)</strong>通过让每个服务拥有自己的 GraphQL 子图、而一个中心<strong>网关</strong>把它们组合成客户端当作单一 API 查询的统一超图来解决这个。</p>
+
+    <h3>Apollo Federation</h3>
+    <p>Apollo Federation(主流实现)用 SDL 指令标注类型如何跨子图共享。一个类型能在一个子图<em>定义</em>、在另一个子图<em>扩展</em>。网关检查查询计划,尽可能并行把子查询派发给合适的子图,并在响应客户端前把结果拼接在一起。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — Federation subgraphs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># movies-subgraph:定义 Movie,拥有它</span>
+<span class="kw">type </span><span class="ty">Movie</span> <span class="kw">@key</span>(fields: <span class="str">"id"</span>) {
+  id:       <span class="ty">ID!</span>
+  title:    <span class="ty">String!</span>
+  released: <span class="ty">Int!</span>
+}
+
+<span class="cm"># reviews-subgraph:用 reviews 字段扩展 Movie</span>
+<span class="kw">extend type </span><span class="ty">Movie</span> <span class="kw">@key</span>(fields: <span class="str">"id"</span>) {
+  id:      <span class="ty">ID!</span> <span class="kw">@external</span>   <span class="cm"># 由 movies-subgraph 拥有</span>
+  reviews: [<span class="ty">Review!</span>]!      <span class="cm"># 由 reviews-subgraph 贡献</span>
+}
+
+<span class="kw">type </span><span class="ty">Review</span> {
+  id:      <span class="ty">ID!</span>
+  rating:  <span class="ty">Int!</span>
+  comment: <span class="ty">String</span>
+}</code></pre>
+    </div>
+
+    <p>当客户端查 <code>movie { title reviews { rating } }</code>,网关把 <code>title</code> 发给 movies-subgraph、把 <code>reviews</code> 发给 reviews-subgraph(用电影的 <code>id</code> 作 join 的 key),然后合并结果。从客户端视角只有一个 API。每个团队独立部署自己的子图——给 <code>Review</code> 加字段无需与 movies 团队协调。</p>
+
+    <h3>Schema 拼接 vs 联邦</h3>
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th class="col-graphql">联邦(Federation)</th><th class="col-rest">Schema 拼接(Stitching)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>类型所有权</td><td>按子图,用 <code>@key</code> 显式</td><td>在网关用自定义转换合并</td></tr>
+        <tr><td>运行时耦合</td><td>网关启动时拉取实时子图 SDL</td><td>在构建时或启动时拼接 schema</td></tr>
+        <tr><td>团队自治</td><td>高——每个子图独立部署</td><td>中——合并逻辑住在中心</td></tr>
+        <tr><td>生态支持</td><td>Apollo Router、GraphOS、强工具</td><td>graphql-tools;观点更少</td></tr>
+        <tr><td>查询规划</td><td>自动分布式查询规划</td><td>手动 link/delegate 定义</td></tr>
+        <tr><td>最适合</td><td>有许多独立团队的大组织</td><td>小规模 schema 组合、渐进迁移</td></tr>
+      </tbody>
+    </table>
+
+    <h2>安全:限制查询复杂度</h2>
+    <p>GraphQL 的灵活性就是它的攻击面。一个恶意——或仅仅粗心——的客户端能发单个查询,在服务器上生成指数级昂贵的执行。不像 REST 服务器控制每个端点的成本,GraphQL 里客户端组合查询,一个深层嵌套或循环结构的查询能触发数百万次解析器调用。</p>
+
+    <h3>查询深度限制</h3>
+    <p>最简单的保护是给查询能嵌套多深封顶。深度 10 对几乎任何真实产品用例都很宽裕;更深的几乎肯定是 bug 或攻击。深度限制强制起来很便宜——它只需在执行开始前遍历查询 AST,增加可忽略的开销。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — graphql-depth-limit</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> depthLimit <span class="kw">from</span> <span class="str">'graphql-depth-limit'</span>
+
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  schema,
+  validationRules: [
+    <span class="fn">depthLimit</span>(<span class="num">10</span>),  <span class="cm">// 拒绝深于 10 层的查询</span>
+  ],
+})</code></pre>
+    </div>
+
+    <h3>查询复杂度分析</h3>
+    <p>光深度不够——一个宽查询(在深度 2 请求 1000 个字段)可能和深的一样昂贵。<strong>复杂度分析</strong>给每个字段分配数值成本,拒绝总成本超预算的查询。字段成本可以是静态的(每字段成本 1)或动态的(列表字段成本与其 <code>first</code> 参数成比例)。这让你能说"这个 API 会执行每请求成本最高 1000 的查询"——实质是一个同时涵盖深度和广度的预算。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">JavaScript — graphql-query-complexity</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { createComplexityLimitRule } <span class="kw">from</span> <span class="str">'graphql-query-complexity'</span>
+
+<span class="kw">const</span> server = <span class="kw">new</span> <span class="ty">ApolloServer</span>({
+  schema,
+  validationRules: [
+    <span class="fn">createComplexityLimitRule</span>(<span class="num">1000</span>, {
+      scalarCost: <span class="num">1</span>,      <span class="cm">// 叶字段成本 1</span>
+      objectCost: <span class="num">2</span>,      <span class="cm">// 对象字段成本 2</span>
+      listFactor: <span class="num">10</span>,     <span class="cm">// 列表乘子——first:50 成本 50×子</span>
+      onCost: (cost) => {
+        metrics.<span class="fn">histogram</span>(<span class="str">'graphql.query_cost'</span>, cost)
+      },
+    }),
+  ],
+})</code></pre>
+    </div>
+
+    <h3>限流与持久化查询白名单</h3>
+    <p>除每查询分析外,在 API 网关层应用限流——按 IP 和按已认证用户的令牌桶是标准方法。在你控制所有客户端的生产 API 里(第一方移动应用或 SPA),<strong>持久化查询白名单</strong>是最强安全姿态:服务器只执行哈希在批准注册表里的查询;任意查询字符串被完全拒绝。这在生产中实质把 GraphQL 变成类型化 REST API,同时在开发中保留完整灵活性。</p>
+
+    <div class="callout">
+      <div class="callout-label">安全清单</div>
+      <p>生产中禁用内省(它给攻击者映射你整个 schema)。设查询深度限制(10 是合理默认)。设复杂度预算。在网关按用户限流。客户端是第一方就用持久化查询白名单。绝不信任客户端提供的字段别名来绕过解析器授权——在每个触及敏感数据的解析器里检查 auth,不只在根。</p>
+    </div>
+
+    <h2>版本化哲学</h2>
+    <p>REST 版本化通常在 URL 层处理(<code>/api/v1/</code>、<code>/api/v2/</code>),保留前一版本直到客户端迁移。这很显式但造成维护开销:每个端点的两个版本并发运行,bug 必须在两者里修,弃用是跨所有消费者的协调练习。</p>
+    <p>GraphQL 持不同哲学立场:<strong>schema 应无版本化地演化</strong>。SDL 的弃用机制让你用 <code>@deprecated(reason: "Use newField instead")</code> 标记字段而不移除它们。不请求旧字段的客户端不受影响;在旧字段上的客户端在内省和工具里看到弃用警告。新字段是增量的、非破坏性的。schema 持续演化而非以版本化快照。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">GraphQL SDL — deprecation</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">type </span><span class="ty">Movie</span> {
+  id:           <span class="ty">ID!</span>
+  title:        <span class="ty">String!</span>
+  releaseYear:  <span class="ty">Int!</span>
+  <span class="cm"># 旧字段保留存活,客户端被推动迁移</span>
+  year: <span class="ty">Int</span> <span class="kw">@deprecated</span>(reason: <span class="str">"Use releaseYear instead"</span>)
+}</code></pre>
+    </div>
+
+    <p>这个哲学的实际极限是<em>移除</em>类型或字段——GraphQL 没有安全方式做到而不可能破坏现有客户端。实践中,成熟 schema 里字段会累积。纪律要求追踪哪些客户端请求哪些字段(Apollo Studio 的字段使用分析做这个)并在移除前跑一段宽限期。最终状态——一个满是没人用的弃用字段的 schema——是从不退役旧版本的 REST API 的 GraphQL 等价物。</p>
+
+    <h2>REST vs GraphQL vs gRPC——决策矩阵</h2>
+    <p>真实系统很少纯活在一个范式里。理解每个何时是对的工具,是区分资深工程师与默认伸手 GraphQL 者的所在。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>标准</th><th class="col-graphql">GraphQL</th><th class="col-rest">REST</th><th style="color:var(--accent)">gRPC</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>主要传输</td>
+          <td>HTTP/1.1(订阅用 WebSocket)</td>
+          <td>HTTP/1.1 或 HTTP/2</td>
+          <td>HTTP/2(二进制帧)</td>
+        </tr>
+        <tr>
+          <td>数据格式</td>
+          <td>JSON</td>
+          <td>JSON(或 XML、表单数据)</td>
+          <td>Protocol Buffers(二进制)</td>
+        </tr>
+        <tr>
+          <td>Schema / 契约</td>
+          <td>SDL——运行时可内省</td>
+          <td>OpenAPI/Swagger——可选、外部</td>
+          <td>.proto 文件——严格、代码生成</td>
+        </tr>
+        <tr>
+          <td>性能</td>
+          <td>中——JSON 解析开销;复杂查询单次往返</td>
+          <td>中——JSON;嵌套数据多次往返</td>
+          <td>高——二进制编码、多路复用流、载荷小约 5–10 倍</td>
+        </tr>
+        <tr>
+          <td>HTTP 缓存</td>
+          <td>困难(默认 POST;需 APQ + CDN 技巧)</td>
+          <td>原生(GET 响应按 URL 缓存)</td>
+          <td>无——非为 HTTP 缓存设计</td>
+        </tr>
+        <tr>
+          <td>流式 / 实时</td>
+          <td>订阅(WebSocket)</td>
+          <td>SSE / 长轮询 / WebSocket(外挂)</td>
+          <td>原生双向流</td>
+        </tr>
+        <tr>
+          <td>浏览器支持</td>
+          <td>完整——任何浏览器都行</td>
+          <td>完整——原生浏览器 API</td>
+          <td>有限——需 grpc-web 代理</td>
+        </tr>
+        <tr>
+          <td>过度/不足获取</td>
+          <td>消除——客户端选字段</td>
+          <td>常见——服务端决定响应形状</td>
+          <td>无——生成的客户端精确匹配 proto</td>
+        </tr>
+        <tr>
+          <td>最适合</td>
+          <td>复杂前端、字段需求多样的移动端、BFF(Backend for Frontend)</td>
+          <td>公开 API、简单 CRUD、HTTP 缓存关键的读、文件上传</td>
+          <td>内部微服务间调用、高吞吐、多语言后端</td>
+        </tr>
+        <tr>
+          <td>运维复杂度</td>
+          <td>高——schema 联邦、DataLoader、持久化查询、N+1 警惕</td>
+          <td>低——理解充分、海量工具生态</td>
+          <td>中——proto 管理、跨服务的破坏性变更纪律</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>实用启发</h3>
+    <ul>
+      <li><strong>用 GraphQL</strong>当你有多种客户端类型(web、iOS、Android、伙伴集成)且数据需求显著不同,或当一个商品页需要在单个低延迟请求里从多个资源取数据时。经典用例是一个 BFF(Backend for Frontend)层,把多个微服务聚合成一个客户端优化的图。</li>
+      <li><strong>用 REST</strong>应对消费者未知、HTTP 缓存有价值的公开 API;访问模式可预测的简单 CRUD 服务;内容协商重要的文件上传或响应;以及想要最少运维开销和最广中间件生态的团队。</li>
+      <li><strong>用 gRPC</strong>应对性能关键、载荷大小重要、需要双向流,或想在编译期强制严格契约的内部服务间通信。gRPC 很少直接暴露给浏览器——前面放一个翻译层(gRPC-Gateway、gRPC-web,或 REST/GraphQL 门面)。</li>
+      <li><strong>混合架构很正常</strong>:一个面向客户端的 GraphQL API 网关、内部微服务间的 gRPC,以及第三方 webhook 和公开集成的 REST 是常见且明智的组合。选取舍适合特定通信通道的协议,而非适合整个系统的那个。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>系统设计面试被问"GraphQL 还是 REST?"时,绝不无条件选一个。说明你在优化什么:若客户端有可变数据需求且你控制两端,GraphQL。若是公开 API 或你需要 HTTP 缓存来便宜地扩展读,REST。若是有延迟 SLO 的内部服务间,gRPC。展示对三者及其取舍的认识,才赢得资深级别认可。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>GraphQL vs REST——何时选 GraphQL?</strong>当客户端有复杂、多样的数据需求(如移动应用和 web 应用需要同一数据的不同字段)——GraphQL 用单个类型化查询消除过度获取和多次往返。<br>
+      <strong>GraphQL 里的 N+1 问题是什么?</strong>查一个项列表,每项触发单独的解析器调用——取 100 部电影各为导演发单独 DB 查询。修法是 DataLoader:它把单个事件循环 tick 内所有 <code>.load(id)</code> 调用批处理成一个批函数,然后在请求生命周期内记忆化结果,把 N 个查询坍缩成 1 个。<br>
+      <strong>REST 相对 GraphQL 的优势?</strong>REST 的 HTTP 缓存直截了当(GET 请求按 URL 缓存);GraphQL 默认用 POST,使 HTTP 级缓存更难。REST 对消费者稳定可预测的公开 API 也更简单。<br>
+      <strong>GraphQL 里怎么做缓存?</strong>三层:DataLoader 做请求级记忆化;解析器里的 Redis 做跨请求缓存;自动持久化查询(APQ)把 POST 转 GET 让 CDN 能缓存公开查询。用 <code>@cacheControl</code> 给类型标注以按字段设 max-age。<br>
+      <strong>怎么防止恶意客户端发查询 DoS 你的 GraphQL 服务器?</strong>深度限制(拒绝深于 N 层的查询)、复杂度分析(每字段分配数值成本,超预算拒绝)、网关按用户限流,以及生产中:持久化查询白名单,只执行已知查询哈希。<br>
+      <strong>什么时候用 gRPC 而非 GraphQL?</strong>内部微服务通信,那里二进制编码、双向流和严格 proto 契约比开发者人体工学或浏览器兼容性更重要。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/spark-joins/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Spark Join 策略</div>
+      </a>
+      <a href="/tech-stacks/redis/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">Redis</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
