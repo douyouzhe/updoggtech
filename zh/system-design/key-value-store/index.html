@@ -164,10 +164,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -178,7 +178,7 @@
         <a href="/system-design/key-value-store/">EN</a>
         <a href="/zh/system-design/key-value-store/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -187,7 +187,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+      <a href="/zh/system-design/">system-design</a><span>/</span>
       <span style="color:var(--text)">key-value-store</span>
     </div>
     <span class="article-tag">系统设计</span>
@@ -202,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p>分布式键值存储提供最简单可能的接口——<code>get(key)</code> 和 <code>put(key, value)</code>——但构建一个跨数千节点保持可用且快的,是个经典难题。这是 Amazon Dynamo、Cassandra 和 Riak 背后的设计。有趣的决策全关于分布:如何在集群变化时不重洗一切地把键散到节点、如何为持久性和可用性复制、如何保持副本一致(或决定不)、如何在无单一 leader 下挺过节点故障继续服务。它是我们 <a href="/ddia/chapter-5/">DDIA 复制笔记</a>和<a href="/ddia/chapter-6/">分区</a>里分布式数据想法最直接的应用。</p>
+    <p>分布式键值存储提供最简单可能的接口——<code>get(key)</code> 和 <code>put(key, value)</code>——但构建一个跨数千节点保持可用且快的,是个经典难题。这是 Amazon Dynamo、Cassandra 和 Riak 背后的设计。有趣的决策全关于分布:如何在集群变化时不重洗一切地把键散到节点、如何为持久性和可用性复制、如何保持副本一致(或决定不)、如何在无单一 leader 下挺过节点故障继续服务。它是我们 <a href="/zh/ddia/chapter-5/">DDIA 复制笔记</a>和<a href="/zh/ddia/chapter-6/">分区</a>里分布式数据想法最直接的应用。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -273,7 +273,7 @@ delete(key, version)
     <p>传给 <code>put</code> 的 <code>version</code> 是客户端从先前 <code>get</code> 得到的 context——它让存储检测并发修改。有未解决冲突时,一次读可能返回多个<em>版本</em>(下面细说)。</p>
 
     <h2>第 4 步 — 用一致性哈希分区</h2>
-    <p>天真地把键分给 <code>hash(key) mod N</code> 个节点是个陷阱:改 <code>N</code> 重映射几乎每个键(见我们的<a href="/ddia/chapter-6/">分区笔记</a>)。<strong>一致性哈希</strong>修这个。把键哈希到一个固定环(如 0…2¹⁶⁰);把每个节点哈希到同一环;一个键属于顺时针走遇到的第一个节点。现在增删节点只移动它与邻居之间的键——一小片。为避免不均分布(和节点离开时不均负载),每个物理节点被映射到散布环上的许多<strong>虚拟节点</strong>,这平滑数据和负载,使离开节点的份额分散到许多幸存者而非倾倒给一个。</p>
+    <p>天真地把键分给 <code>hash(key) mod N</code> 个节点是个陷阱:改 <code>N</code> 重映射几乎每个键(见我们的<a href="/zh/ddia/chapter-6/">分区笔记</a>)。<strong>一致性哈希</strong>修这个。把键哈希到一个固定环(如 0…2¹⁶⁰);把每个节点哈希到同一环;一个键属于顺时针走遇到的第一个节点。现在增删节点只移动它与邻居之间的键——一小片。为避免不均分布(和节点离开时不均负载),每个物理节点被映射到散布环上的许多<strong>虚拟节点</strong>,这平滑数据和负载,使离开节点的份额分散到许多幸存者而非倾倒给一个。</p>
 
     <h2>第 5 步 — 复制</h2>
     <p>为持久性和可用性,每个键存在 <strong>N</strong> 个节点:拥有它的节点加环上接下来 N−1 个不同物理节点。这个有序列表是键的 <strong>preference list</strong>。任何节点都能为一个请求充当<strong>协调者(coordinator)</strong>(通常是 preference list 里第一个);它把操作转发给副本并收集响应。因为每个副本都能服务读和接受写,没有 leader、因此无故障转移——只要足够副本可达系统就保持可写。</p>
@@ -310,7 +310,7 @@ delete(key, version)
       </tbody>
     </table>
 
-    <p>见我们的 <a href="/ddia/chapter-5/">DDIA 复制笔记</a>看完整 quorum 推导。一个微妙处:网络分区下,<strong>宽松 quorum(sloppy quorum)</strong>让 W/R 由其他可达节点(不严格是前 N)满足,保持系统可用但削弱重叠保证——与下面的 hinted handoff 配对。</p>
+    <p>见我们的 <a href="/zh/ddia/chapter-5/">DDIA 复制笔记</a>看完整 quorum 推导。一个微妙处:网络分区下,<strong>宽松 quorum(sloppy quorum)</strong>让 W/R 由其他可达节点(不严格是前 N)满足,保持系统可用但削弱重叠保证——与下面的 hinted handoff 配对。</p>
 
     <h2>第 7 步 — 数据版本化与冲突解决</h2>
     <p>无 leader 且允许并发写,两个客户端能在不同副本上同时更新同一键,产生分歧版本。存储需要一种方式判断一个版本是否<em>派生自</em>另一个(可安全覆盖)、还是它们真正<strong>并发</strong>(真冲突)。<strong>向量时钟(vector clock)</strong>捕获这个:每个值携带一个 <code>(node, counter)</code> 对列表。若时钟 A 完全 ≤ 时钟 B,B 取代 A;否则它们并发、两者作为 <strong>sibling</strong> 保留。</p>
@@ -335,7 +335,7 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
   → 下次读返回两者;应用(或 LWW)合并它们</code></pre>
     </div>
 
-    <p>调和要么是<strong>最后写入胜</strong>(简单,但静默丢数据——时钟偏移下有风险,见<a href="/ddia/chapter-8/">不可靠时钟</a>),要么是<strong>应用级合并</strong>(如 Dynamo 的购物车把购物车并集,使无 add 丢失)。存储暴露 sibling;应用决定。</p>
+    <p>调和要么是<strong>最后写入胜</strong>(简单,但静默丢数据——时钟偏移下有风险,见<a href="/zh/ddia/chapter-8/">不可靠时钟</a>),要么是<strong>应用级合并</strong>(如 Dynamo 的购物车把购物车并集,使无 add 丢失)。存储暴露 sibling;应用决定。</p>
 
     <h2>第 8 步 — 处理临时故障:Hinted Handoff</h2>
     <p>若 preference list 里一个副本短暂宕机,协调者不阻塞。它转而写到下一个健康节点,标上一个记录预期接收者的 <strong>hint</strong>。当宕掉的节点恢复,持有者把数据交回并删除 hint。这个 <strong>hinted handoff</strong> 让写在瞬时宕机中继续成功——系统"总可写"的一个核心原因。</p>
@@ -347,14 +347,14 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
     <p>一个去中心化系统不能依赖一个谁活着的中央注册表。相反节点用 <strong>gossip 协议</strong>:每个节点周期性与几个随机对等节点交换它对集群成员关系和环分配的视图,所以关于加入、离开和分区方案的知识在数秒内流行病式传播到整个集群。故障检测同样去中心化(如对等节点停止听到某节点则怀疑它死了),避免任何单点故障或协调瓶颈。</p>
 
     <h2>第 11 步 — 读/写路径</h2>
-    <p>把它放一起做一个 <code>put</code>:客户端把请求发给任何节点,它成协调者;它计算 preference list、把写(带更新的向量时钟)发给 N 个副本,W 个确认后返回成功。<code>get</code> 对称工作:协调者查询 preference list、等 R 个响应,若它们版本不一致它返回所有 sibling(并触发<strong>读修复(read repair)</strong>——把最新版本推回陈旧副本)。每个节点上的本地存储通常是为高写吞吐优化的 <strong>LSM-tree</strong> 引擎(见我们的<a href="/ddia/chapter-3/">存储与检索笔记</a>)。</p>
+    <p>把它放一起做一个 <code>put</code>:客户端把请求发给任何节点,它成协调者;它计算 preference list、把写(带更新的向量时钟)发给 N 个副本,W 个确认后返回成功。<code>get</code> 对称工作:协调者查询 preference list、等 R 个响应,若它们版本不一致它返回所有 sibling(并触发<strong>读修复(read repair)</strong>——把最新版本推回陈旧副本)。每个节点上的本地存储通常是为高写吞吐优化的 <strong>LSM-tree</strong> 引擎(见我们的<a href="/zh/ddia/chapter-3/">存储与检索笔记</a>)。</p>
 
     <h2>第 12 步 — 扩展与热点 key</h2>
     <p>吞吐和存储通过加节点增长;一致性哈希意味每个新节点以最小数据移动从邻居身上抬走公平的一片负载,而虚拟节点保持分布均匀。剩下的危险是<strong>热点 key</strong>——单个键收到不成比例的流量——任何分区都修不了它,因为它住在一组副本上。缓解:在客户端/边缘缓存热点 key,或把一个逻辑热点 key 用后缀拆成几个物理键并在读时合并。</p>
 
     <h2>第 13 步 — 关键取舍</h2>
     <ul>
-      <li><strong>可用性 vs 一致性(CAP)。</strong>这是个 AP 设计:分区下它保持可用并服务可能陈旧的数据而非拒绝请求。一个 CP 存储(如建在共识上的)会相反——见<a href="/ddia/chapter-9/">一致性与共识</a>。</li>
+      <li><strong>可用性 vs 一致性(CAP)。</strong>这是个 AP 设计:分区下它保持可用并服务可能陈旧的数据而非拒绝请求。一个 CP 存储(如建在共识上的)会相反——见<a href="/zh/ddia/chapter-9/">一致性与共识</a>。</li>
       <li><strong>Quorum 调优。</strong>W/R 让每个负载挑它在延迟 vs 一致性曲线上的点;没有全局正确答案。</li>
       <li><strong>冲突解决。</strong>LWW 简单但丢写;向量时钟 + 应用合并保留数据,代价是客户端复杂度和 sibling 处理。</li>
       <li><strong>无主的简单 vs 推理困难。</strong>无 leader 意味无故障转移和极好可用,但最终一致把真实复杂度推给应用开发者。</li>
@@ -376,11 +376,11 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
 
 
     <div class="article-nav">
-      <a href="/system-design/google-drive/" class="article-nav-card">
+      <a href="/zh/system-design/google-drive/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">设计 Google Drive / Dropbox</div>
       </a>
-      <a href="/system-design/pastebin/" class="article-nav-card next">
+      <a href="/zh/system-design/pastebin/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">设计 Pastebin</div>
       </a>
@@ -392,11 +392,11 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

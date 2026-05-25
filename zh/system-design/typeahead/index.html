@@ -164,10 +164,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -178,7 +178,7 @@
         <a href="/system-design/typeahead/">EN</a>
         <a href="/zh/system-design/typeahead/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -187,7 +187,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+      <a href="/zh/system-design/">system-design</a><span>/</span>
       <span style="color:var(--text)">typeahead</span>
     </div>
     <span class="article-tag">系统设计</span>
@@ -303,7 +303,7 @@
           ─▶ 构建 trie,在每个节点计算 top-k
           ─▶ 发布不可变快照 ─▶ 加载进服务机群</code></pre>
     </div>
-    <p>聚合是教科书<a href="/ddia/chapter-10/">批</a>(或<a href="/ddia/chapter-11/">流</a>)作业。输出是一个<strong>不可变快照</strong>;服务节点周期性(如每小时/每天)加载新快照并原子切换到它。这种读/写解耦让服务路径简单、快、无锁。</p>
+    <p>聚合是教科书<a href="/zh/ddia/chapter-10/">批</a>(或<a href="/zh/ddia/chapter-11/">流</a>)作业。输出是一个<strong>不可变快照</strong>;服务节点周期性(如每小时/每天)加载新快照并原子切换到它。这种读/写解耦让服务路径简单、快、无锁。</p>
 
     <h2>第 8 步 — 服务与分片</h2>
     <p>服务层把 trie 保在<strong>内存</strong>以求速度并横向扩展。因为整个 trie 可能装不进一台机器,<strong>按前缀分片</strong>:如所有以 "a"–"m" 开头的前缀在一个分片组、"n"–"z" 在另一个(或更细拆分以平衡负载——像 "th" 这样的常见前缀得到更多流量)。一个轻量聚合器/路由器把每个请求发给拥有那个前缀的分片。每个分片被复制以求可用和分摊读负载。因为快照切换之间数据只读,副本平凡一致。</p>
@@ -353,11 +353,11 @@
 
 
     <div class="article-nav">
-      <a href="/system-design/pastebin/" class="article-nav-card">
+      <a href="/zh/system-design/pastebin/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">设计 Pastebin</div>
       </a>
-      <a href="/system-design/nearby/" class="article-nav-card next">
+      <a href="/zh/system-design/nearby/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">设计附近的人 / Yelp(邻近)</div>
       </a>
@@ -369,11 +369,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

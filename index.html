@@ -6,6 +6,9 @@
 <meta name="description" content="updoggtech — software interview prep. System design, tech stacks, and DDIA notes for SDE interviews.">
 <title>updoggtech — System Design, Tech Stacks & SDE Interview Prep</title>
 <link rel="canonical" href="https://updoggtech.com/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="updoggtech">
 <meta property="og:title" content="updoggtech — System Design, Tech Stacks & SDE Interview Prep">
@@ -696,6 +699,10 @@
     .featured-title { font-size: 24px; }
     .hero-title { letter-spacing: -1px; }
   }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -717,6 +724,7 @@
         <input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles">
         <div class="search-results" id="search-results"></div>
       </div>
+      <div class="lang-switch"><a href="/" class="active">EN</a><a href="/zh/">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
     </div>
   </div>

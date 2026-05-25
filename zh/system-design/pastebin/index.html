@@ -164,10 +164,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -178,7 +178,7 @@
         <a href="/system-design/pastebin/">EN</a>
         <a href="/zh/system-design/pastebin/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -187,7 +187,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+      <a href="/zh/system-design/">system-design</a><span>/</span>
       <span style="color:var(--text)">pastebin</span>
     </div>
     <span class="article-tag">系统设计</span>
@@ -202,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p>Pastebin 让用户粘贴一块文本并拿回一个任何人都能打开阅读的短 URL。它是 <a href="/system-design/url-shortener/">URL 短链</a>的近亲,有一个重要区别:不存一个小目标 URL,你存一个潜在很大的<em>内容</em> blob。这把设计推向<strong>字节住哪</strong>的问题,且——因为粘贴被读得远多于被写——推向激进缓存。它是个很好的"中等"面试题,奖励元数据与内容的干净分离。</p>
+    <p>Pastebin 让用户粘贴一块文本并拿回一个任何人都能打开阅读的短 URL。它是 <a href="/zh/system-design/url-shortener/">URL 短链</a>的近亲,有一个重要区别:不存一个小目标 URL,你存一个潜在很大的<em>内容</em> blob。这把设计推向<strong>字节住哪</strong>的问题,且——因为粘贴被读得远多于被写——推向激进缓存。它是个很好的"中等"面试题,奖励元数据与内容的干净分离。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -269,7 +269,7 @@ DELETE /pastes/{key}      → ok            <span class="cm"># 仅所有者</spa
     <p>创建端点被限流和认证(或 captcha 把关)以遏制滥用;读端点公开且重度缓存。</p>
 
     <h2>第 4 步 — Key 生成</h2>
-    <p>每个粘贴需要一个短、URL 安全的 key。两种标准方法,与 <a href="/system-design/url-shortener/">URL 短链</a>相同:</p>
+    <p>每个粘贴需要一个短、URL 安全的 key。两种标准方法,与 <a href="/zh/system-design/url-shortener/">URL 短链</a>相同:</p>
     <table class="compare-table">
       <thead>
         <tr><th>方法</th><th>怎么做</th><th>取舍</th></tr>
@@ -364,11 +364,11 @@ DELETE /pastes/{key}      → ok            <span class="cm"># 仅所有者</spa
 
 
     <div class="article-nav">
-      <a href="/system-design/key-value-store/" class="article-nav-card">
+      <a href="/zh/system-design/key-value-store/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">设计分布式键值存储</div>
       </a>
-      <a href="/system-design/typeahead/" class="article-nav-card next">
+      <a href="/zh/system-design/typeahead/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">设计搜索自动补全 (Typeahead)</div>
       </a>
@@ -380,11 +380,11 @@ DELETE /pastes/{key}      → ok            <span class="cm"># 仅所有者</spa
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/grpc/">EN</a>
         <a href="/zh/tech-stacks/grpc/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">grpc</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>当服务在一个数据中心内每个请求要互相调用上千次时,JSON-over-HTTP/1.1 的冗长就成了真实的税。<strong>gRPC</strong> 是 Google 的答案:一个高性能、契约优先的 RPC 框架,构建在 <strong>Protocol Buffers</strong>(一种紧凑的二进制格式)和 <strong>HTTP/2</strong> 之上。它是 API 三件套里 REST、GraphQL 之外的第三位——它发光的地方正是它们不擅长的:低延迟、高吞吐、跨语言的服务间通信。它直接建立在我们 <a href="/ddia/chapter-4/">DDIA 编码与演化笔记</a> 的编码思想上,并与我们的 <a href="/tech-stacks/graphql-rest-comparison/">GraphQL vs REST</a> 对比互补。</p>
+    <p>当服务在一个数据中心内每个请求要互相调用上千次时,JSON-over-HTTP/1.1 的冗长就成了真实的税。<strong>gRPC</strong> 是 Google 的答案:一个高性能、契约优先的 RPC 框架,构建在 <strong>Protocol Buffers</strong>(一种紧凑的二进制格式)和 <strong>HTTP/2</strong> 之上。它是 API 三件套里 REST、GraphQL 之外的第三位——它发光的地方正是它们不擅长的:低延迟、高吞吐、跨语言的服务间通信。它直接建立在我们 <a href="/zh/ddia/chapter-4/">DDIA 编码与演化笔记</a> 的编码思想上,并与我们的 <a href="/zh/tech-stacks/graphql-rest-comparison/">GraphQL vs REST</a> 对比互补。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -204,7 +204,7 @@
     </div>
 
     <h2>gRPC 是什么</h2>
-    <p>gRPC 是一个 <strong>RPC(远程过程调用)</strong> 框架:目标是让调用远程服务的方法感觉像调本地函数。它是<strong>契约优先</strong>的——你先写一个接口定义(<code>.proto</code>)描述服务的方法和消息类型,然后编译器为你的语言生成客户端和服务端 <strong>stub</strong>。客户端调一个生成的方法;stub 处理序列化、网络和反序列化。(<a href="/ddia/chapter-4/">DDIA</a> 里那个经典告诫仍成立:远程调用其实不像本地调用——它可能失败或超时——所以要为部分失败而设计。)</p>
+    <p>gRPC 是一个 <strong>RPC(远程过程调用)</strong> 框架:目标是让调用远程服务的方法感觉像调本地函数。它是<strong>契约优先</strong>的——你先写一个接口定义(<code>.proto</code>)描述服务的方法和消息类型,然后编译器为你的语言生成客户端和服务端 <strong>stub</strong>。客户端调一个生成的方法;stub 处理序列化、网络和反序列化。(<a href="/zh/ddia/chapter-4/">DDIA</a> 里那个经典告诫仍成立:远程调用其实不像本地调用——它可能失败或超时——所以要为部分失败而设计。)</p>
 
     <h2>Protocol Buffers</h2>
     <p>载荷格式是 <strong>Protocol Buffers(protobuf)</strong>——一种基于 schema 的二进制编码。你声明带编号字段的类型化消息;编码后的字节携带字段<em>标签(tag)</em>而非名字,使其紧凑、解析快,并有明确的 schema 演化规则(用新 tag 加字段,绝不复用 tag)。</p>
@@ -281,7 +281,7 @@
     </table>
 
     <h2>何时用 gRPC(以及何时不用)</h2>
-    <p><strong>用 gRPC</strong> 做内部、性能敏感的服务间通信——尤其在多语言微服务系统里需要严格契约和小而快的载荷,或者需要流式时。它是 <a href="/tech-stacks/api-gateway/">API 网关</a> 后面东西向流量的常见选择,网关常把外部 REST 转换成内部 gRPC。<strong>别用它</strong>做公开 API(消费者期望可读 JSON、好 curl)和浏览器直连(浏览器不能讲裸 gRPC,需要 <strong>grpc-web</strong> 代理)。常见架构:公开边缘用 REST/GraphQL,内部服务间用 gRPC。</p>
+    <p><strong>用 gRPC</strong> 做内部、性能敏感的服务间通信——尤其在多语言微服务系统里需要严格契约和小而快的载荷,或者需要流式时。它是 <a href="/zh/tech-stacks/api-gateway/">API 网关</a> 后面东西向流量的常见选择,网关常把外部 REST 转换成内部 gRPC。<strong>别用它</strong>做公开 API(消费者期望可读 JSON、好 curl)和浏览器直连(浏览器不能讲裸 gRPC,需要 <strong>grpc-web</strong> 代理)。常见架构:公开边缘用 REST/GraphQL,内部服务间用 gRPC。</p>
 
     <h2>局限与常见坑</h2>
     <ul>
@@ -307,11 +307,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/api-gateway/" class="article-nav-card">
+      <a href="/zh/tech-stacks/api-gateway/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">API 网关与服务网格</div>
       </a>
-      <a href="/tech-stacks/websockets/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/websockets/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">WebSockets 与实时</div>
       </a>
@@ -323,11 +323,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

@@ -145,12 +145,12 @@
 
 <nav>
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="lang-switch">
@@ -158,7 +158,7 @@
         <a href="/zh/tech-stacks/redis/" class="active">中</a>
       </div>
       <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -166,8 +166,8 @@
 <div class="article-container">
   <div class="article-header">
     <div class="breadcrumb">
-      <a href="/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">redis</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -182,7 +182,7 @@
   </div>
 
   <div class="article-body">
-    <p>大多数人初次接触 Redis 时把它当作"一个缓存",但这低估了它。Redis 是一个<strong>内存数据结构存储</strong>:它把丰富的数据类型——字符串、哈希、列表、集合、有序集合、流——保存在内存里,并通过网络对外暴露针对这些结构的原子操作。<em>数据结构</em>加<em>微秒级延迟</em>的组合,正是为什么缓存、会话存储、限流器、排行榜、队列、发布/订阅常常都落在 Redis 上,甚至同一个系统里全都用它。这就是我们在<a href="/tech-stacks/caching/">缓存</a>和<a href="/system-design/leaderboard/">排行榜</a>文章里反复用到的技术,下面讲讲它到底怎么工作。</p>
+    <p>大多数人初次接触 Redis 时把它当作"一个缓存",但这低估了它。Redis 是一个<strong>内存数据结构存储</strong>:它把丰富的数据类型——字符串、哈希、列表、集合、有序集合、流——保存在内存里,并通过网络对外暴露针对这些结构的原子操作。<em>数据结构</em>加<em>微秒级延迟</em>的组合,正是为什么缓存、会话存储、限流器、排行榜、队列、发布/订阅常常都落在 Redis 上,甚至同一个系统里全都用它。这就是我们在<a href="/zh/tech-stacks/caching/">缓存</a>和<a href="/zh/system-design/leaderboard/">排行榜</a>文章里反复用到的技术,下面讲讲它到底怎么工作。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -216,7 +216,7 @@
       <li><strong>哈希(Hash)</strong>——字段→值的映射;不必序列化整个对象就能存对象。</li>
       <li><strong>列表(List)</strong>——链表;<code>LPUSH</code>/<code>RPOP</code> 可做简单的队列和栈。</li>
       <li><strong>集合(Set)</strong>——无序去重成员;成员判断、并集/交集(如共同好友)。</li>
-      <li><strong>有序集合(ZSET)</strong>——按分数排序的成员;<a href="/system-design/leaderboard/">排行榜</a>和限流器背后的引擎。</li>
+      <li><strong>有序集合(ZSET)</strong>——按分数排序的成员;<a href="/zh/system-design/leaderboard/">排行榜</a>和限流器背后的引擎。</li>
       <li><strong>流(Stream)</strong>——带消费者组的追加日志;一个轻量的类 Kafka 原语。</li>
       <li><strong>位图 / HyperLogLog / 地理位置</strong>——省空间的计数器、近似基数统计、地理查询。</li>
     </ul>
@@ -257,10 +257,10 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
     <p>RDB 适合备份和快速重启;AOF 在你无法容忍丢超过一秒的写时更合适。常见的生产配置是<strong>两者都开</strong>——AOF 保证持久性,RDB 做快速备份——很多还用混合格式。如果纯把 Redis 当缓存用,可以完全关掉持久化,把数据当作可重新计算的。</p>
 
     <h2>淘汰与过期</h2>
-    <p>要把 Redis 当缓存用,你用 <code>maxmemory</code> 给它的内存设上限,并选一个内存满时的<strong>淘汰策略</strong>:<code>allkeys-lru</code>(淘汰最久未用)、<code>allkeys-lfu</code>(淘汰最少使用——对倾斜访问更好)、<code>volatile-ttl</code>(在设了 TTL 的键里淘汰最快到期的),或 <code>noeviction</code>(拒绝写)。另外,键可以通过 <code>EXPIRE</code> 带上 <strong>TTL</strong>。Redis 同时用<strong>惰性</strong>(访问时)和<strong>主动</strong>(后台采样删除过期键)两种方式过期,在 CPU 与内存间权衡。淘汰(注意:Redis 用采样来近似 LRU/LFU,不是完美的全局排序)正是它能充当我们<a href="/tech-stacks/caching/">缓存深入讲解</a>里那一层缓存的原因。</p>
+    <p>要把 Redis 当缓存用,你用 <code>maxmemory</code> 给它的内存设上限,并选一个内存满时的<strong>淘汰策略</strong>:<code>allkeys-lru</code>(淘汰最久未用)、<code>allkeys-lfu</code>(淘汰最少使用——对倾斜访问更好)、<code>volatile-ttl</code>(在设了 TTL 的键里淘汰最快到期的),或 <code>noeviction</code>(拒绝写)。另外,键可以通过 <code>EXPIRE</code> 带上 <strong>TTL</strong>。Redis 同时用<strong>惰性</strong>(访问时)和<strong>主动</strong>(后台采样删除过期键)两种方式过期,在 CPU 与内存间权衡。淘汰(注意:Redis 用采样来近似 LRU/LFU,不是完美的全局排序)正是它能充当我们<a href="/zh/tech-stacks/caching/">缓存深入讲解</a>里那一层缓存的原因。</p>
 
     <h2>复制与高可用</h2>
-    <p>单个 Redis 节点是单点故障。<strong>复制</strong>增加一个或多个副本,异步拷贝主节点的数据——可用于读扩展和热备。要做自动故障转移,<strong>Redis Sentinel</strong> 监控主从;主挂了,Sentinel 达成法定多数,提升一个副本为主并重新配置客户端。由于复制是异步的,故障转移可能丢失尚未到达被提升副本的最后几条写——这正是分布式系统里普遍存在的持久性与可用性权衡(见我们的 <a href="/ddia/chapter-5/">DDIA 复制笔记</a>)。</p>
+    <p>单个 Redis 节点是单点故障。<strong>复制</strong>增加一个或多个副本,异步拷贝主节点的数据——可用于读扩展和热备。要做自动故障转移,<strong>Redis Sentinel</strong> 监控主从;主挂了,Sentinel 达成法定多数,提升一个副本为主并重新配置客户端。由于复制是异步的,故障转移可能丢失尚未到达被提升副本的最后几条写——这正是分布式系统里普遍存在的持久性与可用性权衡(见我们的 <a href="/zh/ddia/chapter-5/">DDIA 复制笔记</a>)。</p>
 
     <h2>Redis Cluster:横向扩展</h2>
     <p>当数据集或写吞吐超出单节点,<strong>Redis Cluster</strong> 把键空间分片到多个主节点。它把键空间划分为 <strong>16384 个哈希槽</strong>;每个键通过 <code>CRC16(key) mod 16384</code> 映射到一个槽,每个主节点拥有一段槽区间。加一个节点意味着把一部分槽迁移过去——只有受影响的键迁移,而不是整个键空间。</p>
@@ -293,7 +293,7 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
       <li><strong>缓存</strong>——最经典的:数据库前面的 cache-aside。</li>
       <li><strong>会话存储</strong>——快速、带 TTL 的用户会话,在无状态应用服务器间共享。</li>
       <li><strong>限流器</strong>——原子 <code>INCR</code> 配 <code>EXPIRE</code>,或用有序集合做滑动窗口。</li>
-      <li><strong>排行榜</strong>——有序集合给出 O(log n) 的排名和 top-k(见<a href="/system-design/leaderboard/">排行榜设计</a>)。</li>
+      <li><strong>排行榜</strong>——有序集合给出 O(log n) 的排名和 top-k(见<a href="/zh/system-design/leaderboard/">排行榜设计</a>)。</li>
       <li><strong>队列</strong>——列表(<code>LPUSH</code>/<code>BRPOP</code>)或带消费者组的流。</li>
       <li><strong>发布/订阅</strong>——为实时功能做轻量的扇出消息。</li>
       <li><strong>分布式锁</strong>——<code>SET key val NX EX</code> 当作租约;Redlock 算法把它扩展到多节点(虽有争议——单实例锁配合 fencing 往往就够了)。</li>
@@ -336,11 +336,11 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/graphql-rest-comparison/" class="article-nav-card">
+      <a href="/zh/tech-stacks/graphql-rest-comparison/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">GraphQL 与 REST 对比</div>
       </a>
-      <a href="/tech-stacks/object-storage/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/object-storage/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">对象存储与 S3</div>
       </a>
@@ -352,11 +352,11 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

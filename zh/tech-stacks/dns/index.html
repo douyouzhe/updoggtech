@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/dns/">EN</a>
         <a href="/zh/tech-stacks/dns/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">dns</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>互联网上的每一次连接都始于一个问题:"这个名字对应的 IP 地址是多少?"域名系统(DNS)回答它。DNS 是互联网那本分布式、层级化、被大量缓存的"电话簿",把 <code>updoggtech.com</code> 变成机器能连接的 IP。它看着像管道,其实也是个强大的基础设施工具——<a href="/tech-stacks/cdn/">CDN</a> 靠它把你路由到最近的边缘,流量靠它在多地区间均衡和故障转移,而它也常是一个被忽视的单点故障。</p>
+    <p>互联网上的每一次连接都始于一个问题:"这个名字对应的 IP 地址是多少?"域名系统(DNS)回答它。DNS 是互联网那本分布式、层级化、被大量缓存的"电话簿",把 <code>updoggtech.com</code> 变成机器能连接的 IP。它看着像管道,其实也是个强大的基础设施工具——<a href="/zh/tech-stacks/cdn/">CDN</a> 靠它把你路由到最近的边缘,流量靠它在多地区间均衡和故障转移,而它也常是一个被忽视的单点故障。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -266,8 +266,8 @@
     <h2>DNS 作为基础设施工具</h2>
     <p>因为解析器问的是"这个名字对应什么 IP?",权威服务器可以根据是谁在问或当前状况<em>给出不同答案</em>——把 DNS 变成一个路由和负载均衡层:</p>
     <ul>
-      <li><strong>轮询 / 加权 DNS</strong>——返回多条 A 记录(或轮换/加权)把客户端分散到多台服务器,一个粗糙但真实的负载均衡器(见<a href="/tech-stacks/load-balancing/">负载均衡</a>)。</li>
-      <li><strong>GeoDNS</strong>——根据解析方位置返回不同 IP,把用户送到最近的数据中心/边缘——<a href="/tech-stacks/cdn/">CDN</a> 路由流量的一种方式。</li>
+      <li><strong>轮询 / 加权 DNS</strong>——返回多条 A 记录(或轮换/加权)把客户端分散到多台服务器,一个粗糙但真实的负载均衡器(见<a href="/zh/tech-stacks/load-balancing/">负载均衡</a>)。</li>
+      <li><strong>GeoDNS</strong>——根据解析方位置返回不同 IP,把用户送到最近的数据中心/边缘——<a href="/zh/tech-stacks/cdn/">CDN</a> 路由流量的一种方式。</li>
       <li><strong>DNS 故障转移</strong>——健康检查端点,停止返回挂掉地区的 IP,把流量引开(受 TTL 约束——这也是故障转移要用低 TTL 的原因)。</li>
     </ul>
 
@@ -304,11 +304,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/observability/" class="article-nav-card">
+      <a href="/zh/tech-stacks/observability/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">可观测性</div>
       </a>
-      <a href="/tech-stacks/api-gateway/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/api-gateway/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">API 网关与服务网格</div>
       </a>
@@ -320,11 +320,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

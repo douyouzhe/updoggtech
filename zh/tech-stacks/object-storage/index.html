@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/object-storage/">EN</a>
         <a href="/zh/tech-stacks/object-storage/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">object-storage</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>对象存储是半个互联网背后默默干活的主力:每一张上传的照片、视频、备份和静态资源,几乎都躺在像 Amazon S3、Google Cloud Storage 或 Azure Blob 这样的对象存储里。它就是我们 <a href="/system-design/google-drive/">Google Drive</a> 和 <a href="/system-design/pastebin/">Pastebin</a> 设计里用来卸载字节的那个持久、近乎无限的"桶"。它与数据库或文件系统的不同,在于一组刻意的约束——<strong>扁平命名空间</strong>、<strong>不可变对象</strong>、<strong>HTTP API</strong>——用便利换来近乎无限的扩展性和持久性。</p>
+    <p>对象存储是半个互联网背后默默干活的主力:每一张上传的照片、视频、备份和静态资源,几乎都躺在像 Amazon S3、Google Cloud Storage 或 Azure Blob 这样的对象存储里。它就是我们 <a href="/zh/system-design/google-drive/">Google Drive</a> 和 <a href="/zh/system-design/pastebin/">Pastebin</a> 设计里用来卸载字节的那个持久、近乎无限的"桶"。它与数据库或文件系统的不同,在于一组刻意的约束——<strong>扁平命名空间</strong>、<strong>不可变对象</strong>、<strong>HTTP API</strong>——用便利换来近乎无限的扩展性和持久性。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -194,7 +194,7 @@
         <li><strong>近乎无限 + 便宜</strong>——可扩展到 EB 级,无需容量规划;按存储量和请求数付费。</li>
         <li><strong>对象不可变</strong>——你替换整个对象,而不是原地编辑;没有便宜的"重命名"或"追加"。</li>
         <li><strong>大文件用分段上传(multipart);客户端通过预签名 URL 直传</strong>,字节不经过你的应用服务器。</li>
-        <li><strong>存储分级 / 生命周期</strong>把数据从热到归档逐级下沉以省钱;搭配 <a href="/tech-stacks/cdn/">CDN</a> 做全球快速读取。</li>
+        <li><strong>存储分级 / 生命周期</strong>把数据从热到归档逐级下沉以省钱;搭配 <a href="/zh/tech-stacks/cdn/">CDN</a> 做全球快速读取。</li>
       </ul>
     </div>
 
@@ -286,7 +286,7 @@ initiate → upload part 1..N (并行) → complete</code></pre>
     <p>一条生命周期策略可能让对象在标准类待 30 天,转到低频访问,一年后再转归档,最后过期删除——全自动,大幅降低老数据的成本。</p>
 
     <h2>扩展与性能</h2>
-    <p>因为命名空间是扁平的,存储把 key 空间分区,几乎线性扩展——没有目录树成为瓶颈。历史上性能与 key 的<strong>前缀</strong>相关(存储按前缀分区,所以很多 key 共享一个前缀会形成热点),这也是过去建议把前缀随机化的原因;现代 S3 会自动扩展前缀,但在极端吞吐下把负载分散到多个 key 仍有帮助。对读多的公开内容,你在前面放一个 <a href="/tech-stacks/cdn/">CDN</a>,大多数读从边缘返回、根本不打到源桶。</p>
+    <p>因为命名空间是扁平的,存储把 key 空间分区,几乎线性扩展——没有目录树成为瓶颈。历史上性能与 key 的<strong>前缀</strong>相关(存储按前缀分区,所以很多 key 共享一个前缀会形成热点),这也是过去建议把前缀随机化的原因;现代 S3 会自动扩展前缀,但在极端吞吐下把负载分散到多个 key 仍有帮助。对读多的公开内容,你在前面放一个 <a href="/zh/tech-stacks/cdn/">CDN</a>,大多数读从边缘返回、根本不打到源桶。</p>
 
     <h2>用来干什么</h2>
     <ul>
@@ -319,11 +319,11 @@ initiate → upload part 1..N (并行) → complete</code></pre>
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/redis/" class="article-nav-card">
+      <a href="/zh/tech-stacks/redis/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">Redis</div>
       </a>
-      <a href="/tech-stacks/elasticsearch/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/elasticsearch/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">Elasticsearch</div>
       </a>
@@ -335,11 +335,11 @@ initiate → upload part 1..N (并行) → complete</code></pre>
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

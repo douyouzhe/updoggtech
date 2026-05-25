@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/api-gateway/">EN</a>
         <a href="/zh/tech-stacks/api-gateway/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">api-gateway</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -218,11 +218,11 @@
     <p><strong>API 网关</strong>是坐在你后端服务前面的单一入口。客户端只和网关说话,网关认证并把每个请求路由到正确的服务,并施加边缘策略。它的职责:</p>
     <ul>
       <li><strong>路由</strong>——把进入的路径/主机映射到后端服务。</li>
-      <li><strong>认证与鉴权</strong>——在边缘一次性校验 token/key(常用 <a href="/tech-stacks/oauth/">OAuth/JWT</a>),这样服务信任网关。</li>
+      <li><strong>认证与鉴权</strong>——在边缘一次性校验 token/key(常用 <a href="/zh/tech-stacks/oauth/">OAuth/JWT</a>),这样服务信任网关。</li>
       <li><strong>限流与节流</strong>——保护后端免于滥用和过载。</li>
       <li><strong>TLS 终结</strong>——在边缘处理 HTTPS。</li>
       <li><strong>请求聚合</strong>——把对多个服务的调用合并成一个客户端响应(减少移动端的碎片往返)。</li>
-      <li><strong>协议转换</strong>——如对外暴露 REST,对内说 <a href="/tech-stacks/grpc/">gRPC</a>。</li>
+      <li><strong>协议转换</strong>——如对外暴露 REST,对内说 <a href="/zh/tech-stacks/grpc/">gRPC</a>。</li>
     </ul>
 
     <div class="code-block">
@@ -269,7 +269,7 @@
    app 代码只是普通调用 "B";sidecar 干其余的</code></pre>
     </div>
 
-    <p>因为每次调用都过 sidecar,网格透明地提供:<strong>双向 TLS(mTLS)</strong>(自动加密 + 认证服务间通信)、<strong>重试、超时、熔断</strong>、<strong>客户端负载均衡</strong>、流量切换(用于 <a href="/tech-stacks/ci-cd/">金丝雀部署</a>),以及统一的<strong>可观测性</strong>(每一跳都被追踪/度量——见<a href="/tech-stacks/observability/">可观测性</a>)。应用对此毫无察觉;它只是调用"服务 B",sidecar 处理加密、重试和路由。</p>
+    <p>因为每次调用都过 sidecar,网格透明地提供:<strong>双向 TLS(mTLS)</strong>(自动加密 + 认证服务间通信)、<strong>重试、超时、熔断</strong>、<strong>客户端负载均衡</strong>、流量切换(用于 <a href="/zh/tech-stacks/ci-cd/">金丝雀部署</a>),以及统一的<strong>可观测性</strong>(每一跳都被追踪/度量——见<a href="/zh/tech-stacks/observability/">可观测性</a>)。应用对此毫无察觉;它只是调用"服务 B",sidecar 处理加密、重试和路由。</p>
 
     <h2>网关 vs 网格</h2>
     <table class="compare-table">
@@ -296,7 +296,7 @@
     <h2>常见坑</h2>
     <ul>
       <li><strong>网关变单体</strong>——把业务逻辑塞进网关又重造了你拆掉的那个单体;只放横切关注点。</li>
-      <li><strong>网关成单点故障</strong>——它在所有流量的关键路径上;让它高可用并放在<a href="/tech-stacks/load-balancing/">负载均衡器</a>后面。</li>
+      <li><strong>网关成单点故障</strong>——它在所有流量的关键路径上;让它高可用并放在<a href="/zh/tech-stacks/load-balancing/">负载均衡器</a>后面。</li>
       <li><strong>过早上网格</strong>——为五个服务上服务网格,增加的复杂度比它消除的还多。</li>
       <li><strong>对延迟无感</strong>——额外的跳(网关 + 两个 sidecar)会累加;度量它们引入的尾延迟。</li>
     </ul>
@@ -316,11 +316,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/dns/" class="article-nav-card">
+      <a href="/zh/tech-stacks/dns/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">DNS</div>
       </a>
-      <a href="/tech-stacks/grpc/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/grpc/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">gRPC 与 Protobuf</div>
       </a>
@@ -332,11 +332,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

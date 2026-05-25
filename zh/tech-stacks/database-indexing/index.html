@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/database-indexing/">EN</a>
         <a href="/zh/tech-stacks/database-indexing/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">database-indexing</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>索引是对数据库性能影响最大的那一个杠杆,"这条查询为什么慢?"几乎总能归到索引上。思路很简单——维护一个辅助结构,让你不用扫全表就能找到行——但工程上很有深度:两种主流结构(<strong>B-Tree</strong> 和 <strong>LSM-Tree</strong>)在读写速度上做出相反的取舍;而你如何组织索引(聚簇、二级、复合、覆盖)决定了一条查询是飞起来还是爬。这是我们 <a href="/ddia/chapter-3/">DDIA 存储与检索笔记</a> 的实战配套篇。</p>
+    <p>索引是对数据库性能影响最大的那一个杠杆,"这条查询为什么慢?"几乎总能归到索引上。思路很简单——维护一个辅助结构,让你不用扫全表就能找到行——但工程上很有深度:两种主流结构(<strong>B-Tree</strong> 和 <strong>LSM-Tree</strong>)在读写速度上做出相反的取舍;而你如何组织索引(聚簇、二级、复合、覆盖)决定了一条查询是飞起来还是爬。这是我们 <a href="/zh/ddia/chapter-3/">DDIA 存储与检索笔记</a> 的实战配套篇。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -255,7 +255,7 @@
       (Bloom filter 跳过不可能含该键的 SSTable)</code></pre>
     </div>
 
-    <p>缺点:一次读可能要查 memtable 和好几个 SSTable,所以 LSM 的读可能更慢(用 <strong>Bloom filter</strong> 快速排除不含某键的 SSTable 来缓解——和我们 <a href="/system-design/url-shortener/">短链</a> 里用的是同一招)。LSM-Tree 支撑 Cassandra、RocksDB、LevelDB,以及很多 NoSQL 系统背后的存储引擎。</p>
+    <p>缺点:一次读可能要查 memtable 和好几个 SSTable,所以 LSM 的读可能更慢(用 <strong>Bloom filter</strong> 快速排除不含某键的 SSTable 来缓解——和我们 <a href="/zh/system-design/url-shortener/">短链</a> 里用的是同一招)。LSM-Tree 支撑 Cassandra、RocksDB、LevelDB,以及很多 NoSQL 系统背后的存储引擎。</p>
 
     <h2>B-Tree 对比 LSM-Tree</h2>
     <table class="compare-table">
@@ -331,11 +331,11 @@ WHERE name=?                            ✗ 用不上
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/elasticsearch/" class="article-nav-card">
+      <a href="/zh/tech-stacks/elasticsearch/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">Elasticsearch</div>
       </a>
-      <a href="/tech-stacks/vector-databases/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/vector-databases/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">向量数据库</div>
       </a>
@@ -347,11 +347,11 @@ WHERE name=?                            ✗ 用不上
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

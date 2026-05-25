@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/vector-databases/">EN</a>
         <a href="/zh/tech-stacks/vector-databases/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">vector-databases</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>向量数据库随着 LLM 热潮从冷门变成无处不在,因为它回答了关键词搜索答不了的问题:"帮我找<em>含义</em>相同的东西,而不只是用词相同的"。它存储高维 <strong>embedding</strong>,并快速找出离查询向量最近的那些,这正是 <strong>RAG</strong>(检索增强生成)的检索那一半——大多数生产级 LLM 应用背后的模式,也包括我们在 <a href="/ai-coding/harness-engineering/">harness 工程</a> 和 <a href="/ai-coding/building-with-llm-apis/">用 LLM API 构建</a> 里讲的上下文组装。</p>
+    <p>向量数据库随着 LLM 热潮从冷门变成无处不在,因为它回答了关键词搜索答不了的问题:"帮我找<em>含义</em>相同的东西,而不只是用词相同的"。它存储高维 <strong>embedding</strong>,并快速找出离查询向量最近的那些,这正是 <strong>RAG</strong>(检索增强生成)的检索那一半——大多数生产级 LLM 应用背后的模式,也包括我们在 <a href="/zh/ai-coding/harness-engineering/">harness 工程</a> 和 <a href="/zh/ai-coding/building-with-llm-apis/">用 LLM API 构建</a> 里讲的上下文组装。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -290,10 +290,10 @@
             → LLM 基于检索到的文本作答</code></pre>
     </div>
 
-    <p>这正是 <a href="/ai-coding/harness-engineering/">harness 工程</a> 里的"上下文组装":向量库就是 harness 找到<em>正确</em>片段、放进有限上下文窗口的方式。切块策略和检索质量与模型同等重要。</p>
+    <p>这正是 <a href="/zh/ai-coding/harness-engineering/">harness 工程</a> 里的"上下文组装":向量库就是 harness 找到<em>正确</em>片段、放进有限上下文窗口的方式。切块策略和检索质量与模型同等重要。</p>
 
     <h2>混合搜索,以及对比 Elasticsearch</h2>
-    <p>纯语义搜索可能错过词法搜索能精确命中的精确匹配(某个商品编码、罕见人名),反之亦然。<strong>混合搜索(hybrid search)</strong>把向量相似度和关键词(BM25)打分结合、融合排名,通常比单用任一种都好。这正是向量库和 <a href="/tech-stacks/elasticsearch/">Elasticsearch</a> 汇合之处:经典 Elasticsearch 是词法的,向量库是语义的,而两者都在补上对方,使得混合正成为常态。</p>
+    <p>纯语义搜索可能错过词法搜索能精确命中的精确匹配(某个商品编码、罕见人名),反之亦然。<strong>混合搜索(hybrid search)</strong>把向量相似度和关键词(BM25)打分结合、融合排名,通常比单用任一种都好。这正是向量库和 <a href="/zh/tech-stacks/elasticsearch/">Elasticsearch</a> 汇合之处:经典 Elasticsearch 是词法的,向量库是语义的,而两者都在补上对方,使得混合正成为常态。</p>
 
     <table class="compare-table">
       <thead>
@@ -330,11 +330,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/database-indexing/" class="article-nav-card">
+      <a href="/zh/tech-stacks/database-indexing/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">数据库索引</div>
       </a>
-      <a href="/tech-stacks/cdn/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/cdn/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">CDN</div>
       </a>
@@ -346,11 +346,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

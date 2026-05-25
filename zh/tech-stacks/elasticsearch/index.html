@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/elasticsearch/">EN</a>
         <a href="/zh/tech-stacks/elasticsearch/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">elasticsearch</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>当产品需要真正的搜索——容错、按相关性排序、在百万级文档上飞快——关系型的 <code>WHERE text LIKE '%query%'</code> 就崩了,因为它要扫每一行、还没法排序。<strong>Elasticsearch</strong>(构建在 Apache Lucene 之上)用一种根本不同的数据结构——<strong>倒排索引(inverted index)</strong>——加上一层分布式引擎来扩展,解决了这个问题。它支撑了全文搜索、日志分析(ELK 技术栈里的 "E")和<a href="/tech-stacks/observability/">可观测性</a>后端。理解它,基本就是理解倒排索引和相关性打分。</p>
+    <p>当产品需要真正的搜索——容错、按相关性排序、在百万级文档上飞快——关系型的 <code>WHERE text LIKE '%query%'</code> 就崩了,因为它要扫每一行、还没法排序。<strong>Elasticsearch</strong>(构建在 Apache Lucene 之上)用一种根本不同的数据结构——<strong>倒排索引(inverted index)</strong>——加上一层分布式引擎来扩展,解决了这个问题。它支撑了全文搜索、日志分析(ELK 技术栈里的 "E")和<a href="/zh/tech-stacks/observability/">可观测性</a>后端。理解它,基本就是理解倒排索引和相关性打分。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -229,7 +229,7 @@
                  (两词都中);文档 2、3 各中一词</code></pre>
     </div>
 
-    <p>搜 "quick fox" 会查每个词项的倒排列表再合并——瞬间完成,与语料规模无关,因为不需要扫文档正文。这与我们 <a href="/system-design/typeahead/">自动补全(typeahead)</a> 里的 trie 是同一个思路,只是推广到了文档中任意位置的任意词。</p>
+    <p>搜 "quick fox" 会查每个词项的倒排列表再合并——瞬间完成,与语料规模无关,因为不需要扫文档正文。这与我们 <a href="/zh/system-design/typeahead/">自动补全(typeahead)</a> 里的 trie 是同一个思路,只是推广到了文档中任意位置的任意词。</p>
 
     <h2>分析:分词与分析器</h2>
     <p>要让搜索"聪明",原始文本在被索引前必须归一化。<strong>分析器</strong>跑一条流水线:<em>分词器(tokenizer)</em>把文本切成词项,然后<em>词项过滤器</em>对它们变换——小写化("Fox" → "fox")、<strong>词干提取(stemming)</strong>("running"/"ran" → "run")、去<strong>停用词</strong>("the"、"a")等等。关键是,索引时和查询时跑<em>同一个</em>分析器,所以查询被归一化到与被索引词项一致。这就是为什么搜 "Running" 能找到含 "ran" 的文档——两者都归到词干 "run"。挑选分析器(按语言、加同义词等)是做好搜索质量的大部分功夫。</p>
@@ -283,12 +283,12 @@
     <ul>
       <li><strong>全文搜索</strong>——商品目录、文档、内容站,带排序和容错。</li>
       <li><strong>日志与事件分析</strong>——ELK / Elastic 技术栈(Elasticsearch + Logstash/Beats + Kibana)做集中式日志。</li>
-      <li><strong>可观测性</strong>——搜索与聚合 metrics、logs、traces(见<a href="/tech-stacks/observability/">可观测性</a>)。</li>
+      <li><strong>可观测性</strong>——搜索与聚合 metrics、logs、traces(见<a href="/zh/tech-stacks/observability/">可观测性</a>)。</li>
       <li><strong>自动补全与建议</strong>——edge-ngram 分析器或 completion suggester。</li>
     </ul>
 
     <h2>Elasticsearch 对比其他方案</h2>
-    <p>对比<strong>关系型数据库</strong>:SQL 库是你的事实来源,有事务和连接;Elasticsearch 是一个反规范化、最终一致的搜索索引,你<em>从</em>该库灌进去(常通过 CDC 变更数据捕获)。对比<a href="/tech-stacks/vector-databases/">向量数据库</a>:经典 Elasticsearch 做的是<em>词法</em>搜索(匹配词项),而向量库做<em>语义</em>搜索(用 embedding 匹配含义)——现代 Elasticsearch 也支持向量/kNN 搜索,把两者结合的<strong>混合搜索(hybrid search)</strong>越来越常见。</p>
+    <p>对比<strong>关系型数据库</strong>:SQL 库是你的事实来源,有事务和连接;Elasticsearch 是一个反规范化、最终一致的搜索索引,你<em>从</em>该库灌进去(常通过 CDC 变更数据捕获)。对比<a href="/zh/tech-stacks/vector-databases/">向量数据库</a>:经典 Elasticsearch 做的是<em>词法</em>搜索(匹配词项),而向量库做<em>语义</em>搜索(用 embedding 匹配含义)——现代 Elasticsearch 也支持向量/kNN 搜索,把两者结合的<strong>混合搜索(hybrid search)</strong>越来越常见。</p>
 
     <h2>常见坑</h2>
     <ul>
@@ -313,11 +313,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/object-storage/" class="article-nav-card">
+      <a href="/zh/tech-stacks/object-storage/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">对象存储与 S3</div>
       </a>
-      <a href="/tech-stacks/database-indexing/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/database-indexing/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">数据库索引</div>
       </a>
@@ -329,11 +329,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

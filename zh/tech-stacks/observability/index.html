@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/observability/">EN</a>
         <a href="/zh/tech-stacks/observability/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">observability</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>在单体里,出问题时你读日志、挂调试器。在一个由几十个服务组成的分布式系统里——本站每个设计都是这种——一个用户请求会扇出到很多机器,"为什么慢?"没有单一的地方可看。<strong>可观测性(observability)</strong>就是给系统插桩,让你能从外部回答关于它行为的问题,包括你没预料到的问题。它的基础是<strong>三大支柱</strong>:指标(metrics)、日志(logs)、追踪(traces)。这是我们 <a href="/ddia/chapter-8/">DDIA"分布式系统的麻烦"笔记</a> 的运维另一面。</p>
+    <p>在单体里,出问题时你读日志、挂调试器。在一个由几十个服务组成的分布式系统里——本站每个设计都是这种——一个用户请求会扇出到很多机器,"为什么慢?"没有单一的地方可看。<strong>可观测性(observability)</strong>就是给系统插桩,让你能从外部回答关于它行为的问题,包括你没预料到的问题。它的基础是<strong>三大支柱</strong>:指标(metrics)、日志(logs)、追踪(traces)。这是我们 <a href="/zh/ddia/chapter-8/">DDIA"分布式系统的麻烦"笔记</a> 的运维另一面。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -244,7 +244,7 @@ http_request_duration_seconds{service="api", quantile="0.99"}       0.842
     </div>
 
     <h2>日志</h2>
-    <p><strong>日志</strong>是离散、带时间戳的事件记录——最丰富、最详细的信号。关键实践是<strong>结构化日志</strong>:把日志发成机器可解析的 key-value/JSON(带 <code>trace_id</code>、<code>user_id</code>、<code>latency_ms</code> 等字段),而非自由文本,这样才能搜索和聚合。日志通常被送往像 <a href="/tech-stacks/elasticsearch/">Elasticsearch</a> 这样的搜索后端(ELK/Elastic 技术栈)或日志服务。它们的弱点是<strong>大规模下成本高</strong>——高量服务产生海量日志数据——所以团队会采样、设保留期、在热路径上克制地打日志。</p>
+    <p><strong>日志</strong>是离散、带时间戳的事件记录——最丰富、最详细的信号。关键实践是<strong>结构化日志</strong>:把日志发成机器可解析的 key-value/JSON(带 <code>trace_id</code>、<code>user_id</code>、<code>latency_ms</code> 等字段),而非自由文本,这样才能搜索和聚合。日志通常被送往像 <a href="/zh/tech-stacks/elasticsearch/">Elasticsearch</a> 这样的搜索后端(ELK/Elastic 技术栈)或日志服务。它们的弱点是<strong>大规模下成本高</strong>——高量服务产生海量日志数据——所以团队会采样、设保留期、在热路径上克制地打日志。</p>
 
     <h2>追踪</h2>
     <p>在分布式系统里,单个请求在很多服务间跳转,指标和日志都看不出那段<em>旅程</em>。<strong>分布式追踪</strong>能:每个请求拿到一个唯一的 <strong>trace ID</strong>,它被透传到请求触及的每个服务,每个工作单元记一个 <strong>span</strong>(带时延、父 span、元数据)。拼起来,这些 span 组成一棵树,精确显示请求在哪花了时间、在哪失败。</p>
@@ -317,11 +317,11 @@ http_request_duration_seconds{service="api", quantile="0.99"}       0.842
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/ci-cd/" class="article-nav-card">
+      <a href="/zh/tech-stacks/ci-cd/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">CI/CD</div>
       </a>
-      <a href="/tech-stacks/dns/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/dns/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">DNS</div>
       </a>
@@ -333,11 +333,11 @@ http_request_duration_seconds{service="api", quantile="0.99"}       0.842
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

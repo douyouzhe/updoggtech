@@ -164,10 +164,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -178,7 +178,7 @@
         <a href="/system-design/ticketmaster/">EN</a>
         <a href="/zh/system-design/ticketmaster/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -187,7 +187,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+      <a href="/zh/system-design/">system-design</a><span>/</span>
       <span style="color:var(--text)">ticketmaster</span>
     </div>
     <span class="article-tag">系统设计</span>
@@ -202,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p>票务预订平台看起来像电商,直到你注意到残酷的转折:一场热门演唱会开售时,<strong>数百万人在同一瞬间试图买几千个特定座位</strong>。那个组合——极小、争抢的库存加巨大并发尖峰——使两个需求相撞。你必须<strong>绝不把同一座位卖两次</strong>(库存强一致),且必须<strong>挺过 thundering herd</strong> 而不倒下。设计围绕带恰当锁的座位<strong>持有(hold)</strong>,和一个<strong>虚拟候车室(virtual waiting room)</strong>来驯服尖峰。它与我们的<a href="/system-design/hotel-booking/">酒店预订</a>设计共享库存锁定核心。</p>
+    <p>票务预订平台看起来像电商,直到你注意到残酷的转折:一场热门演唱会开售时,<strong>数百万人在同一瞬间试图买几千个特定座位</strong>。那个组合——极小、争抢的库存加巨大并发尖峰——使两个需求相撞。你必须<strong>绝不把同一座位卖两次</strong>(库存强一致),且必须<strong>挺过 thundering herd</strong> 而不倒下。设计围绕带恰当锁的座位<strong>持有(hold)</strong>,和一个<strong>虚拟候车室(virtual waiting room)</strong>来驯服尖峰。它与我们的<a href="/zh/system-design/hotel-booking/">酒店预订</a>设计共享库存锁定核心。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -269,7 +269,7 @@ DELETE /reservations/{hold_id}          <span class="cm"># 提前释放</span></
     </div>
 
     <h2>第 4 步 — 核心挑战:无双重预订</h2>
-    <p>根本危险是竞态:两个用户看到座位 12A 可用,都点"预留",而朴素的<em>读后写</em>("检查它空闲,然后标占用")让两者都成功——超卖。修法是把认领座位做成一个只有一个并发请求能赢的<strong>原子、条件操作</strong>。这是我们 <a href="/ddia/chapter-7/">DDIA 事务笔记</a>覆盖的同一丢失更新 / check-then-act 问题;座位是争抢资源,数据库(或一个锁)必须串行化对它的访问。</p>
+    <p>根本危险是竞态:两个用户看到座位 12A 可用,都点"预留",而朴素的<em>读后写</em>("检查它空闲,然后标占用")让两者都成功——超卖。修法是把认领座位做成一个只有一个并发请求能赢的<strong>原子、条件操作</strong>。这是我们 <a href="/zh/ddia/chapter-7/">DDIA 事务笔记</a>覆盖的同一丢失更新 / check-then-act 问题;座位是争抢资源,数据库(或一个锁)必须串行化对它的访问。</p>
 
     <h2>第 5 步 — 座位持有(预留状态机)</h2>
     <p>购买花时间(选座、输入支付),所以你不能在点击时简单标座位已售——但你也不能让它在结账中途对其他人可用。答案是一个<strong>临时持有(temporary hold)</strong>:选座把它移到一个为那个用户保留的短窗口(如 5–10 分钟)的 <code>held</code> 状态。座位是一个小状态机:</p>
@@ -356,10 +356,10 @@ bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre
       <li><strong>浏览路径</strong>(事件列表、座位图)——读多且容忍轻微陈旧;从缓存、读副本和 CDN 服务(AP)。座位图落后一两秒没问题;预订时的原子认领才是真正的真相来源。</li>
       <li><strong>预订路径</strong>(hold → pay → confirm)——必须<strong>强一致</strong>(CP):一个座位恰好被认领一次。这条路径针对权威库存存储用原子操作运行,接受更低可用/吞吐以换正确性。</li>
     </ul>
-    <p>这是一个直接的 CAP 式拆分(见<a href="/ddia/chapter-9/">一致性与共识</a>):在无害处可用且近似,在钱和超卖攸关处一致且权威。</p>
+    <p>这是一个直接的 CAP 式拆分(见<a href="/zh/ddia/chapter-9/">一致性与共识</a>):在无害处可用且近似,在钱和超卖攸关处一致且权威。</p>
 
     <h2>第 11 步 — 支付集成</h2>
-    <p>确认一个预订跨库存存储和一个外部支付提供商,所以它被编排为一个 <strong>saga</strong>(见我们的<a href="/system-design/payment-system/">支付系统</a>设计):持有座位 → 收款(幂等地)→ 成功时把座位转换到 <code>booked</code> 并记录预订;支付失败或超时时,跑补偿动作并释放持有使座位返回库存。持有的过期是安全网——即便一个步骤丢失,座位不会永远卡在 <code>held</code>。</p>
+    <p>确认一个预订跨库存存储和一个外部支付提供商,所以它被编排为一个 <strong>saga</strong>(见我们的<a href="/zh/system-design/payment-system/">支付系统</a>设计):持有座位 → 收款(幂等地)→ 成功时把座位转换到 <code>booked</code> 并记录预订;支付失败或超时时,跑补偿动作并释放持有使座位返回库存。持有的过期是安全网——即便一个步骤丢失,座位不会永远卡在 <code>held</code>。</p>
 
     <h2>第 12 步 — 扩展与热门事件热点</h2>
     <p>浏览路径用缓存、副本和 CDN 横向扩展。预订路径按事件分片,跨<em>许多</em>事件工作良好——但单个重磅开售把所有争抢集中在一个事件的座位(热点)。缓解:候车室给进入那个分片的并发设上限;座位能在事件内分区(按区)以分散锁争抢;一个内存层(Redis)能罩住最热的座位状态检查。关键地,争抢被座位数限制——只有这么多座位可争——所以一旦候车室节流到达,后端的活就有限且可处理。</p>
@@ -388,11 +388,11 @@ bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre
 
 
     <div class="article-nav">
-      <a href="/system-design/payment-system/" class="article-nav-card">
+      <a href="/zh/system-design/payment-system/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">设计支付系统</div>
       </a>
-      <a href="/system-design/" class="article-nav-card next">
+      <a href="/zh/system-design/" class="article-nav-card next">
         <div class="article-nav-label">返回 →</div>
         <div class="article-nav-title">系统设计</div>
       </a>
@@ -404,11 +404,11 @@ bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>

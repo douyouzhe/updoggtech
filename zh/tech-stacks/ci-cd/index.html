@@ -146,10 +146,10 @@
   <div class="nav-inner">
     <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-right">
       <div class="nav-search">
@@ -160,7 +160,7 @@
         <a href="/tech-stacks/ci-cd/">EN</a>
         <a href="/zh/tech-stacks/ci-cd/" class="active">中</a>
       </div>
-      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
@@ -169,7 +169,7 @@
   <div class="article-header">
     <div class="breadcrumb">
       <a href="/zh/">首页</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
       <span style="color:var(--text)">ci-cd</span>
     </div>
     <span class="article-tag">技术栈</span>
@@ -184,7 +184,7 @@
   </div>
 
   <div class="article-body">
-    <p>CI/CD 是让团队能一天发布很多次、而且安全的那套自动化。它用一条会在每次变更上构建、测试、发布的流水线,取代了手动构建和手工部署服务器这种易错的仪式。回报不只是快:更小、更频繁的发布<em>更</em>安全,因为每次携带的改动更少、更容易回退。它与 <a href="/tech-stacks/docker/">容器</a>(制品)和 <a href="/tech-stacks/kubernetes/">Kubernetes</a>(部署目标)天然搭配。</p>
+    <p>CI/CD 是让团队能一天发布很多次、而且安全的那套自动化。它用一条会在每次变更上构建、测试、发布的流水线,取代了手动构建和手工部署服务器这种易错的仪式。回报不只是快:更小、更频繁的发布<em>更</em>安全,因为每次携带的改动更少、更容易回退。它与 <a href="/zh/tech-stacks/docker/">容器</a>(制品)和 <a href="/zh/tech-stacks/kubernetes/">Kubernetes</a>(部署目标)天然搭配。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -282,10 +282,10 @@
       </tbody>
     </table>
 
-    <p>金丝雀对高风险服务最安全,因为一次坏发布在自动监控抓到并停止前只命中一小撮用户——这也是它和 <a href="/tech-stacks/observability/">可观测性</a> 紧密搭配的原因。</p>
+    <p>金丝雀对高风险服务最安全,因为一次坏发布在自动监控抓到并停止前只命中一小撮用户——这也是它和 <a href="/zh/tech-stacks/observability/">可观测性</a> 紧密搭配的原因。</p>
 
     <h2>回滚</h2>
-    <p>最重要的安全属性是能<strong>快速回到一个已知良好状态</strong>。因为制品不可变且带版本,回滚通常就是"重新部署上一个镜像标签"——几秒,而非重新构建。蓝绿让它变成切流量;金丝雀让它变成"停止放量"。推论:一个你没法快速回滚的部署,就是一个你不该做的部署。(数据库迁移是需要小心的例外——让 schema 变更向后兼容,使新旧代码能在过渡期共存;见 <a href="/ddia/chapter-4/">编码与演化</a>。)</p>
+    <p>最重要的安全属性是能<strong>快速回到一个已知良好状态</strong>。因为制品不可变且带版本,回滚通常就是"重新部署上一个镜像标签"——几秒,而非重新构建。蓝绿让它变成切流量;金丝雀让它变成"停止放量"。推论:一个你没法快速回滚的部署,就是一个你不该做的部署。(数据库迁移是需要小心的例外——让 schema 变更向后兼容,使新旧代码能在过渡期共存;见 <a href="/zh/ddia/chapter-4/">编码与演化</a>。)</p>
 
     <h2>质量门禁与实践</h2>
     <ul>
@@ -319,11 +319,11 @@
     </div>
 
     <div class="article-nav">
-      <a href="/tech-stacks/docker/" class="article-nav-card">
+      <a href="/zh/tech-stacks/docker/" class="article-nav-card">
         <div class="article-nav-label">← 上一篇</div>
         <div class="article-nav-title">Docker 与容器</div>
       </a>
-      <a href="/tech-stacks/observability/" class="article-nav-card next">
+      <a href="/zh/tech-stacks/observability/" class="article-nav-card next">
         <div class="article-nav-label">下一篇 →</div>
         <div class="article-nav-title">可观测性</div>
       </a>
@@ -335,11 +335,11 @@
   <div class="footer-inner">
     <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
     <ul class="footer-links">
-      <li><a href="/system-design/">系统设计</a></li>
-      <li><a href="/tech-stacks/">技术栈</a></li>
-      <li><a href="/ai-coding/">AI 编程</a></li>
-      <li><a href="/ddia/">DDIA</a></li>
-      <li><a href="/contact/">联系</a></li>
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
     </ul>
     <div class="footer-copy">© 2024 updoggtech</div>
   </div>
