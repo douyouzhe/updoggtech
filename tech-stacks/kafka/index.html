@@ -56,9 +56,6 @@
   .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
   .article-body strong { color: var(--text); font-weight: 700; }
 
-  /* LEAD — one-line section summary */
-  .lead { font-family: var(--mono); font-size: 13px; color: var(--accent); border-left: 2px solid var(--accent); padding: 2px 0 2px 14px; margin: 0 0 18px; line-height: 1.6; }
-
   /* CODE BLOCKS */
   .code-block {
     background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
@@ -91,6 +88,14 @@
   }
   .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
   .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
 
   /* COMPARISON TABLE */
   .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
@@ -149,104 +154,107 @@
     <div class="article-meta">
       <span>Mar 31, 2023</span>
       <span class="separator">·</span>
-      <span>8 min read</span>
+      <span>14 min read</span>
       <span class="separator">·</span>
       <span style="color:var(--accent)">Tech Stacks</span>
     </div>
   </div>
 
   <div class="article-body">
-    <p class="lead">Kafka is a durable, distributed commit log — not just a message queue.</p>
-    <p>Producers append messages to topics; consumers pull from them at their own pace. Thousands of companies run it for data pipelines, streaming analytics, and async integration.</p>
+    <p>Kafka is an open-source <strong>distributed event streaming platform</strong> adopted by thousands of companies for high-performance data pipelines, streaming analytics, data integration, and mission-critical applications. At its core it is a <strong>publish/subscribe</strong> system: producers write messages to topics, and consumers read from the topics they care about. It extends far beyond traditional message queues like ActiveMQ or RabbitMQ.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Log, not a queue</strong> — messages persist after being read; each consumer tracks its own offset.</li>
+        <li><strong>Partitions</strong> give horizontal scale and per-key ordering.</li>
+        <li><strong>Consumer groups</strong> give parallel reads — one partition per member.</li>
+        <li><strong>acks + ISR + idempotence</strong> tune durability all the way up to exactly-once.</li>
+        <li><strong>Fast because</strong> of sequential writes, page cache, and zero-copy.</li>
+      </ul>
+    </div>
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>A partitioned, replicated log. Partitions give scale + per-key ordering, consumer groups give parallel reads, and <code>acks</code> + ISR + idempotence let you dial durability from fire-and-forget to exactly-once.</p>
+      <p>Kafka is a durable, partitioned, replicated commit log. Producers append records to partitions, consumers pull at their own pace, and replication + acks give you tunable durability — from fire-and-forget to exactly-once.</p>
     </div>
 
-    <h2>What it's good for</h2>
+    <h2>Major Use Cases</h2>
     <ul>
-      <li><strong>Buffer traffic spikes</strong> — soak up bursts (lunch rush, flash sales) so downstream isn't crushed.</li>
-      <li><strong>Decouple services</strong> — sources don't know about consumers; MirrorMaker moves data across zones.</li>
-      <li><strong>Go async</strong> — push non-critical work off the request path.</li>
+      <li><strong>Peak traffic buffering</strong> — absorb bursts during high-demand windows (lunch rush for food delivery, flash sales for e-commerce) so downstream services aren't overwhelmed.</li>
+      <li><strong>Service decoupling</strong> — separate data sources from consumers; Kafka MirrorMaker moves data across data lakes and availability zones.</li>
+      <li><strong>Asynchronous communication</strong> — offload non-essential work off the request path to improve user-facing latency.</li>
     </ul>
 
-    <h2>Pub/Sub model</h2>
-    <p class="lead">Messages live in topics and persist after being read.</p>
+    <h2>Pub/Sub Model</h2>
+    <p>Different categories of messages flow into distinct <strong>topics</strong> from various producers. Unlike traditional queues, messages <strong>persist after consumption</strong> — Kafka manages the lifecycle independently of any single consumer, so multiple consumers can read the same topic at different offsets.</p>
+
+    <h2>Producer Architecture</h2>
+    <p>The producer calls <code>.send()</code> with a <code>ProducerRecord</code> (a message wrapper). The flow:</p>
     <ul>
-      <li>Producers write to <strong>topics</strong>; many consumers read the same topic independently.</li>
-      <li>Unlike a queue, a message isn't deleted on consume — Kafka manages retention, so consumers read at their own offset.</li>
+      <li>A <strong>serializer</strong> converts the message to a byte stream (custom serializers, Protobuf, or Avro via the Schema Registry).</li>
+      <li>The <strong>partitioner</strong> decides the destination partition, enabling distributed storage and parallel processing across the cluster.</li>
+      <li>Records queue in the <strong>RecordAccumulator</strong> (in-memory) before being sent. Two knobs control timing: <code>BATCH_SIZE_CONFIG</code> (queue threshold) and <code>LINGER_MS_CONFIG</code> (max wait).</li>
+      <li>The <strong>Sender</strong> creates a network client and awaits the <code>acks</code> confirmation.</li>
     </ul>
 
-    <h2>Producer: how a message is sent</h2>
-    <p class="lead">Serialize → pick partition → batch → send &amp; wait for ack.</p>
-    <ul>
-      <li><strong>Serialize</strong> — message → byte stream (Protobuf / Avro via Schema Registry).</li>
-      <li><strong>Partition</strong> — <code>hash(key) % partitions</code> decides where it lands.</li>
-      <li><strong>Batch</strong> — buffered in the RecordAccumulator; flushed when <code>batch.size</code> fills or <code>linger.ms</code> elapses.</li>
-      <li><strong>Send</strong> — the Sender ships it and waits for the <code>acks</code> reply.</li>
-    </ul>
+    <h2>Consumer Model</h2>
+    <p>Kafka uses a <strong>pull</strong> model — consumers request data on their own schedule, giving more decoupling than push. Many independent consumers can read the same topic, but consumers <strong>within a single consumer group cannot share a partition</strong>: the group behaves as one logical subscriber, and each partition is owned by exactly one member.</p>
 
-    <h2>Consumer: pull, not push</h2>
-    <p class="lead">Consumers fetch on their own schedule; one partition belongs to one member per group.</p>
-    <ul>
-      <li>Pull model → more decoupling than push.</li>
-      <li>Many independent consumers can read the same topic.</li>
-      <li>Inside one <strong>consumer group</strong>, a partition is owned by exactly one member — the group is a single logical subscriber.</li>
-    </ul>
+    <h2>Partitions &amp; Replicas</h2>
+    <p>Parallelism comes from splitting a topic into <strong>partitions</strong> spread across servers. The <code>DefaultPartitioner</code> uses <code>hash(key) % num_partitions</code>; custom implementations override <code>partition()</code>.</p>
+    <p>Each partition is an <strong>append-only log</strong> segmented at 1 GB, with a sparse index record every 4 KB for fast lookups. Retention (<code>log.retention.hours/minutes/ms</code>, default 7 days) deletes or compacts old data based on <code>log.cleanup.policy</code>. Replication guards against single-point failures via a leader/follower scheme.</p>
 
-    <h2>Partitions &amp; replicas</h2>
-    <p class="lead">Partitions give parallelism; replicas give durability.</p>
-    <ul>
-      <li><strong>Partition</strong> = append-only log, segmented at 1 GB, sparse index every 4 KB.</li>
-      <li><strong>Retention</strong> (<code>log.retention.*</code>, default 7 days) deletes or compacts old data.</li>
-      <li><strong>Replication</strong> uses leader/follower to survive broker failures.</li>
-    </ul>
-
-    <h2>Durability: the acks knob</h2>
-    <p class="lead">acks trades throughput for durability — pick your point.</p>
+    <h2>System Reliability</h2>
+    <h3>acks</h3>
+    <p>This producer-side setting controls how many brokers must receive a record before the write is considered successful — the core durability/throughput tradeoff:</p>
     <table class="compare-table">
       <thead>
         <tr><th>Setting</th><th>Behavior</th></tr>
       </thead>
       <tbody>
-        <tr><td>acks=0</td><td>Done the instant it's sent. Fastest, least safe.</td></tr>
-        <tr><td>acks=1</td><td>Done when the <strong>leader</strong> has it.</td></tr>
-        <tr><td>acks=all</td><td>Done when all in-sync replicas (ISR) have it. Safest. Pair with <code>min.insync.replicas&gt;1</code>.</td></tr>
+        <tr><td>acks=0</td><td>Success the moment the record is sent — no broker response awaited. Fastest, least durable.</td></tr>
+        <tr><td>acks=1</td><td>Success once the <strong>leader</strong> receives the record.</td></tr>
+        <tr><td>acks=all (-1)</td><td>Success only after all in-sync replicas (ISR) acknowledge. If ISRs drop offline, streaming blocks. <code>min.insync.replicas=n</code> guarantees a minimum number of copies.</td></tr>
       </tbody>
     </table>
+    <div class="callout">
+      <div class="callout-label">reliable transmission</div>
+      <p>For durable delivery: <code>acks=-1</code>, <code>num_partitions &gt; 1</code>, and <code>min.insync.replicas &gt; 1</code>.</p>
+    </div>
 
-    <h3>Delivery semantics</h3>
+    <h3>Retries &amp; Delivery Semantics</h3>
+    <p><code>RETRIES_CONFIG</code> defaults to <code>MAX_INT</code> for Kafka ≥ 2.1. Retries risk duplication unless managed:</p>
     <ul>
-      <li><strong>At-most-once</strong> (<code>acks=0</code>) — no dupes, may lose messages.</li>
-      <li><strong>At-least-once</strong> (<code>acks=-1</code>) — never lost, may duplicate.</li>
-      <li><strong>Exactly-once</strong> — at-least-once + idempotence: each producer has a PID + per-message sequence; brokers drop duplicate <code>&lt;PID, seq&gt;</code> (<code>enable.idempotence=true</code>). Transactions wrap sends in <code>beginTransaction()</code> / <code>commitTransaction()</code>.</li>
+      <li><strong>At-Least-Once</strong> — <code>acks=-1</code>; messages never lost but may duplicate.</li>
+      <li><strong>At-Most-Once</strong> — <code>acks=0</code>; no duplicates but messages may be lost.</li>
+      <li><strong>Exactly-Once</strong> — At-Least-Once + idempotence. Each producer gets a unique Producer Id (PID) with a monotonically increasing sequence number per message. Brokers track the largest <code>&lt;PID, sequence&gt;</code> per partition and reject duplicates (<code>enable.idempotence=true</code>). The <code>TransactionManager</code> adds database-like <code>beginTransaction()</code>/<code>commitTransaction()</code> wrapping <code>.send()</code>.</li>
     </ul>
 
-    <h3>Replicas &amp; ISR</h3>
+    <h3>Replicas</h3>
+    <p>Multiple followers sync from the leader. Producers only write to the leader; followers fetch from it. The <strong>ISR</strong> lists in-sync followers; a follower lagging beyond <code>replica.lag.time.max.ms</code> moves to the <strong>OSR</strong>. ISR + OSR = Assigned Replicas (AR). On leader failure, a new leader is elected from the ISR. Each replica tracks its <strong>LEO</strong> (Log End Offset) to measure sync progress.</p>
+
+    <h2>High-Speed Read/Write</h2>
     <ul>
-      <li>Producers write only to the leader; followers fetch from it.</li>
-      <li><strong>ISR</strong> = in-sync followers. Lag past <code>replica.lag.time.max.ms</code> → kicked to OSR.</li>
-      <li>Leader dies → new leader elected from the ISR.</li>
+      <li><strong>Cluster computing</strong> — parallel processing for both producers and consumers.</li>
+      <li><strong>Sparse indexing</strong> — <code>.index</code> files accelerate reads.</li>
+      <li><strong>Append-only logs</strong> — sequential writes only, far faster than random access.</li>
+      <li><strong>Page Cache</strong> — the OS caches file metadata/indices in RAM while data lives on disk; Kafka leans on this layered approach instead of a custom cache.</li>
+      <li><strong>Zero-copy</strong> — data transfers directly from the read buffer to the socket buffer, skipping user/kernel context switches. (This advantage disappears under SSL, since brokers must decrypt then re-encrypt.)</li>
     </ul>
 
-    <h2>Why it's fast</h2>
+    <h2>ZooKeeper</h2>
+    <p>A coordination service for distributed systems. With Kafka it tracks cluster node status and topic/message metadata. Five primary functions:</p>
     <ul>
-      <li><strong>Sequential writes</strong> — append-only beats random access.</li>
-      <li><strong>Sparse index</strong> — <code>.index</code> files speed up reads.</li>
-      <li><strong>Page cache</strong> — leans on the OS cache, not a custom one.</li>
-      <li><strong>Zero-copy</strong> — read buffer → socket buffer, skipping user/kernel copies (lost under SSL).</li>
+      <li><strong>Controller election</strong> — picks the first AR broker also in the ISR (<code>/kafka/controller</code>).</li>
+      <li><strong>Cluster membership</strong> — lists alive brokers (<code>/kafka/brokers/ids</code>).</li>
+      <li><strong>Topic configuration</strong> — stores full topic details (<code>/kafka/brokers/topics/{topic}/partitions/{id}/state</code>).</li>
+      <li><strong>Access Control Lists</strong>.</li>
+      <li><strong>Quotas</strong> — monitors per-client read/write allowances.</li>
     </ul>
 
-    <h2>ZooKeeper's job</h2>
-    <p class="lead">Coordinates the cluster: who's alive, who's controller, what topics exist.</p>
-    <ul>
-      <li>Controller election + live broker list (cluster membership).</li>
-      <li>Topic config, ACLs, and client quotas.</li>
-    </ul>
-
-    <h2>Try it: the CLI</h2>
-    <p class="lead">Create a topic (3 replicas, 2 partitions), then produce &amp; consume.</p>
+    <h2>CLI Examples</h2>
+    <p>Create a topic with 2 partitions and replication factor 3:</p>
     <div class="code-block">
       <div class="code-block-header">
         <div class="code-block-header-left">
@@ -257,22 +265,53 @@
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
       </div>
-      <pre><code>kafka-topics --bootstrap-server localhost:9092 \
-  --topic test1 --create \
-  --replication-factor <span class="num">3</span> --partitions <span class="num">2</span>
+      <pre><code><span class="cm"># test.config → bootstrap.servers=localhost:9092</span>
+kafka-topics \
+  --bootstrap-server localhost:9092 \
+  --command-config ./test.config \
+  --topic test1 \
+  --create \
+  --replication-factor <span class="num">3</span> \
+  --partitions <span class="num">2</span></code></pre>
+    </div>
 
-<span class="cm"># produce keyed messages</span>
-kafka-console-producer --topic test1 --broker-list localhost:9092 \
-  --property parse.key=true --property key.separator=:
+    <p>Produce keyed messages, then consume from the beginning:</p>
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">bash</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># producer</span>
+kafka-console-producer \
+  --topic test1 \
+  --broker-list localhost:9092 \
+  --property parse.key=true \
+  --property key.separator=:
+<span class="cm"># > key:{"val":0}</span>
 
-<span class="cm"># consume from the start</span>
-kafka-console-consumer --topic test1 --bootstrap-server localhost:9092 \
-  --property print.key=true --from-beginning</code></pre>
+<span class="cm"># consumer</span>
+kafka-console-consumer \
+  --topic test1 \
+  --bootstrap-server localhost:9092 \
+  --property print.key=true \
+  --from-beginning</code></pre>
     </div>
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Think "replicated log," not "queue." Partitions = scale + ordering-per-key, consumer groups = parallel reads, acks + ISR + idempotence = tunable durability up to exactly-once.</p>
+      <p>Think of Kafka as a replicated log, not a queue. Partitions give you horizontal scale and ordering-per-key; consumer groups give you parallel reads; and <code>acks</code> + ISR + idempotence let you dial durability from fire-and-forget all the way to exactly-once.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How does Kafka guarantee exactly-once?</strong> Idempotent producer (PID + sequence number) or transactions.<br>
+      <strong>Why is Kafka so fast?</strong> Sequential append-only writes + OS page cache + zero-copy.<br>
+      <strong>Queue vs. Kafka?</strong> Messages persist after consumption, so multiple consumer groups can replay independently.</p>
     </div>
 
     <div class="article-nav">
