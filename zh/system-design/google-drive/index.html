@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="系统设计:文件存储与同步(Google Drive/Dropbox)——分块、内容寻址去重、元数据平面 vs 块平面、同步算法、设备通知、冲突解决(冲突副本)、共享与权限、CDN 下载、持久性与容错、关键取舍。">
+<title>设计 Google Drive / Dropbox — 系统设计 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/system-design/google-drive/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/google-drive/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/google-drive/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/google-drive/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="设计 Google Drive / Dropbox">
+<meta property="og:description" content="Google Drive/Dropbox 系统设计:分块、内容寻址去重、两平面架构、同步、冲突副本、CDN。">
+<meta property="og:url" content="https://updoggtech.com/zh/system-design/google-drive/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="设计 Google Drive / Dropbox">
+<meta name="twitter:description" content="设计 Google Drive:分块、去重、元数据/块平面、同步算法、冲突解决、CDN。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计 Google Drive / Dropbox", "description": "系统设计:文件存储与同步(Google Drive/Dropbox)——分块、内容寻址去重、元数据平面 vs 块平面、同步算法、设备通知、冲突解决(冲突副本)、共享与权限、CDN 下载、持久性与容错、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/google-drive/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/google-drive/">EN</a>
+        <a href="/zh/system-design/google-drive/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/system-design/">system-design</a><span>/</span>
+      <span style="color:var(--text)">google-drive</span>
+    </div>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计 Google Drive / Dropbox</h1>
+    <div class="article-meta">
+      <span>2023年4月8日</span>
+      <span class="separator">·</span>
+      <span>34 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>文件存储与同步服务从外面看很平凡:把文件丢进一个文件夹,它就出现在每台设备上。底下,它是更丰富的系统设计问题之一,因为需求互相拉扯。你必须持久存储 PB 级(丢失用户文件不可原谅)、在数秒内跨多设备同步变更、避免在一字节变化时重新上传 2 GB 视频、跨数百万用户去重相同内容而不彼此泄露数据、在两台离线设备编辑同一文件时解决冲突,并在全球快速服务下载。关键架构动作是<strong>把文件切成块(chunk)</strong>、<strong>内容寻址去重</strong>,以及<strong>把元数据平面与块存储平面分开</strong>——几乎每个有趣的决策都从这三个流出。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>把文件切成固定大小块</strong>(如 4 MB)——支持可恢复上传、并行传输、部分同步(只有改变的块移动)和去重。</li>
+        <li><strong>内容寻址存储</strong>——一个块的 ID 是其字节的哈希,所以相同块只存一次(块级去重),节省大量存储和带宽。</li>
+        <li><strong>把元数据与块分开</strong>——元数据服务(文件树、版本、块列表)小、事务性、对一致性敏感;块服务(S3 风格 blob 存储)巨大、仅追加。</li>
+        <li><strong>同步 = diff + 增量上传 + 通知</strong>——客户端哈希本地块、只上传新的、向元数据提交一个新版本,通知服务告诉其他设备拉取。</li>
+        <li><strong>绝不静默丢失一次编辑</strong>——并发离线编辑由版本化和"冲突副本"文件解决,而非最后写入胜。</li>
+        <li><strong>持久性是首要非功能需求</strong>——跨 AZ/区域复制块(冷数据纠删码)以达 ~11 个 9,像 S3。</li>
+        <li><strong>元数据是扩展瓶颈</strong>——按用户/命名空间分片文件树和共享图;blob 存储几乎线性扩展。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把文件切成 ~4 MB 块,并按内容哈希寻址每个块,使相同块只存一次。保持两个平面:一个元数据服务(文件树、版本、块列表——需事务和较强一致性)和一个 S3 支撑的块服务(便宜、持久、仅追加)。通过哈希本地块、只上传新的、提交新版本来同步;通知服务向其他设备推"现在拉取"。用版本化和冲突副本解决并发编辑。复制块以持久、经 CDN 服务下载。</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">high-level architecture</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>                         ┌──────────────────┐
+   ┌───────────┐  元数据  │  元数据服务      │   ┌───────────────┐
+   │  客户端   │◀───────▶│ (树、版本、      │──▶│  元数据 DB    │
+   │  watcher  │         │  块列表)         │   │ (分片 SQL)    │
+   │  + 同步   │         └──────────────────┘   └───────────────┘
+   │  引擎     │         ┌──────────────────┐   ┌───────────────┐
+   └────┬──────┘  块     │  块服务          │──▶│  blob 存储    │──▶ CDN
+        │───────────────▶│ (上传/取回)      │   │ (S3, 块)      │
+        │ 订阅           └──────────────────┘   └───────────────┘
+        │                ┌──────────────────┐
+        └───────────────▶│   通知服务       │  long-poll / websocket:
+                         │                  │  "你的命名空间变了"
+                         └──────────────────┘</code></pre>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>画框前钉死范围。<strong>功能</strong>需求:上传和下载文件;跨用户设备自动同步一个本地文件夹;与其他用户共享文件/文件夹;保留版本历史;离线工作、重连时同步。<strong>非功能</strong>:持久性至上(绝不丢数据——目标 ~11 个 9)、高可用、扩展到数亿用户和 EB 级数据、高效用带宽(不重发未变数据)、低同步延迟(变更数秒内传播)。值得显式把文档内实时协作编辑<em>划出</em>范围(那是 Google Docs / 操作转换问题);这里一个文件是一个不透明 blob,一次一个写者改它。</p>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>大致数字证明架构合理。假设 5 亿注册用户、1 亿日活、每用户平均存 10 GB。</p>
+    <ul>
+      <li><strong>存储:</strong>500M × 10 GB = 5 EB 原始——去重前、复制前。去重可砍 30–50%;复制(3×)又乘回去。blob 存储必须扩展到许多 EB。</li>
+      <li><strong>写吞吐:</strong>若每 DAU 每天上传 ~10 个文件、平均 1 MB,那是 ~1B 文件操作/天 ≈ ~12K 写/秒平均,峰值数倍更高。</li>
+      <li><strong>读写比:</strong>下载和同步主导;预期读多。大多数读是便宜的元数据轮询加从 CDN 服务的块取回。</li>
+      <li><strong>元数据 QPS:</strong>客户端频繁轮询变更;元数据服务见到的 QPS 远多于块服务,但每个请求很小。</li>
+    </ul>
+    <p>头条要点:<strong>块大且易扩展;元数据小但高 QPS 且对一致性敏感。</strong>那种不对称正是我们分开它们的原因。</p>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>API 是块感知而非整文件的。客户端先协商服务器已有哪些块、只上传缺失的字节,然后提交一个引用块哈希的新文件版本。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">core API (auth token implied)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>POST /files/upload-urls   {chunk_hashes:[...]}  <span class="cm"># 哪些缺失?</span>
+        → {missing:[hash→presigned PUT url]}     <span class="cm"># 去重发生在这里</span>
+PUT  &lt;presigned-url&gt;       &lt;chunk bytes&gt;          <span class="cm"># 客户端 → blob 存储直传</span>
+POST /files/commit        {path, chunk_hashes:[...], base_version}
+        → {version}                              <span class="cm"># 新文件版本</span>
+GET  /files/changes?cursor=X                     <span class="cm"># 自上次同步的增量</span>
+        → {changes:[...], next_cursor}
+GET  /files/download?path&amp;version                <span class="cm"># → 块列表 + CDN url</span>
+POST /shares              {path, user, role}      <span class="cm"># 共享一个文件夹</span></code></pre>
+    </div>
+
+    <p>注意上传流程:客户端问"这些块哈希里你已经有哪些?"并只上传缺失的,经预签名 URL 直接到 blob 存储(让大量字节远离应用服务器)。<code>commit</code> 调用是唯一变更元数据的。</p>
+
+    <h2>第 4 步 — 分块:为什么把文件切成块</h2>
+    <p>不把文件当一个不透明 blob,客户端把它切成固定大小<strong>块(chunk)</strong>(Dropbox 用 4 MB)。这一个决策解锁系统大部分效率:</p>
+    <ul>
+      <li><strong>部分同步。</strong>改一个 2 GB 文件里的一段,只有受影响的 4 MB 块需要重新上传——而非整个文件。</li>
+      <li><strong>可恢复上传。</strong>断开的连接在块边界恢复;你重发一个块,而非数 GB。</li>
+      <li><strong>并行传输。</strong>块并发上传/下载,饱和带宽。</li>
+      <li><strong>去重。</strong>块是去重的单位(下一步)。</li>
+    </ul>
+    <p>固定大小分块简单但有个弱点:在文件开头插入一字节会移动后续每个块边界,破坏去重。<strong>内容定义(变长)分块</strong>用滚动哈希基于内容设边界,所以插入只影响附近块——更好去重、更高 CPU 成本。固定大小是常见面试默认;提一下滚动哈希改进。</p>
+
+    <h2>第 5 步 — 块存储与去重</h2>
+    <p>每个块存在一个<strong>内容寻址</strong>的 blob 存储:它的标识符是其字节的密码学哈希(如 SHA-256)。两个后果立即落出。第一,同样内容总映射到同样 ID,所以若一个块已存在你只增加引用计数而非再存它——<strong>块级去重</strong>。第二,你能通过读时重哈希验证完整性。去重在实践中巨大:共享文档、常见应用文件和重存版本意味很大比例的块是重复的。</p>
+
+    <div class="callout">
+      <div class="callout-label">安全坑</div>
+      <p><strong>跨用户(全局)去重泄露信息。</strong>若去重跨所有用户,攻击者能探测一个已知文件是否已存在(他们的上传瞬间返回 = 别人有它),揭示另一用户存储了那个确切内容。许多服务因此把去重限于每用户或每命名空间,或加一个秘密 salt,用一些存储节省换隐私。总要提出这个取舍。</p>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>去重范围</th><th>存储节省</th><th>风险</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">全局(所有用户)</td><td>最大</td><td>跨用户的存在性/确认攻击</td></tr>
+        <tr><td class="col-b">每命名空间</td><td>共享文件夹内高</td><td>低——限于协作者</td></tr>
+        <tr><td class="col-a">每用户</td><td>中等(版本、重复)</td><td>无跨用户</td></tr>
+      </tbody>
+    </table>
+
+    <h2>第 6 步 — 元数据服务与数据模型</h2>
+    <p>元数据平面是大脑:它记录文件夹树、每个文件的版本历史,以及重组每个版本的有序块哈希列表。它每条记录小,但必须事务性(一次 commit 原子更新几行)且相当强一致(客户端不能看到半写的文件)。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">metadata schema (sharded by namespace_id)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>namespaces (ns_id, owner_id, type)              <span class="cm"># 用户的根或一个共享文件夹</span>
+files      (file_id, ns_id, path, is_dir, latest_version, deleted)
+versions   (file_id, version, chunk_hashes[], size, modified_by, ts)
+chunks     (chunk_hash PK, blob_url, size, refcount)   <span class="cm"># 内容寻址</span>
+devices    (device_id, user_id, last_cursor)    <span class="cm"># 每台设备读到哪</span>
+shares     (ns_id, user_id, role)               <span class="cm"># viewer / editor / owner</span></code></pre>
+    </div>
+
+    <p>一个文件版本只是一个有序块哈希列表——重建文件意味取那些块并拼接。<strong>命名空间(namespace)</strong>是分片和共享的单位:用户的私有根是一个命名空间,每个共享文件夹是它自己的、能附到多个用户的命名空间。按 <code>ns_id</code> 分片元数据让用户(或共享文件夹)的数据共置,所以列目录或算增量是单分片操作。关系存储(带分片)是好选择,因为事务 commit;NoSQL 存储也行,若你谨慎处理多行更新。</p>
+
+    <h2>第 7 步 — 核心架构:两个平面</h2>
+    <p>把第 4–6 步放一起,系统干净地分成两个独立扩展的数据平面:</p>
+    <ul>
+      <li><strong>元数据平面</strong>——元数据服务 + 分片元数据 DB。高 QPS、小载荷、事务性、对一致性敏感。大部分工程努力和大部分扩展痛苦住在这里。</li>
+      <li><strong>块平面</strong>——块服务 + blob 存储(S3)+ CDN。EB 级、大载荷、仅追加且不可变(块从不变——它的哈希定义它)、平凡可缓存。客户端经预签名 URL 直接与 blob 存储传大量字节,所以应用服务器从不代理数 GB。</li>
+    </ul>
+    <p>因为块不可变且内容寻址,块平面无需复杂一致性——它是一个巨大、持久的哈希 map。所有排序、版本化和"这个文件夹现在含什么"逻辑住在元数据平面。</p>
+
+    <h2>第 8 步 — 同步算法</h2>
+    <p>客户端的 <strong>watcher</strong> 观察本地文件夹。文件变化时,同步引擎大致跑这个循环:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">client sync engine (upload path)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">on</span> local_file_change(file):
+    chunks  = split(file, 4MB)
+    hashes  = [sha256(c) <span class="kw">for</span> c <span class="kw">in</span> chunks]
+    missing = api.upload_urls(hashes)        <span class="cm"># 服务器:哪些是新的?</span>
+    <span class="kw">for</span> h <span class="kw">in</span> missing:
+        put(missing[h], chunk_for(h))        <span class="cm"># 只上传新块 → blob 存储</span>
+    api.commit(file.path, hashes, base_version=file.known_version)</code></pre>
+    </div>
+
+    <p>下载路径是镜像:客户端调 <code>changes?cursor=</code>、得知哪些文件有新版本、取它本地缺失的块哈希、从 CDN 下载那些块、重组文件。关键地,客户端维护一个 <strong>cursor</strong>(每命名空间变更日志里的位置),所以它只拉增量,从不拉整棵树。</p>
+
+    <h2>第 9 步 — 通知其他设备</h2>
+    <p>第二台设备如何得知文件变了?每几秒轮询元数据服务能工作且简单,但浪费请求并加延迟。更好的设计是一个专用<strong>通知服务</strong>,每台在线设备订阅它;命名空间变化时,它推一个轻量的"你有变更,现在拉取"信号,设备随后做一个正常的 <code>changes?cursor=</code> 拉取。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>机制</th><th>延迟</th><th>成本 / 注</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">周期轮询</td><td>秒–分钟</td><td>简单;空闲时浪费;不扩展到即时同步</td></tr>
+        <tr><td class="col-b">长轮询</td><td>~1–2 s</td><td>好的中间地带;连接持到变更或超时</td></tr>
+        <tr><td class="col-a">WebSocket / push</td><td>亚秒</td><td>最低延迟;许多空闲持久连接要管理</td></tr>
+      </tbody>
+    </table>
+
+    <p>一个常见混合:只为"ping"保持一个轻量长轮询/WebSocket 通道(无载荷),让现有元数据 API 服务实际的增量。这让通知层便宜(它推小信号)同时复用久经考验的变更拉取路径来取数据。</p>
+
+    <h2>第 10 步 — 冲突解决</h2>
+    <p>两台设备离线;都编辑 <code>report.docx</code>;都重连并试图提交。元数据 <code>commit</code> 包含 <code>base_version</code>——客户端起始的版本。服务器只在 <code>base_version</code> 等于当前最新版本时接受 commit(乐观 compare-and-set)。第二个提交者的 <code>base_version</code> 现在陈旧,所以服务器拒绝快路径,声明一个冲突。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">conflict via version compare-and-set</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>device A: commit(base_version = 5)  → 接受, latest = 6
+device B: commit(base_version = 5)  → 拒绝 (latest 现在是 6)
+
+解决:不要覆盖。把 B 的内容存为一个新文件:
+   "report (conflicted copy — Bob's MacBook 2023-04-08).docx"
+两个版本都被保留 → 无静默数据丢失;用户决定。</code></pre>
+    </div>
+
+    <p>因为我们把文件当不透明 blob(无文档内合并),安全、广为理解的解决是保留两者:获胜版本留下,失败者被写为一个同步给所有人的<strong>冲突副本(conflicted copy)</strong>。这正是 Dropbox 的行为,且是正确的面试答案——绝不静默丢弃用户的编辑。(文档内自动合并是 CRDT / 操作转换的领域,是 Google Docs 问题,不是文件同步问题。)</p>
+
+    <h2>第 11 步 — 共享与权限</h2>
+    <p>共享用<strong>命名空间</strong>建模:一个共享文件夹是一个挂载进多个用户树的命名空间,<code>shares</code> 里一行授予每个协作者一个角色(viewer/editor/owner)。当任何成员对那个命名空间提交一个变更,通知服务扇出到所有成员的设备。权限检查在元数据服务里对每次读/写发生。扩展关切是<strong>共享/权限查找</strong>:深嵌套共享文件夹和大协作者列表使"这个用户能访问这个路径吗?"非平凡,所以权限通常被缓存并在命名空间级别(而非每文件)求值。</p>
+
+    <h2>第 12 步 — 下载、缓存与 CDN</h2>
+    <p>下载是不可变块的批量读——<strong>CDN</strong> 的完美契合。因为块内容寻址且从不变,它无限可缓存:URL(按块哈希为键)能在全球边缘位置缓存而无失效逻辑。客户端从块服务得到(预签名、会过期的)CDN URL 并从最近边缘拉块。热块(热门共享文件、应用安装器)几乎完全从缓存服务,省下源 blob 存储。这就是为什么分离不可变块与可变元数据再次回报:只有元数据需要失效。</p>
+
+    <h2>第 13 步 — 扩展、持久性与容错</h2>
+    <p>持久性是头条需求,所以块存储跨多个可用区(常跨区域)复制每个块;较冷数据移到<strong>纠删码(erasure-coded)</strong>存储,以远低于 3× 复制的开销达到同样持久性。托管对象存储(S3)已给 ~11 个 9,这就是为什么大多数设计倚靠一个而非自己造。元数据平面:按 <code>ns_id</code> 分片并复制每个分片(leader + follower)以求可用;每命名空间变更日志给基于 cursor 同步一个干净排序。应用和通知层无状态、在负载均衡器后横向扩展。因为块不可变且由哈希验证,后台 scrubbing 能通过从一个好副本重新复制来检测和修复静默损坏(bit rot)。</p>
+
+    <h2>第 14 步 — 关键取舍</h2>
+    <ul>
+      <li><strong>块大小。</strong>更小块 → 更好去重和更细粒度部分同步,但更多元数据(每文件更多哈希)和更多请求开销。~4 MB 是常见平衡。</li>
+      <li><strong>固定 vs 内容定义分块。</strong>固定简单但插入毁去重;滚动哈希边界修这个、更高 CPU 成本。</li>
+      <li><strong>去重范围。</strong>全局最大化节省但启用跨用户存在性攻击;每命名空间/每用户更安全。一个真实的隐私/成本取舍。</li>
+      <li><strong>元数据一致性。</strong>强一致使同步正确性容易但花延迟、限制规模;每命名空间分片让命名空间内强一致可负担,而系统整体横向扩展。</li>
+      <li><strong>通知机制。</strong>WebSocket 给亚秒同步但花许多空闲连接;长轮询是更便宜的近实时折中。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>整个设计建在三个动作上:把文件切成块、按内容哈希寻址块(免费给去重和平凡 CDN 缓存),并把小但一致性关键的元数据平面与巨大但不可变的块平面分开。把这些做对,同步、去重、可恢复性和持久性都自然随之而来;剩下的难部分是冲突处理(绝不丢一次编辑)和扩展元数据/共享层。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么分块?</strong>部分同步(只有改变的块移动)、可恢复 + 并行传输、去重——若文件是一个不透明 blob 全都不可能。<br>
+      <strong>为什么内容寻址存储?</strong>块的 ID 是其字节的哈希,所以相同块只存一次(去重),且下载无限可 CDN 缓存因为块不可变。<br>
+      <strong>为什么把元数据与块分开?</strong>元数据小、高 QPS、事务性、对一致性敏感;块巨大、不可变、仅追加。不同存储、不同扩展,只有元数据需要失效。<br>
+      <strong>怎么处理两次离线编辑?</strong>对 <code>base_version</code> 乐观 compare-and-set;陈旧提交者的文件被存为"冲突副本"——绝不静默覆盖。<br>
+      <strong>全局去重的风险是什么?</strong>存在性/确认攻击:瞬间上传揭示别人存储了那个确切内容。把去重限于每命名空间/用户以缓解。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/system-design/hotel-booking/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计酒店预订应用</div>
+      </a>
+      <a href="/system-design/key-value-store/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计分布式 KV 存储</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
