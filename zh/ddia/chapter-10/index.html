@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DDIA 第 10 章:批处理——Unix 哲学与管道、MapReduce(map/shuffle/reduce)与分布式文件系统、reduce 侧/map 侧 join 与倾斜、schema-on-read 数据湖、不可变输入带来的容错,以及超越 MapReduce 的数据流引擎(Spark/Flink/Tez、血缘重算)。">
+<title>DDIA 第10章 — 批处理 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-10/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-10/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-10/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-10/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="批处理 (Batch Processing)">
+<meta property="og:description" content="DDIA 第 10 章:Unix 哲学、MapReduce、join 与倾斜、不可变输入容错、Spark/Flink 数据流。">
+<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-10/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="批处理 (Batch Processing)">
+<meta name="twitter:description" content="DDIA 第 10 章:批处理、MapReduce、map/reduce 侧 join、数据流引擎 Spark/Flink。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 10 章 — 批处理", "description": "DDIA 第 10 章:批处理——Unix 哲学与管道、MapReduce(map/shuffle/reduce)与分布式文件系统、reduce 侧/map 侧 join 与倾斜、schema-on-read 数据湖、不可变输入带来的容错,以及超越 MapReduce 的数据流引擎(Spark/Flink/Tez、血缘重算)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-10/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent3); background: rgba(244,114,182,0.08); border: 1px solid rgba(244,114,182,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ddia/chapter-10/">EN</a>
+        <a href="/zh/ddia/chapter-10/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ddia/">ddia</a><span>/</span>
+      <span style="color:var(--text)">chapter-10</span>
+    </div>
+    <span class="article-tag">DDIA · 第 10 章</span>
+    <h1 class="article-title">批处理 (Batch Processing)</h1>
+    <div class="article-meta">
+      <span>2023年4月1日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent3)">DDIA</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>第 10 章开启第三部分"派生数据(Derived Data)",关于把数据从一处取出并转换到另一处的系统——索引、缓存、聚合、模型。它从<strong>批处理(batch processing)</strong>开始:取一个大的、<em>有界</em>输入,处理它,产生一个输出,不期待低延迟。Kleppmann 从底层构建想法——从朴实的 Unix 命令行工具开始,它们的设计哲学结果证明是 MapReduce 和驱动大规模分析的现代数据流引擎的概念祖先。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>三种系统类型</strong>——服务(在线、延迟受限)、批处理(离线、有界输入、吞吐受限)、流(近实时、无界输入)。本章是批处理。</li>
+        <li><strong>Unix 哲学向上扩展</strong>——做好一件事、用统一接口(管道上的文本)组合、预期被拼在一起。MapReduce 是这个想法跨数千机器。</li>
+        <li><strong>MapReduce = map + shuffle + reduce</strong>——mapper 抽取键值对,框架按 key 排序和分组(shuffle),reducer 处理每组。作业链成工作流。</li>
+        <li><strong>Join 是难的部分</strong>——reduce 侧(sort-merge)join 通用;map 侧(广播/分区哈希)join 在一个输入小或共分区时更快。热 key 造成倾斜。</li>
+        <li><strong>不可变输入使容错平凡</strong>——作业确定且无副作用,所以失败任务只是重跑。</li>
+        <li><strong>数据流引擎(Spark、Flink、Tez)胜过朴素 MapReduce</strong>——它们把整个工作流建模为一个作业,避免把每个中间步骤写到磁盘。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>批处理把一个大的有界数据集转换成一个派生输出。Unix 哲学——带统一接口的小可组合工具——是模板;MapReduce 跨集群在分布式文件系统上应用它,带 map/shuffle/reduce 和链式工作流。Join 和倾斜是主要挑战。因为输入不可变、作业确定,容错只是"重跑失败任务"。数据流引擎通过把中间数据保在内存、把整个管道一起调度来改进 MapReduce。</p>
+    </div>
+
+    <h2>用 Unix 工具做批处理</h2>
+    <p>Kleppmann 从一个看似简单的任务开始:找一个 web 服务器日志里最热门的五个页面。你能用一串标准 Unix 工具做它,而这个例子有出人意料的深度。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">top 5 URLs from a web log — a Unix pipeline</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="fn">cat</span> access.log |             <span class="cm"># 流式读日志</span>
+  <span class="fn">awk</span> <span class="str">'{print $7}'</span> |          <span class="cm"># 抽取 URL 字段</span>
+  <span class="fn">sort</span> |                     <span class="cm"># 把相同 URL 分组到一起</span>
+  <span class="fn">uniq</span> -c |                  <span class="cm"># 计数每段重复</span>
+  <span class="fn">sort</span> -rn |                 <span class="cm"># 按计数降序排</span>
+  <span class="fn">head</span> -n 5                  <span class="cm"># 取前 5</span></code></pre>
+    </div>
+
+    <p>魔法在 <strong>Unix 哲学</strong>:每个程序做好一件事、程序被预期组合、它们共享一个<strong>统一接口</strong>——stdin/stdout 上的文本流。那种统一正是为什么 <code>sort</code> 能喂 <code>uniq</code> 而两者都不知道对方。一个微妙但重要的细节:<code>sort</code> 通过把有序块溢出到磁盘并合并它们(外部归并排序)来处理<em>大于内存</em>的数据集——分布式系统在规模上用的同一技巧。</p>
+
+    <h2>MapReduce 与分布式文件系统</h2>
+    <p><strong>MapReduce</strong> 在精神上是 Unix 管道铺到数千机器上。不读写本地文件,作业读写一个像 HDFS 的<strong>分布式文件系统</strong>——跨许多机器的 shared-nothing 磁盘池,文件被切成块、为容错复制。一个 MapReduce 作业有程序员写的两个回调和框架提供的一个步骤:</p>
+    <ul>
+      <li><strong>Map</strong>——每条输入记录调一次;它抽取并 emit 键值对(如每行日志 emit <code>(url, 1)</code>)。</li>
+      <li><strong>Shuffle</strong>——框架按 key 排序所有 emit 的对并分区,使给定 key 的每个值到达同一 reducer。这个排序和分组步骤是 MapReduce 的核心。</li>
+      <li><strong>Reduce</strong>——每个不同 key 带其所有值调一次;它产生输出(如把 1 求和得计数)。</li>
+    </ul>
+    <p>单个 map-reduce 步骤有限,所以真实作业是<strong>工作流</strong>:MapReduce 作业的链,一个的输出成为下一个的输入,由 Oozie 或 Airflow 等工具拼在一起。</p>
+
+    <h3>Join 与分组</h3>
+    <p>把相关记录聚到一起——join——是大部分工程所在:</p>
+    <ul>
+      <li><strong>Reduce 侧(sort-merge)join。</strong>两个输入都被 map 以 emit join key,shuffle 把同 key 的记录带到同一 reducer,reducer join 它们。完全通用,但付排序和 shuffle 所有数据的代价。</li>
+      <li><strong>Map 侧 join。</strong>尽可能避开 shuffle。<strong>广播哈希 join(broadcast hash join)</strong>把一个小输入完全加载进每个 mapper 的内存。<strong>分区哈希 join</strong>在两个输入已按 join key 同样分区时工作,所以每个 mapper 只需匹配的分区。</li>
+      <li><strong>处理倾斜。</strong>一个"热"key(社交图里的名人)把大量数据发给一个 reducer,它成掉队者。倾斜/分片 join 等技术把热 key 的负载拆到几个 reducer。</li>
+    </ul>
+
+    <h3>MapReduce vs 分布式数据库</h3>
+    <p>MapReduce 体现一种不同于 MPP(大规模并行处理)分析数据库的哲学。MPP 数据库想数据先加载进 schema 再跑优化 SQL。MapReduce(和 Hadoop 生态)拥抱<strong>读时 schema(schema-on-read)</strong>:把原始数据倾倒进分布式文件系统,读它时再弄清它的结构,支持对同一原始数据的多样、演化的处理(SQL、ML、自定义代码)。这使 Hadoop 成为灵活的"数据湖",代价是 MPP 的查询优化。</p>
+
+    <h3>输出与容错</h3>
+    <p>批作业通常产生<em>批量</em>输出:构建搜索索引(Google 最初如何用 MapReduce)、训练推荐/ML 模型,或构造要加载进服务系统的只读键值存储。关键设计原则是<strong>输入不可变且作业无副作用</strong>——作业只读它的输入并写一个全新输出,从不原地修改输入。这几乎免费给出容错:若一个任务失败(机器崩溃),框架只是在另一台机器上<strong>重跑它</strong>,因为对同一不可变输入的确定计算产生同样结果。它也使实验安全——一个有 bug 的作业能被重跑而没损坏任何东西。</p>
+
+    <h2>超越 MapReduce:数据流引擎</h2>
+    <p>MapReduce 最大的低效:它在每个 map-reduce 步骤之间<strong>把中间状态物化到磁盘</strong>(分布式文件系统)。对许多步骤的工作流,这意味反复写和重读(并重复制)数 GB,且每个步骤在前一个完全结束前无法开始。<strong>数据流引擎</strong>——Spark、Tez、Flink——通过把整个工作流建模为一个连接算子的单一作业来修复这个:</p>
+    <ul>
+      <li>它们避免不必要的物化,在算子之间<strong>流水线(pipelining)</strong>数据并尽可能保在内存。</li>
+      <li>它们把整个图一起调度,使算子能重叠、引擎能跨步骤边界优化。</li>
+      <li>排序(昂贵的 shuffle)只在实际需要处做,而非每个边界。</li>
+    </ul>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>方面</th><th>MapReduce</th><th>数据流引擎(Spark/Flink)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>中间状态</td><td class="col-a">每步写到磁盘</td><td class="col-b">流水线 / 保在内存</td></tr>
+        <tr><td>作业模型</td><td class="col-a">独立的 map+reduce 步骤</td><td class="col-b">一个算子图(DAG)</td></tr>
+        <tr><td>延迟</td><td class="col-a">高(磁盘 + 步骤屏障)</td><td class="col-b">较低(重叠、内存)</td></tr>
+        <tr><td>容错</td><td class="col-a">重读物化输出</td><td class="col-b">从血缘重算(Spark RDD)</td></tr>
+        <tr><td>迭代作业</td><td class="col-a">痛苦(每遍重读)</td><td class="col-b">高效(在内存缓存)</td></tr>
+      </tbody>
+    </table>
+
+    <p>取舍是容错:没有可回退的物化中间状态,数据流引擎必须<strong>重算</strong>丢失的数据。Spark 跟踪每个数据集的<em>血缘(lineage)</em>(产生它的操作),这样它能只重算丢失的分区——前提是计算确定。对图和迭代算法(如 PageRank),Pregel 的"像顶点一样思考"方法等专门模型在迭代间于顶点之间传消息,比每遍重跑 MapReduce 高效得多。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>批处理的持久教训关于<em>设计纪律</em>,而非仅吞吐:不可变输入和无副作用、确定的作业使容错、重试和实验平凡。MapReduce 通过借用 Unix 哲学在规模上证明了这个模型;数据流引擎通过不在每步之间碰磁盘改进它。同样的"从不可变输入派生数据"想法,以连续形式,在流处理里重现。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>MapReduce 的三个阶段是什么?</strong>Map(emit 键值对)、shuffle(框架按 key 排序和分组)、reduce(处理每个 key 的值)。shuffle 是昂贵、必要的中间。<br>
+      <strong>Reduce 侧 vs map 侧 join?</strong>Reduce 侧(sort-merge)通用但 shuffle 一切;map 侧(广播或分区哈希)在一个输入小或两者共分区时跳过 shuffle。<br>
+      <strong>为什么批处理容错容易?</strong>输入不可变、作业确定且无副作用,所以失败任务只是重跑、产生同样结果。<br>
+      <strong>为什么 Spark/Flink 比 MapReduce 快?</strong>它们把工作流建模为一个算子图,在内存流水线数据而非把每个中间步骤物化到磁盘。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ddia/chapter-9/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">一致性与共识</div>
+      </a>
+      <a href="/ddia/chapter-11/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">流处理</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
