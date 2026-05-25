@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="AI 编程:Harness 工程——什么是 harness(模型 vs harness)、智能体循环、上下文组装(上下文工程 > 提示工程)、工具设计、记忆与压实、护栏/权限/沙箱、环境锚定的验证与自我纠正、错误恢复、评估与迭代、子智能体编排,以及为什么能力 ≈ 模型 × harness。">
+<title>Harness 工程 — AI 编程 | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/harness-engineering/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/harness-engineering/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/harness-engineering/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/harness-engineering/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="Harness 工程">
+<meta property="og:description" content="Harness 工程:智能体循环、上下文组装、工具设计、验证、护栏、子智能体——能力 ≈ 模型 × harness。">
+<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/harness-engineering/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Harness 工程">
+<meta name="twitter:description" content="Harness 工程:智能体循环、上下文工程、工具设计、验证、护栏、子智能体编排。">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Harness 工程", "description": "AI 编程:Harness 工程——什么是 harness(模型 vs harness)、智能体循环、上下文组装(上下文工程 > 提示工程)、工具设计、记忆与压实、护栏/权限/沙箱、环境锚定的验证与自我纠正、错误恢复、评估与迭代、子智能体编排,以及为什么能力 ≈ 模型 × harness。", "datePublished": "2026-05-21", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/harness-engineering/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent4); }
+  .compare-table .col-b { color: var(--accent2); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/ai-coding/harness-engineering/">EN</a>
+        <a href="/zh/ai-coding/harness-engineering/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/ai-coding/">ai-coding</a><span>/</span>
+      <span style="color:var(--text)">harness-engineering</span>
+    </div>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">Harness 工程</h1>
+    <div class="article-meta">
+      <span>2026年5月21日</span>
+      <span class="separator">·</span>
+      <span>26 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>大语言模型本身是一个无状态函数:文本进、文本出。它无法打开文件、跑测试、记住昨天,或在看到错误后再尝试一次。一切让模型感觉像<em>智能体(agent)</em>的东西——读你的仓库、编辑文件、跑命令、从错误恢复——都活在<strong>包裹</strong>模型的软件里。那个软件是<strong>harness(运行外壳)</strong>,把它做好是它自己的学科:<strong>harness 工程</strong>。随着前沿模型在原始能力上收敛,harness 越来越是编码工具胜负所在。本篇是 <a href="/ai-coding/how-ai-coding-agents-work/">AI 编码智能体如何工作</a> 的姊妹篇——那篇解释智能体;这篇关于工程化运行它的脚手架。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>模型是引擎;harness 是车。</strong>模型推理;harness 给它感官(上下文)、手(工具)、一个循环、记忆、护栏,和检查自己工作的方式。</li>
+        <li><strong>上下文组装是杠杆最高的活</strong>——决定什么进入有限上下文窗口比稍大的模型更决定输出质量。"上下文工程"已超越提示工程。</li>
+        <li><strong>智能体循环是心脏</strong>——构建提示 → 调模型 → 跑它的工具调用 → 把结果喂回 → 重复直到完成或预算耗尽。</li>
+        <li><strong>工具是你设计的 API</strong>——清晰 schema、好描述、合适粒度,和模型能从中恢复的错误消息。</li>
+        <li><strong>验证闭合循环</strong>——跑测试/linter/构建并把失败喂回,是把一次性生成器变成迭代纠正的智能体的东西。</li>
+        <li><strong>harness 经验性调优</strong>——你需要 eval、轨迹分析和步数/成本预算,因为小的 harness 变化大幅摆动真实成功率。</li>
+        <li><strong>能力 ≈ 模型 × harness。</strong>较小模型上的好 harness 常胜过差 harness 上的好模型。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>harness 是模型周围所有工程:智能体循环、上下文组装、工具定义、记忆/压实、权限和沙箱,以及环境锚定的验证。模型供应推理;harness 供应让那个推理<em>可行动且可靠</em>的一切。因为模型在商品化,harness 质量——尤其它多好地组装上下文和验证工作——现在是 AI 编码工具间的主要差异。</p>
+    </div>
+
+    <h2>什么是 Harness?</h2>
+    <p>在任何 AI 编码工具的两部分间划一条硬线有帮助。<strong>模型</strong>是一个前沿 LLM(Claude、GPT、Gemini):它接收一块文本并产生一块文本,无记忆、无行动能力。<strong>harness</strong> 是它周围使它有用的程序——它组装输入、解释输出、执行模型请求的任何动作,并循环。Claude Code、Cursor、Devin、OpenHands 和 Aider 全是同一小撮模型上的 <em>harness</em>;它们的差异几乎全是 harness 差异。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>模型做</th><th>harness 做</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">推理与语言</td><td class="col-b">组装被推理的上下文</td></tr>
+        <tr><td class="col-a">决定调哪个工具</td><td class="col-b">定义工具并实际执行它们</td></tr>
+        <tr><td class="col-a">产生文本/diff</td><td class="col-b">应用编辑、跑命令、解析输出</td></tr>
+        <tr><td class="col-a">无状态</td><td class="col-b">持有记忆、历史和循环</td></tr>
+        <tr><td class="col-a">无"安全"概念</td><td class="col-b">强制权限、沙箱、护栏</td></tr>
+      </tbody>
+    </table>
+
+    <p>实际后果:大部分工程努力——和产品大部分质量——在 harness,而非你调的模型。</p>
+
+    <h2>智能体循环</h2>
+    <p>核心上,harness 是一个循环。模型被调用,若它要求用一个工具,harness 跑那个工具、把结果追加到对话,并再次调模型——重复直到模型产生最终答案或 harness 撞上预算。这一个循环就是把一次性文本预测器转成探索、行动和迭代的东西。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the agent loop — the heart of a harness</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>state = [system_prompt, tools, user_goal]
+steps = 0
+<span class="kw">while</span> <span class="kw">not</span> done <span class="kw">and</span> steps &lt; budget:
+    reply = model(state)              <span class="cm"># 唯一一次对 LLM 的调用</span>
+    <span class="kw">if</span> reply.tool_calls:
+        <span class="kw">for</span> call <span class="kw">in</span> reply.tool_calls:
+            result = <span class="fn">execute</span>(call)     <span class="cm"># harness 行动: 读文件、跑命令、grep…</span>
+            state.append(result)      <span class="cm"># 观测回到上下文</span>
+    <span class="kw">else</span>:
+        done = <span class="kw">True</span>                  <span class="cm"># 模型给了最终答案</span>
+    state = <span class="fn">compact</span>(state)           <span class="cm"># 保持在上下文窗口内</span>
+    steps += <span class="num">1</span></code></pre>
+    </div>
+
+    <p>注意多少是 harness 的责任:选预算、安全执行工具、决定什么算"完成",和压实状态。模型只见到 <code>state</code> 并发出下一步——循环及其中一切都是工程。</p>
+
+    <h2>上下文组装:杠杆最高的活</h2>
+    <p>模型只能推理它<strong>上下文窗口</strong>里的东西,而那是有限的。harness 最重要的单一工作是决定每轮<em>什么</em>进那个窗口——系统提示、工具定义、从仓库拉的正确文件、先前工具结果,和对话历史。把正确代码摆到模型面前,平庸模型也发光;搞错,最好的模型也幻觉。这就是为什么领域重心从<a href="/ai-coding/prompt-engineering-for-code/">提示工程</a>移到<strong>上下文工程</strong>。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">budgeting a finite context window</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>上下文窗口(比如 200K tokens)
+├─ 系统提示 + 工具定义 ............  ~5K    固定开销
+├─ 检索的文件 / RAG ...............  ~40K   ◀ 高杠杆切片
+├─ 对话 + 工具结果 ................  每轮增长
+└─ 为输出保留的余量 ...............  ~8K
+        填满时 → 总结 / 丢弃 / 压实较旧的轮次</code></pre>
+    </div>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>提示工程</th><th>上下文工程</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">把指令措辞好</td><td class="col-b">选择模型看到<em>什么信息</em></td></tr>
+        <tr><td class="col-a">一个提示,大体静态</td><td class="col-b">每轮动态——检索、修剪、排序</td></tr>
+        <tr><td class="col-a">"我怎么问?"</td><td class="col-b">"它面前需要什么才能回答?"</td></tr>
+      </tbody>
+    </table>
+
+    <p>具体地,harness 做检索(找相关文件/符号,按索引或让模型按需 grep)、排序(把最相关的放前面),和修剪(丢弃或总结不再要紧的)。当一个智能体"忽略"一个明显的文件,几乎总是上下文组装 bug,而非推理失败。</p>
+
+    <h2>工具设计</h2>
+    <p>工具是智能体的手,harness <em>定义</em>它们——它们的名字、schema、描述和行为(见<a href="/ai-coding/tool-use-function-calling-mcp/">工具使用、函数调用与 MCP</a>)。好的工具设计是真正的 API 设计,带个转折:消费者是模型,所以<strong>描述</strong>是接口的一部分——它是模型决定何时及如何调用工具的方式。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">a tool definition the model can use well</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>{
+  <span class="str">"name"</span>: <span class="str">"run_tests"</span>,
+  <span class="str">"description"</span>: <span class="str">"Run the project's test suite and return pass/fail"</span>
+                 <span class="str">" plus failing-test output. Use after editing code to"</span>
+                 <span class="str">" verify changes."</span>,
+  <span class="str">"input_schema"</span>: {
+    <span class="str">"type"</span>: <span class="str">"object"</span>,
+    <span class="str">"properties"</span>: { <span class="str">"path"</span>: {<span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"description"</span>: <span class="str">"dir to test"</span>} }
+  }
+}</code></pre>
+    </div>
+
+    <p>使工具好用的原则:<strong>合适粒度</strong>(几个可组合工具胜过几十个超特定的)、<strong>清晰描述</strong>(模型只知道你告诉它的)、<strong>安全默认</strong>(破坏性工具应需显式确认),且关键地——<strong>可恢复错误</strong>:失败的工具应返回模型能读并行动的消息("文件未找到:你是指 X 吗?"),而非不透明的堆栈跟踪。错误文本是循环反馈的一部分。</p>
+
+    <h2>记忆与状态</h2>
+    <p>模型无状态,所以 harness 拥有记忆。有两层。<strong>短期记忆</strong>是对话/上下文窗口本身——目标、动作和观测的运行记录。<strong>长期记忆</strong>住在窗口外:一个 scratchpad 或笔记文件、一个 harness 每会话注入的项目指令文件,或一个智能体能查询的外部存储。难问题是短期层填满:一个长任务累积工具结果直到威胁窗口。harness 用<strong>压实(compaction)</strong>处理这个——总结或丢弃较旧轮次而保留目标和关键事实——使智能体能在比任何单个上下文窗口更长的任务上持续工作。</p>
+
+    <h2>护栏、权限与安全</h2>
+    <p>模型无"危险"概念。harness 是安全被强制的地方,因为 harness 是实际执行动作的东西。这层包括风险操作前的权限提示、命令的 allowlist/denylist、<strong>沙箱(sandboxing)</strong>(在受限环境跑工具调用,使智能体碰不到它不该碰的),和拦截动作以应用策略的 hook。一个工程良好的 harness 安全失败:当一个动作不可逆或对外时,它暂停确认而非信任模型的判断。这也是你阻止恶意文件的提示注入变成破坏性命令的地方。</p>
+
+    <div class="callout">
+      <div class="callout-label">关键点</div>
+      <p>安全不能住在模型——模型只发出一个行动<em>请求</em>。harness 决定是否兑现它。这就是为什么权限、沙箱和确认门是 harness 特性,以及为什么"模型不会那样做"从不是安全论证。</p>
+    </div>
+
+    <h2>验证与自我纠正</h2>
+    <p>最把真智能体与花哨自动补全分开的特性是<strong>验证</strong>:harness 跑代码、测试、linter 或构建,并把结果喂回循环。这把智能体锚定在<em>环境</em>而非它自己(可能错的)代码正确的信念。一个失败的测试成为模型推理并修复的观测——闭合一个模型独自无法闭合的循环。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">verification turns one-shot output into iteration</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>模型编辑代码
+      │
+      ▼
+harness 跑测试  ──▶ 失败?  ──是──▶ 把错误喂回 ──▶ 模型修复 ──┐
+      │                                                       │
+      └────────────────────────◀──────────────────────── 循环 ┘
+                              否
+      ▼
+   完成 — 由环境验证,而非模型的一面之词
+</code></pre>
+    </div>
+
+    <p>这个循环的质量取决于 harness 选择:跑什么、如何简洁地呈现失败(一个 5,000 行测试日志必须被修剪到要紧的部分),和何时停。带好验证的 harness 能让较弱模型磨到正确答案;没有它,即便强模型也自信地发布坏代码。</p>
+
+    <h2>错误处理与恢复</h2>
+    <p>智能体以一次性调用不会的方式失败,harness 必须预期它们:一个工具抛错、模型为一个工具调用发出畸形 JSON、一个命令挂起,或智能体卡在重复同一失败动作。健壮的 harness 加<strong>重试</strong>(带错误喂回使模型能调整)、工具执行的<strong>超时</strong>、<strong>循环检测</strong>(注意同一动作重复并跳出),和硬<strong>步数/成本预算</strong>使困惑的智能体不能烧无限 token。设计这些恢复路径是生产 harness 难的很大一部分原因。</p>
+
+    <h2>评估与迭代</h2>
+    <p>你无法仅凭直觉改进 harness,因为小变化——调过的工具描述、不同的压实策略、重排上下文——大幅摆动真实成功率。严肃的 harness 工作是经验性的:对基准任务跑一个 <strong>eval harness</strong>(如 SWE-bench 式的"修这个真实 bug"套件)、测量成功率、延迟和成本,并检查<strong>轨迹(trajectory)</strong>(完整步骤序列)以看运行<em>在哪</em>出错。然后改一件事并重测。harness 是一个你对照数据调优的系统,而非你写一次的提示。</p>
+
+    <h2>子智能体与编排</h2>
+    <p>随任务增长,单个智能体的上下文变杂乱。一个常见 harness 模式是<strong>子智能体(sub-agent)</strong>:主智能体把一个限定范围的活(搜索代码库、评审一个 diff)委托给一个有自己干净上下文的全新智能体,它只返回一个结论。这让主上下文聚焦、支持并行工作,并约束任何一个上下文窗口必须持有多少。编排——决定如何拆分工作、并行跑智能体、组合结果——是大任务越来越重要的 harness 能力。</p>
+
+    <h2>为什么 harness 与模型一样重要</h2>
+    <p>harness 工程的论点:<strong>有效能力 ≈ 模型 × harness</strong>。同一模型,放进更好的 harness,正确完成更多任务——因为 harness 控制模型看到什么(上下文)、它能做什么(工具)、它是否抓住自己的错误(验证),和它是否保持安全和在预算内(护栏)。随前沿模型收敛,这些因素而非原始模型 IQ 越来越决定哪个编码工具真正完成活。这就是为什么"上下文组装胜过更大模型"是反复的教训,以及为什么 harness 工程已成为它自己的学科。</p>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>LLM 是一个聪明但盲、失忆、被绑手的推理者。harness 给它眼睛(上下文)、手(工具)、记忆、反射(验证和恢复)和良知(护栏)——并把它们接进一个循环。把那个脚手架做好,一个普通模型成为有能力的智能体;做差,世界上最好的模型也乱抓。harness 越来越<em>就是</em>产品。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>什么是"harness"?</strong>使 LLM 成为智能体的、模型周围的软件:循环、上下文组装、工具执行、记忆、护栏和验证。Claude Code 和 Cursor 是同一些模型上的 harness。<br>
+      <strong>为什么上下文工程胜过提示工程?</strong>窗口有限;把<em>正确</em>代码摆到模型面前比措辞或稍大模型更决定输出质量。<br>
+      <strong>什么把一次性生成变成智能体?</strong>循环加环境锚定的验证——跑测试/构建并把失败喂回,使模型迭代到一个正确、已检查的答案。<br>
+      <strong>安全住在哪?</strong>在 harness,不在模型——模型只请求动作;权限、沙箱和确认门决定是否执行它们。<br>
+      <strong>模型 vs harness——哪个更重要?</strong>两者;能力 ≈ 模型 × harness。随模型收敛,harness 质量是主要差异。</p>
+    </div>
+
+
+    <div class="article-nav">
+      <a href="/ai-coding/tool-use-function-calling-mcp/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">工具使用、函数调用与 MCP</div>
+      </a>
+      <a href="/ai-coding/ai-in-coding-interviews/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">在编码面试中用 AI</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
