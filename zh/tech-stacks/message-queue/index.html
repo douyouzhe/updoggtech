@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="深入讲解消息队列:队列解决的核心问题、队列语义 vs 提交日志语义、三种投递保证、有序与分区、推/拉消费模型、消费者组与竞争消费者、背压与流控、死信队列与毒丸消息、RabbitMQ vs SQS vs Kafka 全面对比,以及事务发件箱与 Saga 等可靠性模式。">
+<title>消息队列 (Message Queue) | updoggtech</title>
+<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/message-queue/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="updoggtech">
+<meta property="og:title" content="消息队列 (Message Queue)">
+<meta property="og:description" content="队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。">
+<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/message-queue/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="消息队列 (Message Queue)">
+<meta name="twitter:description" content="消息队列怎么用:投递语义、有序、背压、死信队列、RabbitMQ vs SQS vs Kafka。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"消息队列 (Message Queue)","description":"队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/message-queue/"}}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav { position: sticky; top: 0; z-index: 100; background: rgba(14,17,23,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: 0.04em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); letter-spacing: 0.04em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/tech-stacks/message-queue/">EN</a>
+        <a href="/zh/tech-stacks/message-queue/" class="active">中</a>
+      </div>
+      <a href="/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="article-container">
+  <div class="article-header">
+    <div class="breadcrumb">
+      <a href="/zh/">首页</a><span>/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+      <span style="color:var(--text)">message-queue</span>
+    </div>
+    <span class="article-tag">技术栈</span>
+    <h1 class="article-title">消息队列 (Message Queue)</h1>
+    <div class="article-meta">
+      <span>2023年4月2日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">技术栈</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p><strong>消息队列(message queue)</strong>是一个持久缓冲区,把消息的生产者与其消费者解耦。生产者把消息发到队列就继续做自己的事;一个或多个消费者按自己的节奏异步处理它。这种异步交接使消息队列成为韧性、松耦合分布式系统的基本构件。但消息队列不是单一、铁板一块的概念——它跨越一个谱系,从简单任务队列(RabbitMQ、SQS)到追加写的分布式提交日志(Kafka、Pulsar),各自在消息保留、消费者模型、有序性和投递保证上有根本不同的语义。</p>
+
+    <p>选错消息系统——或误解其投递保证——是数据丢失、重复处理和难以复现的生产 bug 的常见来源。本指南覆盖完整画面:队列为何存在、三种投递保证及各自适用场景、队列 vs 提交日志的架构分野、有序与幂等、消费者组模型、背压与死信队列,以及 RabbitMQ、SQS、Kafka 的详细三方对比,帮你为系统选对工具。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>At-least-once(至少一次)</strong>是实际默认——把消费者设计成幂等的(检查去重 ID 或用 upsert 这样的天然幂等)。</li>
+        <li><strong>队列语义</strong>(RabbitMQ、SQS):消息消费后被删除——每条消息一个消费者。<strong>提交日志语义</strong>(Kafka):消息被保留,多个独立消费者组各自重放完整流。</li>
+        <li><strong>拉模型</strong>(Kafka、SQS)天然限速到消费者容量;用 long polling 缓解轮询延迟。</li>
+        <li><strong>死信队列</strong>——从第一天起接好;毒丸消息一定会出现,你希望它们被暴露,而非默默阻塞流水线。</li>
+        <li><strong>有序</strong>只在一个 Kafka 分区内保证——按实体键(user_id、order_id)分区以确保相关事件有序。</li>
+        <li><strong>Exactly-once(恰好一次)</strong>需要 broker 和消费者存储系统之间的端到端协调——可实现但增加显著复杂度和延迟。</li>
+        <li><strong>背压</strong>在拉模型里天然存在;在推模型里需要显式流控以免压垮慢消费者。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>消息队列在时间和速度上把生产者与消费者解耦。它们吸收流量突发、支持异步工作、改善系统韧性。根本分叉:任务分发(每条消息消费一次即丢弃)用传统队列(RabbitMQ、SQS);事件流(多个消费者独立重放同样事件)用提交日志(Kafka)。为现实的默认 at-least-once 投递把消费者设计成幂等。从第一天起接好死信队列。</p>
+    </div>
+
+      <figure class="article-figure">
+        <img src="/assets/img/message-queue-1.jpg" alt="消息队列把生产者与消费者解耦" loading="lazy">
+        <figcaption>消息队列把生产者与消费者解耦</figcaption>
+      </figure>
+
+    <h2>消息队列解决的核心问题</h2>
+    <p>在动用消息队列前,明确你在解决哪个问题会有帮助。消息队列解决四个不同的系统设计问题——你在解决哪个应影响你选哪种队列技术和配置。</p>
+
+    <ul>
+      <li><strong>流量峰值吸收(减震器)</strong>——队列吸收突发流量,让下游服务不被压垮。生产者以峰值速率写;消费者以它能持续的速率处理。没有队列,10 倍流量峰值要么需要下游也扩 10 倍(贵且慢),要么倒下。有队列,下游只需在峰值消退后排干积压。取舍:工作被延迟,而非丢弃——若工作非时间关键,这是正确的。</li>
+      <li><strong>服务解耦</strong>——生产者无需知道消费者的地址、实现语言,甚至无需知道它当前是否运行。这消除了时间耦合(生产者并非只在消费者活着时才能成功)和空间耦合(生产者无需知道消费者部署在哪)。服务可独立部署、重启、扩缩。</li>
+      <li><strong>非关键工作的异步卸载</strong>——任何无需阻塞用户响应的工作(发确认邮件、缩放头像、生成报表、更新搜索索引)都可入队并异步处理。用户得到快速响应;后台工作按自己的节奏进行。这是消息队列最常见、ROI 最高的用法之一。</li>
+      <li><strong>韧性与持久性</strong>——若下游服务崩溃,消息在持久队列里累积。服务恢复时,它处理积压而无任何消息丢失。这让系统默认对部分故障有韧性——只要队列本身持久。</li>
+    </ul>
+
+    <h2>队列语义 vs. 提交日志语义</h2>
+    <p>消息领域最重要的架构区别在传统<strong>消息队列</strong>和<strong>分布式提交日志</strong>(或事件流)之间。它们是根本不同的数据结构,有不同的保留语义、消费者模型和适用用例。</p>
+
+    <h3>传统消息队列(RabbitMQ、SQS、ActiveMQ)</h3>
+    <p>传统队列持久存储消息直到消费者确认成功处理,此时消息被<strong>删除</strong>。队列是一份工作清单:每条消息是一个必须恰好做一次的工作单元,分发给互相竞争的消费者。一旦消费,消息从队列消失——无重放、无多个消费者读同一消息(除非你用发布/订阅主题,那在逻辑上是每订阅者一个独立队列)。</p>
+
+    <p>关键特征:</p>
+    <ul>
+      <li>消息被<strong>消费并删除</strong>——队列代表待办工作,而非历史。</li>
+      <li><strong>竞争消费者</strong>——同一消费者的多个实例各收到不同消息;队列在它们之间负载均衡。</li>
+      <li>消息有序在队列内是 FIFO(有注意事项——SQS 标准队列不保证严格有序;SQS FIFO 队列保证,代价是更低吞吐)。</li>
+      <li>最适合<strong>任务队列</strong>:发邮件、图片处理、订单履约、报表生成——任何每项必须做一次、完成即终态的工作。</li>
+    </ul>
+
+    <h3>分布式提交日志(Kafka、Pulsar、Kinesis)</h3>
+    <p>提交日志是一个追加写、不可变的事件日志,跨集群分区。消费者不删除消息——它们维护一个<strong>游标(offset)</strong>跟踪自己读到哪。多个独立消费者组可各自维护自己的 offset,独立、按自己节奏读同样的事件流。无论是否有人消费,消息都被保留一段可配置时间(数小时到永远)。</p>
+
+    <p>关键特征:</p>
+    <ul>
+      <li>消息<strong>消费后被保留</strong>——日志是已发生事件的记录系统。</li>
+      <li><strong>消费者组</strong>——每组独立读完整流;加一个新消费者组不影响现有的。</li>
+      <li><strong>分区内</strong>强有序——一个主题分成 N 个分区;同分区键的所有消息进同一分区并在那里严格有序。</li>
+      <li>最适合<strong>事件流</strong>:审计日志、变更数据捕获(CDC)feed、实时分析、数据管道摄取、事件溯源——任何多个系统需对同样事件反应,或重放和重处理是需求的场景。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 传统队列:竞争消费者,ack 时删除</span>
+Producer → [msg1, msg2, msg3] → Queue
+             Consumer A ──读 msg1──▶ ack ──▶ msg1 删除
+             Consumer B ──读 msg2──▶ ack ──▶ msg2 删除
+             Consumer A ──读 msg3──▶ ack ──▶ msg3 删除
+
+<span class="cm"># 提交日志(Kafka):消费者组,独立 offset</span>
+Producer → [msg1, msg2, msg3, msg4] → Topic(保留)
+             Group A: offset=4  (处理了所有,读新的)
+             Group B: offset=2  (落后;仍在处理较旧的)
+             Group C: offset=0  (新服务;从头重处理)</code></pre>
+    </div>
+
+    <h2>投递语义:三种保证</h2>
+    <p>每个消息系统对它会把一条消息投递给消费者多少次做出承诺。理解这些保证——及其实现成本——是设计可靠消息层的基础。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>语义</th><th>保证</th><th>风险</th><th>实现成本</th><th>何时用</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>At-Most-Once</strong></td><td>投递零或一次</td><td>故障时消息丢失</td><td>最低——处理前 ack</td><td>指标、心跳——丢失可容忍</td></tr>
+        <tr><td><strong>At-Least-Once</strong></td><td>投递一次或多次</td><td>重复处理</td><td>低——处理后 ack;消费者必须幂等</td><td>大多数用例——实际默认</td></tr>
+        <tr><td><strong>Exactly-Once</strong></td><td>恰好投递一次</td><td>无(若正确)</td><td>最高——需端到端事务协调</td><td>金融交易、库存扣减</td></tr>
+      </tbody>
+    </table>
+
+    <h3>At-most-once 实践</h3>
+    <p>broker 一收到消息就确认且从不重试投递。若消费者在处理完成前崩溃,消息丢失。仅当数据低价值到丢失真正可接受时这才是正确选择——遥测计数器、近似指标、健康检查心跳。别用于任何用户或业务关心的东西。</p>
+
+    <h3>At-least-once 实践</h3>
+    <p>broker 保留消息直到消费者发显式确认。若消费者在 ack 前崩溃,broker 重投消息——可能投到不同消费者实例。这以可能重复投递为代价保证无消息丢失。设计含义:<strong>每个消费者必须幂等</strong>。几乎所有生产消息系统的实际默认。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">handle_order_placed</span>(msg):
+    msg_id = msg[<span class="str">'id'</span>]
+    order_id = msg[<span class="str">'order_id'</span>]
+
+    <span class="cm"># 任何副作用前做幂等检查</span>
+    <span class="kw">if</span> db.<span class="fn">exists</span>(<span class="str">"SELECT 1 FROM processed_messages WHERE id=?"</span>, msg_id):
+        log.<span class="fn">info</span>(<span class="fn">f</span><span class="str">"msg={msg_id} 已处理,跳过"</span>)
+        queue.<span class="fn">ack</span>(msg)                     <span class="cm"># ack 防止重投</span>
+        <span class="kw">return</span>
+
+    <span class="kw">with</span> db.<span class="fn">transaction</span>():
+        <span class="fn">send_confirmation_email</span>(order_id)  <span class="cm"># 副作用</span>
+        db.<span class="fn">execute</span>(<span class="cm">                         # 记录为已处理</span>
+            <span class="str">"INSERT INTO processed_messages(id, processed_at) VALUES(?,NOW())"</span>,
+            msg_id
+        )
+    queue.<span class="fn">ack</span>(msg)                         <span class="cm"># 仅在成功处理后 ack</span></code></pre>
+    </div>
+
+    <h3>Exactly-once 实践:为什么难</h3>
+    <p>Exactly-once 是最被渴望、也最被误解的保证。端到端实现它需要协调两个独立系统:broker 不能重投,消费者不能重复执行副作用。这需要以下之一:</p>
+    <ul>
+      <li><strong>事务性消息</strong>——broker 和消费者的数据库参与一个分布式事务。Kafka Transactions(0.11 引入)在 Kafka 生态内实现这点:生产者能原子写多个主题,消费者能在跨越 Kafka offset 提交和数据库写的单个事务里 read-process-write。这是 Kafka 生态内真正的 exactly-once,但要求所有参与者都 Kafka 感知。</li>
+      <li><strong>幂等消费者 + 去重</strong>——at-least-once 投递结合消费者侧的去重机制,让重处理等同于从未处理。从业务结果视角看这语义上是 exactly-once,即便 broker 可能投递两次。这是更常见的生产方式,因为它能配合任何 broker。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">关于 exactly-once 的实践要点</div>
+      <p>跨任意系统(如 Kafka → PostgreSQL → 第三方 API)真正的端到端 exactly-once 通常不可实现,因为第三方 API 调用无法参与 Kafka 事务。务实的答案是:用 at-least-once 投递、让每个消费者幂等,并把"exactly-once 语义"当成通过去重实现的消费者级属性——而非 broker 级保证。</p>
+    </div>
+
+    <h2>有序与分区</h2>
+    <p>有序是分布式消息中最被误解的属性之一。真相很微妙:有序不是二元的——它存在于多个粒度,你得到哪种粒度取决于消息系统和你怎么配置它。</p>
+
+    <h3>全局有序</h3>
+    <p>跨所有生产者的所有消息以它们被发送的确切顺序到达消费者,全局地。这需要单分区和单消费者。全局有序消除任何并行,把吞吐封顶在一台机器能处理的量。除了全局有序有真正业务语义的极低量流(严格有序的审计日志),很少值得这个代价。</p>
+
+    <h3>分区级有序(Kafka 模型)</h3>
+    <p>Kafka 把一个主题分成 N 个独立、有序的日志。每个分区内,消息严格有序。不同分区的消息无有序关系。生产者基于<strong>分区键</strong>给每条消息分配分区——同键的所有消息进同一分区并按序处理。不同键的消息进不同分区,彼此间可能任意顺序处理。</p>
+
+    <p>这是甜点:你为相关消息得到有序(同一用户的所有事件、同一订单的所有事件),同时跨无关消息组实现并行。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> kafka <span class="kw">import</span> KafkaProducer
+
+producer = <span class="fn">KafkaProducer</span>(bootstrap_servers=<span class="str">'kafka:9092'</span>)
+
+<span class="cm"># 按 order_id 分区——同一订单的所有事件有序</span>
+producer.<span class="fn">send</span>(
+    topic=<span class="str">'order-events'</span>,
+    key=<span class="fn">str</span>(order_id).<span class="fn">encode</span>(),      <span class="cm"># 分区键</span>
+    value=event_payload.<span class="fn">encode</span>(),
+)
+<span class="cm"># order_id=42: placed → payment_received → shipped → delivered</span>
+<span class="cm"># 在同一分区内保证有序</span>
+<span class="cm"># order_id=43: 在不同分区上并行处理</span></code></pre>
+    </div>
+
+    <h3>传统队列中的有序</h3>
+    <p>SQS 标准队列提供<strong>尽力而为的有序</strong>——消息一般按序投递,但乱序投递可能发生,你必须处理它。SQS FIFO 队列在一个消息组内提供严格有序(类比 Kafka 分区)但把吞吐封顶在每队列 300 消息/秒。RabbitMQ 在单个队列内提供严格 FIFO 有序,但同一队列上的多个消费者若一个比另一个慢,可能乱序收到消息。</p>
+
+    <h2>推 vs. 拉消费模型</h2>
+
+    <h3>推模型</h3>
+    <p>broker 在消息到达时主动投递给消费者,无需消费者请求。消费者注册一个处理函数;消息可用时 broker 调用它。</p>
+    <ul>
+      <li><strong>优点:</strong>从消息到达到消费者处理近零延迟。消费者代码简单——无需轮询逻辑。</li>
+      <li><strong>缺点:</strong>broker 必须跟踪消费者容量并实现流控;若消费者慢而 broker 推太快,消费者的队列填满,造成内存压力或消息丢弃。RabbitMQ 的 <code>basic.qos</code> / <code>prefetch_count</code> 设置解决这点——它限制 broker 一次给一个消费者投递的未确认消息数。</li>
+      <li><strong>使用者:</strong>RabbitMQ(AMQP 推投递)、事件驱动的 FaaS 平台(由 SNS/SQS 触发的 AWS Lambda)。</li>
+    </ul>
+
+    <h3>拉模型</h3>
+    <p>消费者按自己节奏主动轮询 broker 取新消息。消费者控制消费速率——它只在准备好处理时才请求更多消息。这是 Kafka 和 SQS 用的模型。</p>
+    <ul>
+      <li><strong>优点:</strong>天然背压——消费者永远不会收到超过它能处理的消息,因为它控制速率。更简单的 broker 设计(无需跟踪消费者容量)。消费者能每请求批量拉多条消息,摊薄网络开销。</li>
+      <li><strong>缺点:</strong>轮询延迟——若消费者轮询却没消息,它必须等一会再轮询。用 <strong>long polling</strong> 缓解(SQS:<code>WaitTimeSeconds=20</code>;Kafka:消费者阻塞直到消息到达或超时)。无 long polling 时空轮询浪费 CPU/网络。</li>
+      <li><strong>使用者:</strong>Kafka(消费者管理 offset)、SQS(消费者调 <code>ReceiveMessage</code>)。</li>
+    </ul>
+
+    <h2>消费者组与竞争消费者模式</h2>
+
+    <h3>竞争消费者(传统队列)</h3>
+    <p>同一消费者服务的多个实例都监听同一队列。broker 在它们之间分发消息——每条消息恰好去一个消费者。这是 worker 进程横向扩展的标准模式:要每秒处理两倍消息,跑两倍消费者。给队列加消费者是零配置扩展。</p>
+
+    <p>问题:单队列上多消费者时,严格全局有序被破坏。Consumer A 可能收到消息 2、Consumer B 收到消息 3——若 Consumer A 较慢,消息 3 在消息 2 之前被处理。把消费者设计成能处理乱序投递,或在有序关键时用单消费者(接受吞吐上限)。</p>
+
+    <h3>Kafka 消费者组:并行 + 有序</h3>
+    <p>Kafka 消费者组是一组共同消费一个主题的消费者。每个分区在某时刻恰好分给组里一个消费者。给组加消费者把并行提升到分区数为止——16 分区的主题在单个组里最多被 16 个消费者并行消费。超过 16 个,多余消费者闲着(没分到分区)。这就是为什么 Kafka 主题创建时必须过度分区:分区不能在不扰乱现有消费者的情况下添加,也不能移除。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 主题: order-events — 4 个分区</span>
+P0: [order:1, order:5, order:9 ...]
+P1: [order:2, order:6, order:10 ...]
+P2: [order:3, order:7, order:11 ...]
+P3: [order:4, order:8, order:12 ...]
+
+<span class="cm"># 消费者组 A(email-service):4 个消费者</span>
+C0 ─读─▶ P0    C1 ─读─▶ P1    C2 ─读─▶ P2    C3 ─读─▶ P3
+
+<span class="cm"># 消费者组 B(analytics-service):2 个消费者</span>
+C0 ─读─▶ P0, P1          C1 ─读─▶ P2, P3
+
+<span class="cm"># 两组独立读所有消息——加组 B</span>
+<span class="cm"># 对组 A 的消费零影响</span></code></pre>
+    </div>
+
+    <h3>多个独立消费者组</h3>
+    <p>Kafka 相对传统队列的决定性优势是,多个独立消费者组能各自读完整事件流而互不干扰。一个订单事件可被 email 服务(发确认邮件)、分析管道(业务指标)、库存服务(更新库存)和欺诈检测系统消费——全都从同一 Kafka 主题读,各按自己节奏,各维护自己的 offset。事后加欺诈检测系统无需改任何现有消费者或生产者;它只是创建一个新消费者组并从头或某个时间戳开始读。</p>
+
+    <p>这用传统队列无法干净复制,除非发布到 N 个独立队列(生产者写放大)或用扇出机制(RabbitMQ 的 exchange、AWS 的 SNS)把一份副本路由到每个下游队列。</p>
+
+    <h2>背压与流控</h2>
+    <p>背压(backpressure)是慢消费者向系统发信号、表示它处理不过来的机制,使系统放慢消息投递而非压垮消费者。处理不当会造成内存压力、延迟增加,最坏情况下消息丢失或消费者崩溃。</p>
+
+    <h3>拉模型里的背压(Kafka、SQS)</h3>
+    <p>基于拉的消费者天然实现背压:消费者只在处理完上一批后才取下一批消息。若处理变慢,消费者只是取得更不频繁,消息在队列/分区里累积。队列的消费者 lag(多少消息未处理)是关键监控指标——增长的 lag 表示消费者跟不上、需要扩容。</p>
+
+    <h3>推模型里的背压(RabbitMQ)</h3>
+    <p>基于推的消费者需要显式配置以免被压垮。RabbitMQ 的 <code>basic.qos</code> 配 <code>prefetch_count</code> 限制 broker 在等确认前推给一个消费者的消息数。设 <code>prefetch_count=10</code> 意味着消费者任意时刻最多 10 条未确认消息——若它 ack 慢,broker 停止投递新消息。没有这个配置,慢消费者会被未处理消息填满内存直到崩溃。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> pika
+
+conn = pika.<span class="fn">BlockingConnection</span>(pika.<span class="fn">ConnectionParameters</span>(<span class="str">'rabbitmq'</span>))
+ch = conn.<span class="fn">channel</span>()
+
+<span class="cm"># 限制 in-flight 消息数以防消费者被压垮</span>
+ch.<span class="fn">basic_qos</span>(prefetch_count=<span class="num">10</span>)
+
+<span class="kw">def</span> <span class="fn">on_message</span>(ch, method, props, body):
+    <span class="fn">process_message</span>(body)              <span class="cm"># 可能较慢</span>
+    ch.<span class="fn">basic_ack</span>(method.delivery_tag)  <span class="cm"># 成功后 ack;释放 prefetch 槽</span>
+
+ch.<span class="fn">basic_consume</span>(<span class="str">'my-queue'</span>, on_message)
+ch.<span class="fn">start_consuming</span>()</code></pre>
+    </div>
+
+    <h2>死信队列(DLQ)与毒丸消息</h2>
+    <p><strong>毒丸消息(poison message)</strong>是一条每次尝试处理都让消费者失败的消息——因为载荷畸形、不兼容的 schema 变更、依赖一个不复存在的资源,或消费者处理逻辑里的 bug。没有 DLQ,毒丸消息无限期占据它在队列(或分区)里的位置,造成无限重投循环或阻塞所有下游处理。</p>
+
+    <p><strong>死信队列</strong>是一个次级队列,消息在超过最大投递尝试次数后被自动路由到那里。主队列继续流动;失败消息被保留以供检查和重放,而非被丢弃或阻塞生产流量。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">json</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">// AWS SQS:给源队列挂一个 DLQ</span>
+{
+  <span class="str">"RedrivePolicy"</span>: {
+    <span class="str">"deadLetterTargetArn"</span>: <span class="str">"arn:aws:sqs:us-east-1:123456:my-dlq"</span>,
+    <span class="str">"maxReceiveCount"</span>: <span class="num">5</span>
+  }
+}
+<span class="cm">// 5 次失败投递后,消息被路由到 my-dlq</span>
+<span class="cm">// 主队列继续处理;DLQ 保留毒丸消息</span>
+<span class="cm">// 运维团队对 DLQ depth > 0 告警并调查</span></code></pre>
+    </div>
+
+    <h3>DLQ 运维手册</h3>
+    <ul>
+      <li><strong>对 DLQ 深度告警</strong>——DLQ 消息数大于零总是值得调查的信号。对 DLQ 深度 &gt; 0 设告警,对业务关键队列把它当成 pager 级事件。</li>
+      <li><strong>保留原始消息</strong>——在 DLQ 消息里包含原始消息体和元数据,若消费者能捕获则附上失败原因。这个上下文对调试至关重要。</li>
+      <li><strong>修复后重放</strong>——一旦根因(schema bug、缺失依赖、消费者逻辑错误)修好,消息可从 DLQ 移回主队列重处理。AWS 为此提供 <code>StartMessageMoveTask</code>;Kafka 需要一个单独的消费者从错误主题读并重发布到主主题。</li>
+      <li><strong>别无限期 DLQ</strong>——给 DLQ 本身设保留期(7–14 天常见),让旧的未解决失败不会永远累积。</li>
+    </ul>
+
+    <h3>DLQ 路由前的带抖动指数退避</h3>
+    <p>把消息路由到 DLQ 前,用指数退避重试以处理瞬时故障(下游服务短暂不可用、网络超时)。立即重试失败消息很少有用;等 1s、2s、4s、8s ... 给瞬时状况时间解决。给退避加随机抖动,防止所有重试消费者同时猛敲同一下游。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> time, random
+
+<span class="kw">def</span> <span class="fn">process_with_backoff</span>(msg, max_retries=<span class="num">5</span>):
+    <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(max_retries):
+        <span class="kw">try</span>:
+            <span class="fn">handle_message</span>(msg)
+            <span class="kw">return</span>                             <span class="cm"># 成功</span>
+        <span class="kw">except</span> <span class="ty">TransientError</span> <span class="kw">as</span> e:
+            <span class="kw">if</span> attempt == max_retries - <span class="num">1</span>:
+                <span class="fn">route_to_dlq</span>(msg, error=e)     <span class="cm"># 重试耗尽 → DLQ</span>
+                <span class="kw">return</span>
+            backoff = (<span class="num">2</span> ** attempt) + random.<span class="fn">uniform</span>(<span class="num">0</span>, <span class="num">1</span>)
+            log.<span class="fn">info</span>(<span class="fn">f</span><span class="str">"msg={msg.id} attempt={attempt} backoff={backoff:.1f}s"</span>)
+            time.<span class="fn">sleep</span>(backoff)               <span class="cm"># 1s, 2s, 4s, 8s, 16s + 抖动</span></code></pre>
+    </div>
+
+    <h2>RabbitMQ vs. SQS vs. Kafka:全面对比</h2>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th class="col-a">RabbitMQ</th><th class="col-b">Amazon SQS</th><th class="col-b">Apache Kafka</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>架构</td><td class="col-a">以 broker 为中心的 AMQP;exchange + 队列</td><td class="col-b">托管服务;AWS 原生</td><td class="col-b">分布式分区日志;ZooKeeper/KRaft</td></tr>
+        <tr><td>消息保留</td><td class="col-a">ack 后删除(默认);TTL 可配</td><td class="col-b">ack 后删除;最长 14 天可见性</td><td class="col-b">保留可配置时间(数小时到永远)</td></tr>
+        <tr><td>投递模型</td><td class="col-a">推(broker 投给消费者)</td><td class="col-b">拉(消费者轮询)</td><td class="col-b">拉(消费者管理 offset)</td></tr>
+        <tr><td>有序</td><td class="col-a">单消费者下每队列 FIFO</td><td class="col-b">尽力而为(标准);300/s 上限的 FIFO(FIFO 队列)</td><td class="col-b">分区内严格有序</td></tr>
+        <tr><td>吞吐</td><td class="col-a">每节点 ~5万–10万 msg/秒</td><td class="col-b">~3,000 msg/秒(FIFO);实际无限(标准)</td><td class="col-b">每集群 ~100万+ msg/秒</td></tr>
+        <tr><td>多消费者</td><td class="col-a">竞争(或通过 exchange 扇出)</td><td class="col-b">竞争(或通过 SNS 扇出)</td><td class="col-b">独立消费者组;每组完整重放</td></tr>
+        <tr><td>重放</td><td class="col-a">无(ack 后消息删除)</td><td class="col-b">无</td><td class="col-b">有——把 offset 重置到历史任意点</td></tr>
+        <tr><td>运维</td><td class="col-a">自托管;管理 UI;中等运维复杂度</td><td class="col-b">全托管;零运维</td><td class="col-b">复杂运维(ZooKeeper/KRaft、broker 调优);有托管选项(Confluent、MSK)</td></tr>
+        <tr><td>最适合</td><td class="col-a">任务队列、RPC 模式、通过 exchange 的复杂路由</td><td class="col-b">简单任务队列;serverless/Lambda 集成;AWS 原生</td><td class="col-b">事件流、CDC feed、审计日志、数据管道、事件溯源</td></tr>
+      </tbody>
+    </table>
+
+    <h3>决策框架:选哪个</h3>
+    <ul>
+      <li><strong>用 RabbitMQ</strong>当:你需要复杂路由逻辑(topic exchange、基于 header 的路由)、需要带细粒度流控的推模型、想要一个带管理 UI 的成熟自托管方案,或你的团队已在运维它。</li>
+      <li><strong>用 SQS</strong>当:你在 AWS 上且想要零运维负担、你的用例是简单任务队列或作业分发、想要与 Lambda/SNS/ECS 无缝集成,或你需要一个最少配置的死信队列。SQS 标准透明处理到每秒数百万消息的突发。</li>
+      <li><strong>用 Kafka</strong>当:你需要多个独立消费者组读同一事件流、你需要消息重放和重处理能力、吞吐在每秒数十万消息、你在构建数据管道或事件溯源系统,或你需要分区键内的强有序。</li>
+    </ul>
+
+    <h2>可靠性模式</h2>
+
+    <h3>事务发件箱模式(Transactional Outbox)</h3>
+    <p>一个经典分布式系统问题:你想原子地更新数据库并发布消息。若你先写数据库再发布到队列,服务可能在两操作之间崩溃——数据库写成功但消息从未发布。<strong>事务发件箱模式</strong>通过在与业务数据更新同一个数据库事务里把消息写入一张 <code>outbox</code> 表来解决。一个单独的中继进程(或 CDC 连接器)从 outbox 表读并发布到队列,成功时删除 outbox 行。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 单个事务:更新业务数据 + 写 outbox 条目</span>
+<span class="kw">BEGIN</span>;
+
+<span class="kw">INSERT INTO</span> orders (id, user_id, status, total_cents)
+<span class="kw">VALUES</span> (<span class="num">42</span>, <span class="num">101</span>, <span class="str">'PENDING'</span>, <span class="num">9999</span>);
+
+<span class="kw">INSERT INTO</span> outbox (id, topic, payload, created_at)
+<span class="kw">VALUES</span> (<span class="fn">gen_random_uuid</span>(), <span class="str">'order-events'</span>,
+        <span class="str">'{"event":"OrderPlaced","order_id":42}'</span>, <span class="fn">NOW</span>());
+
+<span class="kw">COMMIT</span>;
+
+<span class="cm">-- 中继进程读 outbox 并发布到队列</span>
+<span class="cm">-- 若发布成功: DELETE FROM outbox WHERE id=...</span>
+<span class="cm">-- 若发布失败: 消息留在 outbox;中继重试</span></code></pre>
+    </div>
+
+    <h3>带补偿事务的 Saga 模式</h3>
+    <p>对跨多个服务的多步业务流程(结账:扣库存 → 收款 → 发确认),Saga 模式用消息队列作协调机制。每步发布一个触发下一步的事件。失败时,补偿事务逆转已完成步骤。这里消息队列必不可少,因为它们在时间上解耦步骤并提供持久性——若支付服务挂了,"库存已预留"事件在队列里等到支付恢复。</p>
+
+    <h3>消费者健康与 lag 监控</h3>
+    <p>任何消息系统的关键运维指标:</p>
+    <ul>
+      <li><strong>消费者 lag</strong>——多少消息未处理(SQS:<code>ApproximateNumberOfMessages</code>;Kafka:通过 <code>kafka-consumer-groups.sh</code> 或监控工具的消费者组 lag)。增长的 lag = 消费者跟不上生产者速率。</li>
+      <li><strong>DLQ 深度</strong>——DLQ 里的消息表示处理失败。对关键队列的任何 DLQ 深度 &gt; 0 告警。</li>
+      <li><strong>消息年龄</strong>——最旧的未处理消息多老?SQS 跟踪 <code>ApproximateAgeOfOldestMessage</code>。增长的年龄表示卡住或慢的消费者。</li>
+      <li><strong>吞吐</strong>——每秒发布 vs 消费的消息。逐渐拉开的差距表示积压增长。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">总结</div>
+      <p>用消息队列在时间上解耦服务并保护下游系统免受流量峰值。根本的架构选择是队列语义(ack 时删除、竞争消费者)vs. 提交日志语义(保留消息、独立消费者组带重放)。把 at-least-once 投递当默认,把每个消费者设计成幂等。从第一天起接好死信队列——毒丸消息一定会出现,你希望它们立即被暴露,而非默默阻塞流水线。技术选择:零运维的 AWS 任务队列用 SQS,复杂路由和推投递用 RabbitMQ,多消费者需独立重放的高吞吐事件流用 Kafka。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>exactly-once 为什么这么难?</strong>它需要跨两个系统原子地协调 broker(无重复投递)和消费者(幂等处理)。Kafka Transactions 在 Kafka 生态内让它可实现;跨任意系统(Kafka → 第三方 API),务实答案是 at-least-once + 幂等消费者设计。<br>
+      <strong>什么是死信队列?</strong>一个次级队列,消息在超过最大投递尝试次数后被自动路由进去。它让主队列继续流动,同时保留失败消息以供检查、根因分析和修复后重放。<br>
+      <strong>传统 MQ vs Kafka?</strong>MQ(RabbitMQ、SQS)消费后删除消息——每条消息一个消费者;用于任务队列。Kafka 把消息作为不可变日志保留;多个独立消费者组能各按自己节奏读所有事件并从任意 offset 重放——用于事件流、CDC 和数据管道。<br>
+      <strong>怎么在 Kafka 里保证有序?</strong>按实体键(user_id、order_id)分区;同键的所有消息进同一分区,并在某时刻被组里恰好一个消费者按严格顺序消费。<br>
+      <strong>怎么原子地写数据库并发布消息?</strong>事务发件箱模式——在同一数据库事务里把业务记录和消息都写进一张 outbox 表;中继进程从 outbox 异步发布,失败时重试。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/tech-stacks/sharding/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">分片 (Sharding)</div>
+      </a>
+      <a href="/tech-stacks/nosql/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">NoSQL</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">系统设计</a></li>
+      <li><a href="/tech-stacks/">技术栈</a></li>
+      <li><a href="/ai-coding/">AI 编程</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 updoggtech</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>
