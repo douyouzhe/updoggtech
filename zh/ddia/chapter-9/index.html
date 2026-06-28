@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 9 章:线性一致性(vs 可串行化、CAP 代价)、排序与因果性(版本向量、Lamport 时间戳、全序广播)、分布式事务与共识(两阶段提交的 in-doubt 问题、容错共识 Paxos/Raft/Zab、FLP、ZooKeeper/etcd 协调服务)。">
-<title>DDIA 第9章 — 一致性与共识 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-9/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-9/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-9/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-9/">
+<meta name="description" content="线性一致性与共识——DDIA 第 9 章讲 CAP、因果排序(Lamport/版本向量)、全序广播、2PC 与 Paxos/Raft/ZooKeeper。">
+<title>DDIA 第9章 — 一致性与共识 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-9/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-9/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-9/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-9/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="一致性与共识">
-<meta property="og:description" content="DDIA 第 9 章:线性一致性、CAP、因果性、全序广播、2PC、共识(Paxos/Raft)、ZooKeeper。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-9/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="线性一致性与共识——DDIA 第 9 章讲 CAP、因果排序(Lamport/版本向量)、全序广播、2PC 与 Paxos/Raft/ZooKeeper。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-9/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第9章 — 一致性与共识">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="一致性与共识">
 <meta name="twitter:description" content="DDIA 第 9 章:线性一致性 vs 可串行化、全序广播、2PC、共识、ZooKeeper/etcd。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 9 章 — 一致性与共识", "description": "DDIA 第 9 章:线性一致性(vs 可串行化、CAP 代价)、排序与因果性(版本向量、Lamport 时间戳、全序广播)、分布式事务与共识(两阶段提交的 in-doubt 问题、容错共识 Paxos/Raft/Zab、FLP、ZooKeeper/etcd 协调服务)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-9/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 9 章 — 一致性与共识","description":"线性一致性与共识——DDIA 第 9 章讲 CAP、因果排序(Lamport/版本向量)、全序广播、2PC 与 Paxos/Raft/ZooKeeper。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-9/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "线性一致性 vs 可串行化?", "acceptedAnswer": {"@type": "Answer", "text": "线性一致性 = 单对象的新近度(看起来像单一副本);可串行化 = 多对象事务的隔离。严格可串行化是两者。"}}, {"@type": "Question", "name": "CAP 实际说什么?", "acceptedAnswer": {"@type": "Answer", "text": "网络分区期间,选一致(线性一致,拒绝一些请求)或可用(服务陈旧数据)。它很窄——一个故障、一个模型——但取舍真实。"}}, {"@type": "Question", "name": "2PC 为什么脆弱?", "acceptedAnswer": {"@type": "Answer", "text": "若协调者在 prepare 阶段后崩溃,参与者存疑——它们无法独自决定并阻塞持锁。协调者是单点故障。"}}, {"@type": "Question", "name": "为什么用 ZooKeeper 而非自己写共识?", "acceptedAnswer": {"@type": "Answer", "text": "共识(Paxos/Raft)以难做对著称;ZooKeeper/etcd 打包线性一致操作、全序和故障检测,这样你在其上构建 leader 选举和锁。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第9章 — 一致性与共识","item":"https://sdeoffer.com/zh/ddia/chapter-9/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-9/">EN</a>
-        <a href="/zh/ddia/chapter-9/" class="active">中</a>
+        <a href="/ddia/chapter-9/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-9/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-9</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 9 章</span>
     <h1 class="article-title">一致性与共识</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
   </div>
 
   <div class="article-body">
-    <p>第 9 章是第二部分的高潮。在编目了一切可能出错的东西(第 8 章)后,Kleppmann 现在构建积极的工具:带强保证的通用抽象,让应用能忽略它们底下的一些混沌。两个大想法是<strong>线性一致性(linearizability)</strong>(最强的单对象一致性模型)和<strong>共识(consensus)</strong>(让节点尽管有故障也就某事达成一致)。本章的妙处在于,出人意料的大量问题——leader 选举、唯一性约束、原子提交、锁服务——都等价于共识,所以解决共识一次(或外包给 ZooKeeper)就解决了它们全部。</p>
+    <p>第 9 章是第二部分的高潮。在编目了一切可能出错的东西(<a href="/zh/ddia/chapter-8/">第 8 章</a>)后,Kleppmann 现在构建积极的工具:带强保证的通用抽象,让应用能忽略它们底下的一些混沌。两个大想法是<strong>线性一致性(linearizability)</strong>(最强的单对象一致性模型)和<strong>共识(consensus)</strong>(让节点尽管有故障也就某事达成一致)。本章的妙处在于,出人意料的大量问题——leader 选举、唯一性约束、原子提交、锁服务——都等价于共识,所以解决共识一次(或外包给 ZooKeeper)就解决了它们全部。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -236,7 +254,7 @@
         <tr><td>关于</td><td class="col-a">单对象读/写的新近度</td><td class="col-b">多对象事务的隔离</td></tr>
         <tr><td>保证</td><td class="col-a">看起来像单一副本、实时顺序</td><td class="col-b">事务等价于某个串行顺序</td></tr>
         <tr><td>关切</td><td class="col-a">复制 / 新鲜度</td><td class="col-b">并发 / 交错</td></tr>
-        <tr><td>合在一起</td><td class="col-a" colspan="2">严格可串行化(strict serializability)= 同时两者(如两阶段锁、Spanner)</td></tr>
+        <tr><td>合在一起</td><td class="col-a" colspan="2">严格可串行化(strict serializability)= 同时两者(如<a href="/zh/ddia/chapter-7/">两阶段锁</a>、Spanner)</td></tr>
       </tbody>
     </table>
 
@@ -249,7 +267,7 @@
     </ul>
 
     <h3>它如何实现,以及 CAP 代价</h3>
-    <p>哪些复制方法线性一致?单主复制<em>能</em>(若你只从 leader 读,且它真的是 leader)。共识算法<em>是</em>。多主不是。无主(Dynamo 风格)即便用严格 quorum 通常也<strong>不</strong>线性一致,因为时钟偏移和读修复的时序破坏新近度保证。线性一致性难的深层原因被 <strong>CAP 定理</strong>捕获:网络分区发生时,系统必须选——通过在够不到 quorum 的那侧拒绝请求来保持<strong>一致</strong>(线性一致)(牺牲可用性),或通过服务可能陈旧的数据保持<strong>可用</strong>(牺牲线性一致)。CAP 常被表述得太宽;它只关切一个故障(分区)和一个模型(线性一致)。但实际教训成立:线性一致性需要网络往返,所以它<strong>慢</strong>,许多系统刻意放弃它以换性能和可用性。</p>
+    <p>哪些复制方法线性一致?<a href="/zh/ddia/chapter-5/">单主复制</a><em>能</em>(若你只从 leader 读,且它真的是 leader)。共识算法<em>是</em>。多主不是。无主(Dynamo 风格)即便用严格 quorum 通常也<strong>不</strong>线性一致,因为时钟偏移和读修复的时序破坏新近度保证。线性一致性难的深层原因被 <strong>CAP 定理</strong>捕获:网络分区发生时,系统必须选——通过在够不到 quorum 的那侧拒绝请求来保持<strong>一致</strong>(线性一致)(牺牲可用性),或通过服务可能陈旧的数据保持<strong>可用</strong>(牺牲线性一致)。CAP 常被表述得太宽;它只关切一个故障(分区)和一个模型(线性一致)。但实际教训成立:线性一致性需要网络往返,所以它<strong>慢</strong>,许多系统刻意放弃它以换性能和可用性。</p>
 
     <h2>排序与因果性</h2>
     <p>排序不断重现,因为它与因果性深深相连。<strong>因果性</strong>给事件强加一个顺序:问题必须在答案之前;一行必须在被更新前创建。因果性定义一个<strong>偏序(partial order)</strong>——一些事件有序(因果相关),其他不可比(并发)。线性一致性相反,强加一个<strong>全序(total order)</strong>:每个操作都在一条时间线上。线性一致性蕴含因果性,但它比必要的更强(更贵)。</p>
@@ -325,9 +343,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -335,7 +354,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

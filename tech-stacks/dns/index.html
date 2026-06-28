@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into DNS — how names resolve to IPs through recursive and authoritative servers, the hierarchy, record types, caching and TTL, GeoDNS and anycast for load balancing, and DNS reliability and security.">
-<title>DNS — The Internet's Name System | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/dns/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/dns/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/dns/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/dns/">
+<meta name="description" content="DNS resolves names to IPs via recursive and authoritative servers: the hierarchy, record types, caching and TTL, GeoDNS and anycast, and reliability/security.">
+<title>DNS — The Internet's Name System | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/dns/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/dns/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/dns/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/dns/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DNS — The Internet's Name System">
-<meta property="og:description" content="How names resolve to IPs, the DNS hierarchy, record types, caching and TTL, GeoDNS and anycast, and DNS reliability.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/dns/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="DNS resolves names to IPs via recursive and authoritative servers: the hierarchy, record types, caching and TTL, GeoDNS and anycast, and reliability/security.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/dns/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DNS — The Internet's Name System">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DNS — The Internet's Name System">
 <meta name="twitter:description" content="How DNS works: resolution flow, record types, caching/TTL, GeoDNS, and anycast.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DNS — The Internet's Name System","description":"How names resolve to IPs, the DNS hierarchy, record types, caching and TTL, GeoDNS and anycast, and DNS reliability.","datePublished":"2023-09-28","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/dns/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DNS — The Internet's Name System","description":"DNS resolves names to IPs via recursive and authoritative servers: the hierarchy, record types, caching and TTL, GeoDNS and anycast, and reliability/security.","datePublished":"2023-09-28","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/dns/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-28","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Walk through a DNS lookup.", "acceptedAnswer": {"@type": "Answer", "text": "Client → recursive resolver → (cache miss) root → TLD (.com) → authoritative nameserver → A record; resolver caches by TTL and returns the IP."}}, {"@type": "Question", "name": "Recursive vs authoritative?", "acceptedAnswer": {"@type": "Answer", "text": "The recursive resolver does the legwork and caches; authoritative servers hold the real records for a domain. Root/TLD servers delegate downward."}}, {"@type": "Question", "name": "What is \"DNS propagation\"?", "acceptedAnswer": {"@type": "Answer", "text": "Not active propagation — caches serving the old record until its TTL expires. Lower TTL before a planned change."}}, {"@type": "Question", "name": "GeoDNS vs anycast?", "acceptedAnswer": {"@type": "Answer", "text": "GeoDNS returns a different IP based on location; anycast announces one IP from many sites and lets routing pick the nearest."}}, {"@type": "Question", "name": "Why is DNS a reliability concern?", "acceptedAnswer": {"@type": "Answer", "text": "Everything starts with a lookup, so a DNS outage looks total (cf. the Dyn attack); use redundant providers, anycast, and DNSSEC."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"DNS — The Internet's Name System","item":"https://sdeoffer.com/tech-stacks/dns/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -152,18 +169,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/dns/" class="active">EN</a><a href="/zh/tech-stacks/dns/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/dns/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/dns/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">dns</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">DNS</h1>
     <div class="article-meta">
@@ -176,7 +194,7 @@
   </div>
 
   <div class="article-body">
-    <p>Every connection on the internet starts with a question: "what's the IP address for this name?" The Domain Name System answers it. DNS is the internet's distributed, hierarchical, heavily-cached phone book that turns <code>updoggtech.com</code> into an IP a machine can connect to. It looks like plumbing, but it's also a powerful infrastructure tool — it's how <a href="/tech-stacks/cdn/">CDNs</a> route you to the nearest edge, how traffic is balanced and failed over across regions, and a frequent (often overlooked) single point of failure.</p>
+    <p>Every connection on the internet starts with a question: "what's the IP address for this name?" The Domain Name System answers it. DNS is the internet's distributed, hierarchical, heavily-cached phone book that turns <code>sdeoffer.com</code> into an IP a machine can connect to. It looks like plumbing, but it's also a powerful infrastructure tool — it's how <a href="/tech-stacks/cdn/">CDNs</a> route you to the nearest edge, how traffic is balanced and failed over across regions, and a frequent (often overlooked) single point of failure.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -200,7 +218,7 @@
     <p>Humans remember <code>github.com</code>; machines route packets to <code>140.82.x.x</code>. DNS is the indirection layer between them — and that indirection is valuable beyond convenience: because the name→IP mapping is resolved fresh (subject to caching), you can <em>change</em> where a name points without changing the name, which is what enables migrations, failover, and geo-routing.</p>
 
     <h2>The Resolution Flow</h2>
-    <p>When your browser needs <code>updoggtech.com</code>, it asks a <strong>recursive resolver</strong> (run by your ISP, or 1.1.1.1 / 8.8.8.8). If the answer isn't cached, the resolver walks the hierarchy on your behalf:</p>
+    <p>When your browser needs <code>sdeoffer.com</code>, it asks a <strong>recursive resolver</strong> (run by your ISP, or 1.1.1.1 / 8.8.8.8). If the answer isn't cached, the resolver walks the hierarchy on your behalf:</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -208,14 +226,14 @@
           <span class="code-dot" style="background:#ff5f56"></span>
           <span class="code-dot" style="background:#ffbd2e"></span>
           <span class="code-dot" style="background:#27c93f"></span>
-          <span class="code-lang">resolving updoggtech.com (cache miss)</span>
+          <span class="code-lang">resolving sdeoffer.com (cache miss)</span>
         </div>
         <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
       </div>
       <pre><code>client ─▶ recursive resolver
             ├─▶ root server      : "ask the .com TLD servers → here"
-            ├─▶ .com TLD server  : "ask updoggtech.com's nameservers → here"
-            ├─▶ authoritative NS : "updoggtech.com A = 203.0.113.10"  ✓
+            ├─▶ .com TLD server  : "ask sdeoffer.com's nameservers → here"
+            ├─▶ authoritative NS : "sdeoffer.com A = 203.0.113.10"  ✓
             └─ cache the answer (for its TTL), return to client
 
   client connects to 203.0.113.10
@@ -308,9 +326,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -318,7 +337,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into a proximity / nearby-places service (Yelp) — geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding by region.">
-<title>Design Nearby / Yelp (Proximity Service) — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/nearby/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/nearby/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/nearby/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/nearby/">
+<meta name="description" content="Proximity service design (Yelp) — geohash and quadtree indexing, the cell-boundary problem, read-heavy caching, result ranking, and sharding by region.">
+<title>Design Nearby / Yelp (Proximity Service) | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/nearby/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/nearby/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/nearby/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/nearby/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design Nearby / Yelp (Proximity Service) — System Design">
-<meta property="og:description" content="Geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding.">
-<meta property="og:url" content="https://updoggtech.com/system-design/nearby/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Proximity service design (Yelp) — geohash and quadtree indexing, the cell-boundary problem, read-heavy caching, result ranking, and sharding by region.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/nearby/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design Nearby / Yelp (Proximity Service) — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Design Nearby / Yelp (Proximity Service)">
 <meta name="twitter:description" content="How proximity search works: geohash vs quadtree, the boundary problem, and read-heavy scaling.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Nearby / Yelp (Proximity Service)","description":"Geospatial indexing with geohash and quadtrees, the boundary problem, read-heavy caching, ranking, and sharding.","datePublished":"2023-04-12","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/nearby/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Nearby / Yelp (Proximity Service)","description":"Proximity service design (Yelp) — geohash and quadtree indexing, the cell-boundary problem, read-heavy caching, result ranking, and sharding by region.","datePublished":"2023-04-12","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/nearby/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-12","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why can't you just index lat and lng?", "acceptedAnswer": {"@type": "Answer", "text": "A B-tree is 1D; a 2D range query degenerates to scanning a whole latitude (or longitude) band. You need a spatial index that preserves 2D locality."}}, {"@type": "Question", "name": "How does geohash work?", "acceptedAnswer": {"@type": "Answer", "text": "It interleaves lat/lng bits into a string so nearby points share a prefix and a longer string means a smaller cell — turning proximity into a prefix range scan."}}, {"@type": "Question", "name": "Geohash vs quadtree?", "acceptedAnswer": {"@type": "Answer", "text": "Geohash = fixed grid, trivially stored as an indexed string; quadtree = density-adaptive cells held in memory, bounding points per cell."}}, {"@type": "Question", "name": "What's the boundary problem?", "acceptedAnswer": {"@type": "Answer", "text": "A nearby place across a cell border has a different cell, so you must query the 8 neighboring cells and then filter by exact distance."}}, {"@type": "Question", "name": "Why is caching so effective here?", "acceptedAnswer": {"@type": "Answer", "text": "Businesses rarely move, so the data is nearly static and read-heavy — popular regions can be cached with long TTLs."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design Nearby / Yelp (Proximity Service) — System Design","item":"https://sdeoffer.com/system-design/nearby/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -160,13 +174,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -174,18 +191,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/nearby/" class="active">EN</a><a href="/zh/system-design/nearby/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/nearby/" class="active" hreflang="en">EN</a><a href="/zh/system-design/nearby/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">nearby</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design Nearby / Yelp (Proximity Service)</h1>
     <div class="article-meta">
@@ -259,7 +277,7 @@ POST /places   {name, lat, lng, category, ...}   <span class="cm"># add/update a
     </div>
 
     <h2>Step 4 — Why a Normal Index Fails</h2>
-    <p>The instinct is to store <code>lat</code> and <code>lng</code> columns and query <code>WHERE lat BETWEEN ... AND lng BETWEEN ...</code>. The problem: a B-tree index is one-dimensional. An index on <code>lat</code> finds the right latitude band but includes every place at that latitude across the whole planet; you then filter by longitude in memory (or vice versa). For a global dataset that's a massive scan per query. We need an index that preserves <strong>2D locality</strong> — points close on the map should be close in the index. Two standard structures do this.</p>
+    <p>The instinct is to store <code>lat</code> and <code>lng</code> columns and query <code>WHERE lat BETWEEN ... AND lng BETWEEN ...</code>. The problem: a <a href="/tech-stacks/database-indexing/">B-tree index</a> is one-dimensional. An index on <code>lat</code> finds the right latitude band but includes every place at that latitude across the whole planet; you then filter by longitude in memory (or vice versa). For a global dataset that's a massive scan per query. We need an index that preserves <strong>2D locality</strong> — points close on the map should be close in the index. Two standard structures do this.</p>
 
     <h2>Step 5 — Geohash</h2>
     <p><strong>Geohash</strong> recursively divides the world into a grid and interleaves the bits of latitude and longitude, encoding the result as a short base-32 string. Two properties make it powerful: a <strong>longer geohash = a smaller, more precise cell</strong> (each extra character ~ refines the box), and <strong>nearby locations share a common prefix</strong> (e.g. two cafes on the same block might both start with <code>9q8yyk</code>). So you store a <code>geohash</code> column, index it normally, and "find places near X" becomes "find places whose geohash starts with X's prefix" — a cheap prefix/range scan on an ordinary index. You pick the prefix length to match the search radius (longer prefix for a tight radius).</p>
@@ -306,10 +324,10 @@ INDEX on geohash   <span class="cm"># prefix range scans = nearby lookup</span><
     <p>A search runs in two phases. <strong>Phase 1 (index):</strong> compute the geohash of the query point at the precision matching the radius, then fetch candidate places whose geohash shares that prefix. <strong>Phase 2 (refine):</strong> compute the exact great-circle distance from the query to each candidate, drop those outside the radius, and sort. The catch is the <strong>boundary problem</strong>: a place 50 meters away might sit just across a cell border and thus have a different geohash prefix, so it'd be missed. The fix is to also query the <strong>8 neighboring cells</strong> around the query cell, union the candidates, then refine. (Quadtrees have the analogous issue and similarly check adjacent leaves.)</p>
 
     <h2>Step 9 — Caching and Read Scaling</h2>
-    <p>Because the data barely changes and reads dominate, caching is the main scaling lever. Cache results (or candidate sets) for <strong>popular cells</strong> — dense, frequently-searched areas like city centers — in Redis with a generous TTL, since a new restaurant appearing is not time-critical. Front read traffic with replicas, and let the mostly-static dataset live largely in memory. Most searches in busy areas should be served from cache without touching the primary store.</p>
+    <p>Because the data barely changes and reads dominate, caching is the main scaling lever. Cache results (or candidate sets) for <strong>popular cells</strong> — dense, frequently-searched areas like city centers — in <a href="/tech-stacks/redis/">Redis</a> with a generous TTL, since a new restaurant appearing is not time-critical. Front read traffic with replicas, and let the mostly-static dataset live largely in memory. Most searches in busy areas should be served from cache without touching the primary store.</p>
 
     <h2>Step 10 — Sharding and Scaling Writes</h2>
-    <p>Reads scale with replicas and cache; for storage and write distribution, <strong>shard by region</strong> (e.g. by geohash prefix, so a shard owns a contiguous area). This keeps a search's candidate cells on one shard most of the time. Watch for <strong>hotspots</strong>: a geohash-prefix shard covering Manhattan handles vastly more places and queries than one covering open ocean, so balance shards by load, not just by area (finer splits where it's dense). Writes (new/edited businesses) are rare and can update the index asynchronously.</p>
+    <p>Reads scale with replicas and cache; for storage and write distribution, <a href="/tech-stacks/sharding/"><strong>shard by region</strong></a> (e.g. by geohash prefix, so a shard owns a contiguous area). This keeps a search's candidate cells on one shard most of the time. Watch for <strong>hotspots</strong>: a geohash-prefix shard covering Manhattan handles vastly more places and queries than one covering open ocean, so balance shards by load, not just by area (finer splits where it's dense). Writes (new/edited businesses) are rare and can update the index asynchronously.</p>
 
     <h2>Step 11 — Ranking</h2>
     <p>"Nearby" isn't only about distance. Final ordering typically blends <strong>distance</strong>, <strong>rating/popularity</strong>, category relevance, and sometimes sponsored placement. Because the candidate set after the spatial filter is small (places within the radius), this ranking is cheap to compute per request, or partially precomputed (e.g. a place's base popularity score) and combined with live distance.</p>
@@ -349,9 +367,10 @@ INDEX on geohash   <span class="cm"># prefix range scans = nearby lookup</span><
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -359,7 +378,7 @@ INDEX on geohash   <span class="cm"># prefix range scans = nearby lookup</span><
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

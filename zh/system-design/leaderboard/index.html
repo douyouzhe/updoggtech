@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:实时排行榜——为什么 SQL ORDER BY+COUNT 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANGE/ZREVRANK 操作、持久化与真相来源、top-k/排名/邻居、分片(按分数范围/按用户)、精确 vs 近似全局排名(分桶)、基于时间的榜、关键取舍。">
-<title>设计实时排行榜 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/leaderboard/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/leaderboard/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/leaderboard/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/leaderboard/">
+<meta name="description" content="实时排行榜系统设计：为何 SQL 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANK、持久化、top-k 与邻居、分片、精确 vs 近似排名与取舍。">
+<title>设计实时排行榜 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/leaderboard/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/leaderboard/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/leaderboard/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/leaderboard/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计实时排行榜">
-<meta property="og:description" content="排行榜系统设计:Redis 有序集合、O(log n) 排名、持久化、分片、近似百分位、时间榜。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/leaderboard/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="实时排行榜系统设计：为何 SQL 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANK、持久化、top-k 与邻居、分片、精确 vs 近似排名与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/leaderboard/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计实时排行榜 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="设计实时排行榜">
 <meta name="twitter:description" content="设计排行榜:Redis 有序集合、ZREVRANK、分片、分桶近似排名、每日/每周榜。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计实时排行榜", "description": "系统设计:实时排行榜——为什么 SQL ORDER BY+COUNT 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANGE/ZREVRANK 操作、持久化与真相来源、top-k/排名/邻居、分片(按分数范围/按用户)、精确 vs 近似全局排名(分桶)、基于时间的榜、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/leaderboard/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计实时排行榜","description":"实时排行榜系统设计：为何 SQL 不扩展、Redis 有序集合(跳表)、ZADD/ZREVRANK、持久化、top-k 与邻居、分片、精确 vs 近似排名与取舍。","datePublished":"2023-04-08","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/leaderboard/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-08"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么不就 SQL ORDER BY?", "acceptedAnswer": {"@type": "Answer", "text": "Top-k 没问题,但一个玩家的排名需要 COUNT 他们上方所有人——每查询 O(n),在规模上崩溃。"}}, {"@type": "Question", "name": "为什么 Redis 有序集合?", "acceptedAnswer": {"@type": "Answer", "text": "它的跳表给 O(log n) 分数更新、top-k(ZREVRANGE)和排名(ZREVRANK)——恰好是排行榜操作。"}}, {"@type": "Question", "name": "Redis 是真相来源吗?", "acceptedAnswer": {"@type": "Answer", "text": "不——它是热服务层;一个持久 DB 持有权威分数,使你能在重启后重建集合。"}}, {"@type": "Question", "name": "分片时什么坏了?", "acceptedAnswer": {"@type": "Answer", "text": "精确全局排名——它跨所有分片。用分数桶计数便宜地算近似排名/百分位。"}}, {"@type": "Question", "name": "每日/每周榜怎么工作?", "acceptedAnswer": {"@type": "Answer", "text": "按周期为键、带 TTL 的独立有序集合;写到当前周期(可选还有一个全时段集合)。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计实时排行榜 — 系统设计","item":"https://sdeoffer.com/zh/system-design/leaderboard/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/leaderboard/">EN</a>
-        <a href="/zh/system-design/leaderboard/" class="active">中</a>
+        <a href="/system-design/leaderboard/" hreflang="en">EN</a>
+        <a href="/zh/system-design/leaderboard/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">leaderboard</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计实时排行榜</h1>
     <div class="article-meta">
@@ -281,7 +299,7 @@ GET  /leaderboard/around/{user_id}?range=5    <span class="cm"># 邻居</span></
     </table>
 
     <h2>第 5 步 — Redis 有序集合</h2>
-    <p>Redis <strong>有序集合(ZSET)</strong>存各带一个分数的成员,由<strong>跳表(skip list)</strong>(加一个成员到分数的哈希 map)保持有序。这恰好给出排行榜需要的操作,全在 O(log n):</p>
+    <p><a href="/zh/tech-stacks/redis/">Redis</a> <strong>有序集合(ZSET)</strong>存各带一个分数的成员,由<strong>跳表(skip list)</strong>(加一个成员到分数的哈希 map)保持有序。这恰好给出排行榜需要的操作,全在 O(log n):</p>
     <div class="code-block">
       <div class="code-block-header">
         <div class="code-block-header-left">
@@ -304,7 +322,7 @@ ZSCORE   board  "user42"          <span class="cm"># 一个玩家的当前分数
     <p>Redis 是快、内存的<strong>服务</strong>层,但你不该把它当作数据的唯一副本。保留一个持久数据库(SQL 或 KV 存储)作分数的<strong>记录系统</strong>。每次更新,写到数据库并更新有序集合(write-through),或流式分数事件并应用到两者。若 Redis 重启或一个节点丢失,从数据库重建它的有序集合。Redis 持久化(RDB 快照 / AOF)帮助恢复速度,但持久 DB 是权威备份。</p>
 
     <h2>第 7 步 — Top-k、排名与邻居</h2>
-    <p>有了有序集合,三个核心读平凡:<strong>top-k</strong> 是 <code>ZREVRANGE 0 k-1</code>;一个玩家的<strong>排名</strong>是 <code>ZREVRANK</code>(O(log n)——结构跟踪子树大小,所以它数前驱而不扫描);<strong>邻居</strong>是一个 <code>ZREVRANK</code> 找位置后跟一个对周围窗口的 <code>ZREVRANGE</code>。top-k 列表也极可缓存——相对它被查看的频率它变化慢,所以以短 TTL 缓存它,在大事件期间屏蔽 Redis 免受读尖峰。</p>
+    <p>有了有序集合,三个核心读平凡:<strong>top-k</strong> 是 <code>ZREVRANGE 0 k-1</code>;一个玩家的<strong>排名</strong>是 <code>ZREVRANK</code>(O(log n)——结构跟踪子树大小,所以它数前驱而不扫描);<strong>邻居</strong>是一个 <code>ZREVRANK</code> 找位置后跟一个对周围窗口的 <code>ZREVRANGE</code>。top-k 列表也极<a href="/zh/tech-stacks/caching/">可缓存</a>——相对它被查看的频率它变化慢,所以以短 TTL 缓存它,在大事件期间屏蔽 Redis 免受读尖峰。</p>
 
     <h2>第 8 步 — 扩展:一个节点不够时</h2>
     <p>单个 Redis 节点在几 GB 里持有数千万条目,所以对许多排行榜你从不分片。当你必须(内存或写吞吐限制)时,你<strong>分片有序集合</strong>跨节点——而这就是难的地方,因为排名本质是全局属性:</p>
@@ -342,7 +360,7 @@ approx_rank(you) = sum(更高桶的计数)
     <h2>第 11 步 — 关键取舍</h2>
     <ul>
       <li><strong>有序集合 vs 数据库。</strong>有序集合让排名 O(log n) 而非 O(n);代价是在你 DB 旁运行并持久化一个内存存储。</li>
-      <li><strong>单节点 vs 分片。</strong>一个节点让精确全局排名平凡;分片扩展更远但迫使扇出查询或近似。</li>
+      <li><strong>单节点 vs 分片。</strong>一个节点让精确全局排名平凡;<a href="/zh/tech-stacks/sharding/">分片</a>扩展更远但迫使扇出查询或近似。</li>
       <li><strong>精确 vs 近似排名。</strong>不分片时精确排名可行;在海量规模,分桶百分位便宜得多且在 top-k 外通常足够。</li>
       <li><strong>新鲜度 vs 缓存。</strong>缓存 top-k 在尖峰期间屏蔽 Redis,代价是几秒陈旧——几乎总可接受。</li>
     </ul>
@@ -375,9 +393,10 @@ approx_rank(you) = sum(更高桶的计数)
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -385,7 +404,7 @@ approx_rank(you) = sum(更高桶的计数)
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

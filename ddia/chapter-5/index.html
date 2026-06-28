@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.5 of DDIA: replication strategies — single-leader, multi-leader, and leaderless — synchronous vs asynchronous, failover dangers, replication lag anomalies, and quorum reads/writes.">
-<title>DDIA Ch.5 — Replication | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-5/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-5/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-5/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-5/">
+<meta name="description" content="Replication strategies: single-leader, multi-leader, and leaderless; sync vs async; failover dangers; replication lag anomalies; and quorum reads/writes.">
+<title>DDIA Ch.5 — Replication | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-5/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-5/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-5/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-5/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.5 — Replication">
-<meta property="og:description" content="Single-leader, multi-leader, and leaderless replication; sync vs async; failover dangers; replication lag; quorums.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-5/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Replication strategies: single-leader, multi-leader, and leaderless; sync vs async; failover dangers; replication lag anomalies; and quorum reads/writes.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-5/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.5 — Replication">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.5 — Replication">
 <meta name="twitter:description" content="The three replication strategies, replication lag anomalies, and quorum reads/writes.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.5 — Replication","description":"Single-leader, multi-leader, and leaderless replication; sync vs async; failover dangers; replication lag; quorums.","datePublished":"2023-04-04","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-5/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.5 — Replication","description":"Replication strategies: single-leader, multi-leader, and leaderless; sync vs async; failover dangers; replication lag anomalies; and quorum reads/writes.","datePublished":"2023-04-04","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-5/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-04","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Sync vs async replication?", "acceptedAnswer": {"@type": "Answer", "text": "Sync guarantees a durable up-to-date copy but blocks on a slow follower; async is fast but can lose acknowledged writes on failover. Semi-sync (one sync follower) is the common compromise."}}, {"@type": "Question", "name": "Why is failover hard?", "acceptedAnswer": {"@type": "Answer", "text": "Lost async writes, split brain (two leaders), bad timeout tuning, and dangerous interactions with external systems — which is why many teams do it manually."}}, {"@type": "Question", "name": "What does w + r > n give you?", "acceptedAnswer": {"@type": "Answer", "text": "The read and write quorums overlap by at least one node, so a read is guaranteed to see the most recent write — the core leaderless consistency knob."}}, {"@type": "Question", "name": "How do you detect concurrent writes?", "acceptedAnswer": {"@type": "Answer", "text": "Track the happens-before relation with version numbers or version vectors; writes where neither saw the other are concurrent siblings that need merging."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.5 — Replication","item":"https://sdeoffer.com/ddia/chapter-5/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-5/" class="active">EN</a><a href="/zh/ddia/chapter-5/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-5/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-5/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-5</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.5</span>
     <h1 class="article-title">Replication</h1>
     <div class="article-meta">
@@ -271,7 +289,7 @@
     <p>If a user makes several reads from different replicas, they might see a value, then a moment later see an <em>older</em> value — time appearing to move backwards. <strong>Monotonic reads</strong> guarantees that once you've read newer data, you won't later read older data. A simple implementation: each user always reads from the same replica (e.g. chosen by a hash of their user ID).</p>
 
     <h3>Consistent Prefix Reads</h3>
-    <p>If a sequence of writes happens in a certain order, anyone reading them should see them in that same order. Violations are jarring — you might see an answer to a question before the question itself. <strong>Consistent prefix reads</strong> guarantees causally-related writes are read in order. This is especially a problem in partitioned (sharded) databases where different partitions replicate at different speeds.</p>
+    <p>If a sequence of writes happens in a certain order, anyone reading them should see them in that same order. Violations are jarring — you might see an answer to a question before the question itself. <strong>Consistent prefix reads</strong> guarantees causally-related writes are read in order. This is especially a problem in partitioned (<a href="/tech-stacks/sharding/">sharded</a>) databases where different partitions replicate at different speeds.</p>
 
     <div class="callout">
       <div class="callout-label">key takeaway</div>
@@ -299,7 +317,7 @@
     <p>With more than two leaders, you must decide the path writes take between them. <strong>All-to-all</strong> (every leader sends to every other) is the most robust but can suffer causality problems if some links are faster than others. <strong>Circular</strong> and <strong>star</strong> topologies reduce traffic but introduce a single point of failure and can break if a node goes down. To prevent infinite loops, each write is tagged with the identifiers of the nodes it has already passed through.</p>
 
     <h2>Leaderless Replication</h2>
-    <p>The third approach abandons the concept of a leader entirely: any replica can accept writes directly from clients. This style was popularized by Amazon's Dynamo and is used by Cassandra, Riak, and Voldemort (often called Dynamo-style). The client (or a coordinator node acting on its behalf) sends each write to <em>several</em> replicas and reads from <em>several</em> replicas in parallel.</p>
+    <p>The third approach abandons the concept of a leader entirely: any replica can accept writes directly from clients. This style was popularized by <a href="/system-design/key-value-store/">Amazon's Dynamo</a> and is used by <a href="/tech-stacks/nosql/">Cassandra</a>, Riak, and Voldemort (often called Dynamo-style). The client (or a coordinator node acting on its behalf) sends each write to <em>several</em> replicas and reads from <em>several</em> replicas in parallel.</p>
 
     <h3>Quorum Reads and Writes</h3>
     <p>To know that a read sees the latest write despite some nodes being down, leaderless systems use <strong>quorums</strong>. With <code>n</code> replicas, a write must be confirmed by <code>w</code> nodes and a read must query <code>r</code> nodes. As long as <code>w + r &gt; n</code>, the set of nodes written and the set read are guaranteed to <strong>overlap</strong> by at least one node — so a read will see at least one up-to-date copy.</p>
@@ -374,9 +392,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -384,7 +403,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

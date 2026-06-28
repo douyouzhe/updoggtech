@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into function calling, tool use, and the Model Context Protocol (MCP) — how models call tools, JSON schema definitions, parallel calls, and why MCP matters for agent ecosystems.">
-<title>Tool Use, Function Calling &amp; MCP | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
+<meta name="description" content="Function calling, tool use, and the Model Context Protocol (MCP): how models call tools, define JSON schemas, run them in parallel, and why MCP matters.">
+<title>Tool Use, Function Calling &amp; MCP | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Tool Use, Function Calling &amp; MCP">
-<meta property="og:description" content="A deep dive into function calling, tool use, and MCP — how models call tools, define schemas, run in parallel, and how MCP standardizes agent ecosystems.">
-<meta property="og:url" content="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Function calling, tool use, and the Model Context Protocol (MCP): how models call tools, define JSON schemas, run them in parallel, and why MCP matters.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Tool Use, Function Calling &amp; MCP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Tool Use, Function Calling &amp; MCP">
 <meta name="twitter:description" content="Everything about function calling and MCP: tool schemas, the tool-use loop, parallel calls, structured output, and MCP architecture explained.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Tool Use, Function Calling & MCP","description":"A deep dive into function calling, tool use, and the Model Context Protocol (MCP) — how models call tools, JSON schema definitions, parallel calls, and why MCP matters for agent ecosystems.","datePublished":"2026-05-20","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Tool Use, Function Calling & MCP","description":"Function calling, tool use, and the Model Context Protocol (MCP): how models call tools, define JSON schemas, run them in parallel, and why MCP matters.","datePublished":"2026-05-20","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-20","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Explain the function calling loop at the API level.", "acceptedAnswer": {"@type": "Answer", "text": "Model emits a tool_use block (name + arguments JSON) → your code executes the actual function → you append a tool_result message → model continues. The model never executes code directly; it only emits intents that your controller acts on."}}, {"@type": "Question", "name": "Why is the tool description more important than the schema?", "acceptedAnswer": {"@type": "Answer", "text": "The schema constrains the arguments once the model has decided to call a tool. The description is what the model reads to decide whether to call the tool at all. A vague description leads to wrong tool selection, which no schema can fix — the model will call the wrong tool with perfectly valid arguments."}}, {"@type": "Question", "name": "What problem does MCP solve that function calling doesn't?", "acceptedAnswer": {"@type": "Answer", "text": "Function calling is per-application: every agent reimplements the same tools independently. MCP standardizes the interface between tool implementations (servers) and agent hosts so a tool is written once and reusable across any MCP-compatible agent — the same composability benefit that REST APIs gave to web services."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"Tool Use, Function Calling &amp; MCP","item":"https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -144,13 +158,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -158,18 +175,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ai-coding/tool-use-function-calling-mcp/" class="active">EN</a><a href="/zh/ai-coding/tool-use-function-calling-mcp/">中</a></div>
+      <div class="lang-switch"><a href="/ai-coding/tool-use-function-calling-mcp/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/tool-use-function-calling-mcp/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">tool-use-function-calling-mcp</span>
-    </div>
+    </nav>
     <span class="article-tag">AI Coding</span>
     <h1 class="article-title">Tool Use, Function Calling &amp; MCP</h1>
     <div class="article-meta">
@@ -184,7 +202,7 @@
   <div class="article-body">
     <p>A language model, by itself, is a sophisticated text transformer: it reads text and produces text. Everything we call an "agent" — a system that can read files, query databases, call APIs, run code, and interact with the world — is a language model equipped with tools. <strong>Function calling</strong> (Anthropic calls it "tool use"; OpenAI calls it "function calling"; they are the same concept) is the mechanism that bridges the gap between a model that can <em>describe</em> an action and one that can actually <em>take</em> it.</p>
 
-    <p>Understanding function calling deeply — how schemas work, how the execution loop is structured, what parallel calling looks like, and how it relates to structured output — is foundational for anyone building LLM-powered applications. Then there is a newer layer on top: the <strong>Model Context Protocol (MCP)</strong>, an open standard from Anthropic that standardizes how agents connect to tools across a diverse ecosystem. MCP is to agents what REST is to web services: a common interface that makes components interoperable without bespoke integrations. This article covers both in full depth.</p>
+    <p>Understanding function calling deeply — how schemas work, how the execution loop is structured, what parallel calling looks like, and how it relates to structured output — is foundational for anyone building LLM-powered applications. Then there is a newer layer on top: the <strong>Model Context Protocol (MCP)</strong>, an open standard from Anthropic that standardizes how agents connect to tools across a diverse ecosystem. MCP is to agents what <a href="/tech-stacks/graphql-rest-comparison/">REST</a> is to web services: a common interface that makes components interoperable without bespoke integrations. This article covers both in full depth.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -436,7 +454,7 @@ messages = [{<span class="str">"role"</span>: <span class="str">"user"</span>, <
     <p>MCP defines three roles:</p>
 
     <ul>
-      <li><strong>MCP Host:</strong> the application that runs the LLM and manages the agentic loop. Claude Code, Cursor, a custom agent — any application that wants to use tools can be an MCP host. The host contains an MCP client for each server it connects to.</li>
+      <li><strong>MCP Host:</strong> the application that runs the LLM and manages the <a href="/ai-coding/how-ai-coding-agents-work/">agentic loop</a>. Claude Code, Cursor, a custom agent — any application that wants to use tools can be an MCP host. The host contains an MCP client for each server it connects to.</li>
       <li><strong>MCP Client:</strong> a thin layer inside the host that maintains a persistent connection to one MCP server and handles the protocol framing (connection, capability negotiation, request/response).</li>
       <li><strong>MCP Server:</strong> a process that exposes a set of tools (and optionally resources and prompts) over the MCP protocol. The server is where the actual functionality lives: it might wrap a GitHub API client, a database connection, a filesystem layer, a web browser, or anything else.</li>
     </ul>
@@ -555,7 +573,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
     <p>For a small, single-purpose agent where you control both the LLM loop and all the tools, traditional function calling is simpler. MCP's value compounds as you have more agents, more tools, or want to share tool implementations across teams. Think of it like the REST vs. direct database access tradeoff: direct is simpler for one use case; a standard interface wins when you have many clients.</p>
 
     <h2>MCP vs. RAG: Complementary, Not Competing</h2>
-    <p>Retrieval-Augmented Generation (RAG) fetches relevant documents and inserts them into the model's context before generation. It is read-only and passive: the model does not request retrieval; the application retrieves for the model. MCP tools are active and on-demand: the model decides when to call a tool and what to ask for.</p>
+    <p><a href="/system-design/rag-system/">Retrieval-Augmented Generation (RAG)</a> fetches relevant documents and inserts them into the model's context before generation. It is read-only and passive: the model does not request retrieval; the application retrieves for the model. MCP tools are active and on-demand: the model decides when to call a tool and what to ask for.</p>
 
     <table class="compare-table">
       <thead>
@@ -578,7 +596,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
     <ul>
       <li><strong>Filesystem</strong> — read/write local files with configurable access controls. The reference implementation from Anthropic.</li>
       <li><strong>Git</strong> — list changed files, read diffs, create commits, manage branches.</li>
-      <li><strong>GitHub / GitLab</strong> — create/review PRs, manage issues, trigger CI workflows.</li>
+      <li><strong>GitHub / GitLab</strong> — create/review PRs, manage issues, trigger <a href="/tech-stacks/ci-cd/">CI</a> workflows.</li>
       <li><strong>PostgreSQL / SQLite</strong> — run queries, inspect schema, list tables.</li>
       <li><strong>Browser</strong> — navigate pages, click elements, extract content (for web automation agents).</li>
       <li><strong>Slack / Linear / Jira</strong> — read and create issues, post messages, manage projects.</li>
@@ -624,9 +642,10 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -634,7 +653,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

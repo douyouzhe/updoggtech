@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Loop Engineering(循环工程):设计 Agent 循环本身——plan-act-observe、停止条件、步数/成本预算、循环内验证、错误恢复与死循环检测、循环拓扑,以及如何用评测来调。">
+<title>Loop Engineering 循环工程 —— 设计 Agent 循环 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/loop-engineering/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Loop Engineering 循环工程 —— 设计 Agent 循环">
+<meta property="og:description" content="Loop Engineering(循环工程):设计 Agent 循环本身——plan-act-observe、停止条件、步数/成本预算、循环内验证、错误恢复与死循环检测、循环拓扑,以及如何用评测来调。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/loop-engineering/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Loop Engineering 循环工程 —— 设计 Agent 循环">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Loop Engineering 循环工程">
+<meta name="twitter:description" content="设计 Agent 循环 —— plan-act-observe、停止、预算、验证、恢复、拓扑与调优。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Loop Engineering 循环工程 —— 设计 Agent 循环","description":"Loop Engineering(循环工程):设计 Agent 循环本身——plan-act-observe、停止条件、步数/成本预算、循环内验证、错误恢复与死循环检测、循环拓扑,以及如何用评测来调。","datePublished":"2026-06-21","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/loop-engineering/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-21","inLanguage":"zh"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "\"循环\"是什么?", "acceptedAnswer": {"@type": "Answer", "text": "包住 LLM 调用的控制循环——调用 → 行动 → 观测 → 重复——把一锤子模型变成会探索、自我纠错的 Agent。"}}, {"@type": "Question", "name": "循环最难的部分?", "acceptedAnswer": {"@type": "Answer", "text": "停止条件:知道任务何时真正完成,既不早停也不空转;用验证而不是模型的话来门控。"}}, {"@type": "Question", "name": "Agent 为什么要预算?", "acceptedAnswer": {"@type": "Answer", "text": "循环里的 LLM 无限花钱;步数/token/时间/成本的硬上限是兜底,最好在接近上限时优雅收尾。"}}, {"@type": "Question", "name": "什么是死循环、怎么停?", "acceptedAnswer": {"@type": "Answer", "text": "Agent 反复一个失败动作;检测重复(同样调用/错误 N 次)并打破模式——提醒、升级或停——用预算兜底。"}}, {"@type": "Question", "name": "循环靠什么收敛而不空转?", "acceptedAnswer": {"@type": "Answer", "text": "循环内验证——跑测试/构建、把失败喂回去,把每次迭代锚在环境里。"}}, {"@type": "Question", "name": "何时用子 Agent?", "acceptedAnswer": {"@type": "Answer", "text": "任务大或上下文变乱时——把有边界的活委派给有干净上下文的新子 Agent、合并结果,还能并行。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"Loop Engineering 循环工程 —— 设计 Agent 循环","item":"https://sdeoffer.com/zh/ai-coding/loop-engineering/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.2); border-left: 3px solid var(--accent4); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent4); }
+  .compare-table .col-b { color: var(--accent2); }
+
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.6; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/ai-coding/loop-engineering/" hreflang="en">EN</a><a href="/zh/ai-coding/loop-engineering/" class="active" hreflang="zh" lang="zh">中</a></div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">AI 编程</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">loop-engineering</span>
+    </nav>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">Loop Engineering 循环工程 —— 设计 Agent 循环</h1>
+    <div class="article-meta">
+      <span>2026年6月21日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>一次模型调用是一锤子买卖:文本进、文本出、结束。而当你把这次调用包进一个<em>循环</em>里——调用模型、执行它要做的事、把结果喂回去、再调一次——直到任务完成,这就成了 <em>Agent</em>。那个循环正是 Agent 探索、行动、自我纠错的全部发生之处,把它设计好本身就是一门学问:<strong>Loop Engineering(循环工程)</strong>。当前沿模型的原始能力趋同、"context engineering(上下文工程)"成了"喂什么给模型"的热词之后,循环工程是再下一层——决定何时思考、何时行动、何时停止、出错怎么办的那套<em>控制流</em>。本文是 <a href="/zh/ai-coding/harness-engineering/">Harness 工程</a>的姊妹篇:harness 是整辆车,这篇讲的是发动机的燃烧循环。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 快速要点</div>
+      <ul>
+        <li><strong>循环把一锤子模型变成 Agent。</strong> 调用 → 行动 → 观测 → 重复,这个循环是探索、行动、自我纠错发生的地方。</li>
+        <li><strong>停止是最难的部分。</strong> 知道任务何时<em>真正</em>完成——既不早停、也不空转到天荒地老——是核心的控制流问题。</li>
+        <li><strong>每个循环都要有预算。</strong> 步数、token、时间、成本的硬上限不可省:它们是兜底,防止一个犯迷糊的 Agent 无限烧资源。</li>
+        <li><strong>验证闭合循环。</strong> 跑测试/构建、把失败喂回去,才让循环<em>收敛</em>到正确答案,而不是干转。</li>
+        <li><strong>恢复是工程的大头。</strong> 工具报错、输出格式坏、Agent 反复重试一个失败动作("死循环"),都需要重试、死循环检测、逃生出口。</li>
+        <li><strong>拓扑是设计选择:</strong> 单循环、反思(行动 → 批评 → 重试)、计划-执行、编排器 + 子 Agent,各自适配不同任务。</li>
+        <li><strong>循环靠实证调优</strong> —— 停止条件、预算、上下文处理的小改动会大幅摆动真实成功率,所以你用评测和轨迹分析来量。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>循环工程是设计 Agent 控制循环的学问:plan-act-observe 循环、决定何时算完成的停止条件、约束它的步数/token/时间/成本预算、把它锚在环境里的验证、处理错误并打破死循环的恢复逻辑,以及适配任务的拓扑(单循环、反思、计划-执行、子 Agent)。因为模型在商品化,把这个循环工程做得多好,越来越是"能完成任务的 Agent"和"瞎扑腾的 Agent"之间的分水岭。</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent 循环解剖:assemble-call-decide-execute-observe 循环,由循环控制器治理,验证通过后退出到最终答案">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arp" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+          <marker id="arg" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#4ade80"/></marker>
+        </defs>
+        <rect x="24"  y="44"  width="600" height="404" rx="12" fill="#0f1b27" stroke="#1c4a63"/>
+        <text x="40"  y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#38bdf8" letter-spacing="1">AGENT 循环 —— 一次迭代</text>
+        <rect x="664" y="44"  width="272" height="232" rx="12" fill="#181428" stroke="#3b2f63"/>
+        <text x="680" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#a78bfa" letter-spacing="1">循环控制器</text>
+        <rect x="664" y="300" width="272" height="148" rx="12" fill="#10241a" stroke="#1f5036"/>
+        <text x="680" y="322" font-family="'JetBrains Mono',monospace" font-size="10" fill="#4ade80" letter-spacing="1">退出</text>
+
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="60"  y="96"  width="170" height="52" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="145" y="120" font-size="12" fill="#e2e8f0">拼装上下文</text><text x="145" y="137" font-size="9" fill="#7a8aa0">system + 历史 + 观测</text>
+          <rect x="290" y="96"  width="170" height="52" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="375" y="120" font-size="12" fill="#e2e8f0">调用模型</text><text x="375" y="137" font-size="9" fill="#7a8aa0">唯一的 LLM 调用</text>
+          <rect x="438" y="200" width="150" height="60" rx="9" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/><text x="513" y="226" font-size="12" fill="#e2e8f0">判定</text><text x="513" y="243" font-size="9" fill="#7a8aa0">调工具?还是完成?</text>
+          <rect x="248" y="206" width="150" height="50" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="323" y="230" font-size="12" fill="#e2e8f0">执行动作</text><text x="323" y="246" font-size="9" fill="#7a8aa0">工具 / 命令</text>
+          <rect x="60"  y="206" width="150" height="50" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="135" y="230" font-size="12" fill="#e2e8f0">观测结果</text><text x="135" y="246" font-size="9" fill="#7a8aa0">追加进状态</text>
+
+          <rect x="688" y="86"  width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="110" font-size="11" fill="#c8d3e0">预算:步数 · token · 成本</text>
+          <rect x="688" y="132" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="156" font-size="11" fill="#c8d3e0">停止条件</text>
+          <rect x="688" y="178" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="202" font-size="11" fill="#c8d3e0">验证器(测试 / 构建)</text>
+          <rect x="688" y="224" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="248" font-size="11" fill="#c8d3e0">恢复 · 死循环检测</text>
+
+          <rect x="688" y="340" width="224" height="44" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="800" y="362" font-size="12" fill="#e2e8f0">最终答案</text><text x="800" y="378" font-size="9" fill="#7a8aa0">已验证 · 预算内</text>
+          <rect x="688" y="396" width="224" height="38" rx="9" fill="#1e2535" stroke="#2a3347"/><text x="800" y="420" font-size="11" fill="#c8d3e0">放弃 / 升级上报</text>
+        </g>
+
+        <line x1="230" y1="122" x2="288" y2="122" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="460" y1="130" x2="500" y2="198" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="438" y1="232" x2="400" y2="232" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="420" y="224" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">行动</text>
+        <line x1="248" y1="231" x2="212" y2="231" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <path d="M135,206 L135,158 L145,158 L145,150" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="120" y="180" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">循环回去</text>
+        <line x1="588" y1="224" x2="686" y2="360" stroke="#4ade80" stroke-width="1.4" marker-end="url(#arg)"/>
+        <text x="636" y="280" font-family="'JetBrains Mono',monospace" font-size="9" fill="#4ade80" text-anchor="middle">完成</text>
+        <path d="M664,160 L600,160" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="628" y="152" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">治理</text>
+      </svg>
+      <figcaption>Agent 循环解剖 —— 拼装上下文 → 调用模型 → 判定 → 执行 → 观测 → 循环回去;一个控制器(预算、停止条件、验证器、恢复)治理每一次迭代,只有答案被验证或预算耗尽才退出</figcaption>
+    </figure>
+
+    <h2>循环到底是什么</h2>
+    <p>抛开框架名字,每个 Agent 都是同样的五行:维护一份滚动<strong>状态</strong>(对话,加上目前观测到的一切),在它上面调用模型,如果模型要用工具就执行那个工具、把结果追加进状态、再调一次模型。重复,直到模型说完成或你撞上限。就这样——循环很小。难的是你必须围着这五行做的所有<em>决定</em>。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">循环 —— 以及藏在里面的决定</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>state = [system, tools, goal]
+steps, spent = <span class="num">0</span>, <span class="num">0</span>
+<span class="kw">while</span> <span class="kw">not</span> <span class="fn">done</span>(state) <span class="kw">and</span> steps &lt; MAX_STEPS <span class="kw">and</span> spent &lt; BUDGET:   <span class="cm"># ← 停止 + 预算</span>
+    reply = model(state)                          <span class="cm"># 唯一的 LLM 调用</span>
+    <span class="kw">if</span> reply.tool_calls:
+        <span class="kw">for</span> call <span class="kw">in</span> reply.tool_calls:
+            obs = <span class="fn">execute</span>(call)                 <span class="cm"># ← 报错?超时?恢复</span>
+            state.append(obs)
+    <span class="kw">else</span>:
+        <span class="kw">if</span> <span class="fn">verify</span>(reply): <span class="kw">return</span> reply        <span class="cm"># ← 它真的对吗?</span>
+        state.append(<span class="str">"验证失败:…"</span>)            <span class="cm"># ← 把失败喂回去,继续</span>
+    state = <span class="fn">compact</span>(state)                     <span class="cm"># ← 跨迭代的上下文</span>
+    steps, spent = steps + <span class="num">1</span>, spent + reply.cost
+<span class="kw">return</span> <span class="fn">give_up</span>(state)                          <span class="cm"># ← 优雅失败 / 升级上报</span></code></pre>
+    </div>
+
+    <p>每条注释都标着一个循环工程决定:<code>done</code> 何时为真、预算多大、<code>execute</code> 失败怎么恢复、<code>verify</code> 查什么、怎么 <code>compact</code> 状态以塞进窗口、以及从底部掉出来时怎么办。本文剩下的部分就是这些决定。</p>
+
+    <h2>为什么循环如今成了产品本身</h2>
+    <p>有几年的叙事是"模型更强者胜"。这正在变平:前沿模型在趋同,同一个模型放进两个不同循环里,在真实任务上的成功率能天差地别。循环控制着模型每一轮看到什么、给它几次尝试、它会不会发现自己的错、以及它是优雅收场还是烧光你的预算。所以差异点<em>沿着栈往上移</em>了:先是上下文工程(喂什么给模型),现在是 <strong>循环工程</strong>(怎么把重复调用编排成可靠的工作)。那些"就是感觉更能干"的编码 Agent,通常是循环工程得更好,而不是有什么秘密模型。</p>
+
+    <h2>控制流:计划、行动、观测</h2>
+    <p>循环体的经典写法是一个三拍循环,常被称为 <strong>ReAct</strong>(reason + act):模型<strong>推理</strong>下一步该干嘛,发出一个<strong>动作</strong>(工具调用),harness 返回一个<strong>观测</strong>,这个观测回到上下文里供下一次推理用。威力在于反馈:Agent 不是一上来就预测整个解,而是一次走一个有据的步子,根据每个动作揭示的东西去适应。</p>
+    <p>第一个真正的设计选择就在这里:<strong>每轮做多少。</strong> 每步一个工具调用最简单、最好恢复,但慢、啰嗦。允许模型一次请求好几个工具调用(比如并行读)能砍延迟和 token 成本——代价是其中一个失败时错误处理更难。多数生产循环允许批量的只读调用,但把任何改状态的操作串行化,这样一个失败是局部的。</p>
+
+    <h2>停止条件 —— 最难的部分</h2>
+    <p>任何循环里都有一个貌似简单实则最难的问题:"我们完成了吗?"停太早,Agent 交回一个做了一半的任务;不停,它要么永远转,要么把一个本来不错的答案一直"改进"到坏掉。没有单一正确答案——你要组合几个信号:</p>
+    <ul>
+      <li><strong>模型自报完成</strong> —— 模型不再调工具、给出最终答案。必要但不充分:模型动不动就提前宣布胜利。</li>
+      <li><strong>验证门控</strong> —— 只有检查通过(测试绿、构建成功、输出符合 schema)"完成"才算数。这是最强信号,因为它锚在环境里,而不是模型的意见。</li>
+      <li><strong>目标/退出标准</strong> —— 一个显式谓词("函数存在且所有测试通过"),由循环来求值,而不是信一段话。</li>
+      <li><strong>预算耗尽</strong> —— 不管状态如何的硬停;是兜底,不是目标。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>绝不让模型成为"完成"的<em>唯一</em>裁判。模型宣布成功是一个停止<em>请求</em>,不是完成的证明——任务只要有验证检查,就用它来门控。"它说它做完了"是 Agent 版的"在我机器上能编译"。</p>
+    </div>
+
+    <h2>预算:步数、token、时间、成本</h2>
+    <p>循环里的 LLM 默认是个无底洞——一个犯迷糊的 Agent 会乐呵呵地走 200 步、烧着钱原地打转。预算是让循环能无人值守安全运行的硬上限,一个认真的循环会同时盯几个:</p>
+
+    <table class="compare-table">
+      <thead><tr><th>预算</th><th>限什么 / 为什么</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">步数 / 迭代数</td><td class="col-b">最简单的兜底——限制单个任务能做多少次模型调用,卡住的 Agent 会停而不是空转。</td></tr>
+        <tr><td class="col-a">token 预算</td><td class="col-b">限制总上下文 + 生成 token;最真实的成本代理,因为花费随 token 而非轮数走。</td></tr>
+        <tr><td class="col-a">墙钟 / 超时</td><td class="col-b">限制单个工具调用(挂死的命令)和整个任务;保护对延迟敏感的调用方。</td></tr>
+        <tr><td class="col-a">美元成本</td><td class="col-b">每任务或每用户的上限;你实际计费的依据,也是运维关心的限。</td></tr>
+      </tbody>
+    </table>
+
+    <p>微妙之处不在于<em>有</em>预算,而在于<strong>快撞上时怎么办</strong>。好的循环会优雅降级:步数预算见底时,它可以从"探索"切到"收尾"("你还剩 2 步——总结你发现的然后停"),而不是思考到一半被一刀切。预算不只是个开关;它是循环能去推理的一个信号。</p>
+
+    <h2>验证:闭合循环</h2>
+    <p>没有验证的循环只是在迭代;<em>有</em>验证的循环才会收敛。把真 Agent 和花哨自动补全分得最开的那个特性,就是把"跑一遍工作的结果"喂回循环:跑测试、linter、构建、查询——把失败变成一个观测,让模型去推理并修正。这把 Agent 锚在<strong>环境</strong>里,而不是它自己(常常是错的)那个"代码是对的"的信念。</p>
+    <p>验证让循环的迭代<em>有意义</em>:每一轮不是重新掷一次骰子,而是朝着一个被检验过的结果迈一步。这一步的质量取决于循环工程的选择——跑什么、怎么把一份 5000 行的失败日志缩成关键那几行、以及部分通过何时"够好"。一个弱模型配一个紧凑的"验证-重试"循环,常常打败一个没验证的强模型。(评估循环到底有没有收敛,本身是一门学问——见 <a href="/zh/ai-coding/llm-evals/">LLM 应用的评测</a>。)</p>
+
+    <h2>错误恢复与死循环</h2>
+    <p>Agent 会以单次调用永远不会的方式失败,生产循环里大部分工程就是这些恢复路径。大头有:</p>
+    <ul>
+      <li><strong>工具报错</strong> —— 命令失败或文件不在。修法是把一个<em>可读、可操作</em>的错误当作观测返回("文件未找到:你是不是想要 X?"),而不是一坨原始堆栈——错误文本是模型据以行动的反馈。</li>
+      <li><strong>输出格式坏</strong> —— 模型给工具调用吐了非法 JSON。用解析错误重新提示(可选配约束解码),而不是让循环崩掉。</li>
+      <li><strong>死循环(doom loop)</strong> —— Agent 一遍遍重复同一个失败动作,坚信这次会成。这是 Agent 的标志性失败,需要显式的<strong>死循环检测</strong>。</li>
+    </ul>
+    <p>死循环检测就是察觉重复——同样的工具调用配同样的参数,或同样的错误 N 次——然后<em>打破这个模式</em>:注入一句提醒("这招已经失败两次了;换个法子"),升级到更强的模型,或停。没有它,预算是你唯一的保护,而你会把整个预算浪费在同一个错误上。两者配对——早早检测重复、用预算兜底——是标准的双保险。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">检测死循环并打破它</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>recent = []
+<span class="kw">def</span> <span class="fn">guard</span>(action, result):
+    sig = (action.name, action.args, result.error)   <span class="cm"># 给这次尝试做指纹</span>
+    recent.append(sig)
+    <span class="kw">if</span> recent[-<span class="num">3</span>:].count(sig) &gt;= <span class="num">3</span>:               <span class="cm"># 同一失败动作 3 次</span>
+        <span class="kw">return</span> <span class="str">"卡住了:这反复失败了——换策略或停止"</span>
+    <span class="kw">return</span> <span class="kw">None</span>                                  <span class="cm"># 否则正常继续</span></code></pre>
+    </div>
+
+    <h2>循环拓扑</h2>
+    <p>朴素的 while 循环是基线,但"循环工程"越来越意味着为任务挑对循环的<em>形状</em>。四种常见拓扑:</p>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="四种 Agent 循环拓扑:单循环、反思、计划-执行、编排器加子 Agent">
+        <defs>
+          <marker id="ar2" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="ar2p" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle" font-size="10">
+          <text x="115" y="36" fill="#a78bfa" font-size="11">单循环</text>
+          <rect x="40"  y="56" width="150" height="34" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="115" y="77" fill="#e2e8f0">行动 → 观测</text>
+          <path d="M40,73 C10,73 10,140 60,140 L190,140 C230,140 215,90 192,80" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2p)"/>
+          <text x="115" y="158" fill="#7a8aa0" font-size="9">重复直到完成</text>
+
+          <text x="350" y="36" fill="#a78bfa" font-size="11">反思</text>
+          <rect x="282" y="56" width="80" height="34" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="322" y="77" fill="#e2e8f0">草稿</text>
+          <rect x="282" y="118" width="80" height="34" rx="7" fill="#1e2535" stroke="#f472b6"/><text x="322" y="139" fill="#e2e8f0">批评</text>
+          <rect x="392" y="86" width="80" height="34" rx="7" fill="#1e2535" stroke="#4ade80"/><text x="432" y="107" fill="#e2e8f0">修订</text>
+          <line x1="322" y1="90" x2="322" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="362" y1="132" x2="392" y2="110" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <path d="M432,86 C432,50 360,50 348,54" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2p)"/>
+
+          <text x="600" y="36" fill="#a78bfa" font-size="11">计划 → 执行</text>
+          <rect x="540" y="56" width="120" height="34" rx="7" fill="#1e2535" stroke="#38bdf8"/><text x="600" y="77" fill="#e2e8f0">做计划</text>
+          <rect x="528" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="551" y="138" fill="#e2e8f0">s1</text>
+          <rect x="582" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="605" y="138" fill="#e2e8f0">s2</text>
+          <rect x="636" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="659" y="138" fill="#e2e8f0">s3</text>
+          <line x1="600" y1="90" x2="600" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <text x="605" y="166" fill="#7a8aa0" font-size="9">每步是自己的小循环</text>
+
+          <text x="850" y="36" fill="#a78bfa" font-size="11">编排器 + 子 Agent</text>
+          <rect x="800" y="56" width="100" height="34" rx="7" fill="#1e2535" stroke="#38bdf8"/><text x="850" y="77" fill="#e2e8f0">主循环</text>
+          <rect x="752" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="780" y="140" fill="#e2e8f0">子 A</text>
+          <rect x="822" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="850" y="140" fill="#e2e8f0">子 B</text>
+          <rect x="892" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="920" y="140" fill="#e2e8f0">子 C</text>
+          <line x1="828" y1="90" x2="788" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="850" y1="90" x2="850" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="872" y1="90" x2="912" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <text x="850" y="166" fill="#7a8aa0" font-size="9">扇出 · 合并结果</text>
+        </g>
+      </svg>
+      <figcaption>四种循环拓扑 —— 单一行动/观测循环;反思循环(草稿 → 批评 → 修订);计划-执行(一个计划,每步是自己的小循环);以及编排器把活扇出给有干净上下文的子 Agent、再合并</figcaption>
+    </figure>
+
+    <ul>
+      <li><strong>单循环</strong> —— 默认的 ReAct 循环。最适合开放式任务,下一步取决于上一个观测;最易构建和调试。</li>
+      <li><strong>反思</strong> —— 产出答案后,一个独立的批评步骤找毛病并触发修订。加了一拍自审,能抓住第一遍漏掉的错误,代价是额外的模型调用。</li>
+      <li><strong>计划-执行</strong> —— Agent 先起草一个计划,再执行各步(每步可能是自己的小循环)。让长任务保持连贯,也给你一个在花钱执行前先检视计划的检查点。</li>
+      <li><strong>编排器 + 子 Agent</strong> —— 一个主循环把有边界的活(搜代码库、审 diff)委派给有自己干净上下文的新子 Agent,后者只回一个结论。这限制了任一上下文窗口要装多少,也使能并行——大任务 Agent 背后多是这个拓扑。</li>
+    </ul>
+
+    <h2>跨迭代的上下文</h2>
+    <p>每次循环迭代都把观测追加进状态,所以长任务必然朝着上下文窗口的天花板膨胀。管理这种增长是核心的循环工程活——循环得在甩掉噪声的同时,把目标和关键事实留在视野里。标准做法是<strong>压缩(compaction)</strong>:当状态逼近窗口时,总结或丢弃更早的轮次,保留目标、计划和近期结果。相关手法还有:把细节卸到一个 Agent 可按需重读的外部便签上,以及上面那个子 Agent 模式——它通过把重活发给子进程,让主循环的上下文保持精简。这事做砸了,Agent 会在任务中途"忘了"自己在干嘛;做对了,它能在一个问题上工作得比任何单个窗口都久。</p>
+
+    <h2>用实证调循环</h2>
+    <p>你没法靠直觉调循环,因为真正重要的改动——不同的停止条件、更紧的预算、何时压缩、要不要加一拍反思——会以出人意料的幅度相互作用、摆动真实成功率。认真的循环工作是实证的:把 Agent 跑在基准任务上,量<strong>成功率、步数、成本</strong>,并检视<strong>轨迹</strong>(完整的调用与观测序列)看运行<em>在哪</em>出错——提前停、死循环、预算爆掉。然后改一处、再量。循环是一个你对着数据来调的系统,就像你调任何控制系统一样。</p>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>被要求"设计一个 Agent"时,别急着跳到模型。先讲循环:"它是一个调用-行动-观测的循环;有意思的决定是停止条件、预算、循环内验证、以及从死循环里恢复。"这个定调表明你懂 Agent 的可靠性到底从哪来。</p>
+    </div>
+
+    <h2>坑与取舍</h2>
+    <ul>
+      <li><strong>信模型自报的"完成"。</strong> 没有验证门,Agent 凭自己一句话就停、交回做了一半的活。用真实检查门控。</li>
+      <li><strong>没有死循环检测。</strong> 只靠预算意味着一个死循环会把整个预算浪费在一个错误上;早早检测重复。</li>
+      <li><strong>预算没有优雅降级。</strong> 思考到一半被硬切,浪费了已经做的功;让循环在接近上限时收尾。</li>
+      <li><strong>拓扑过度工程。</strong> 反思和多 Agent 增加模型调用、延迟、成本;很多任务用一个紧凑单循环更好。只在更简单的循环明显失败时才加结构。</li>
+      <li><strong>上下文腐烂。</strong> 跳过压缩,窗口会被陈旧观测填满,质量悄悄下降;每次迭代都管理状态。</li>
+      <li><strong>盲调。</strong> 没有轨迹分析,你会修错地方——你看到成功率低,却不知道是提前停、死循环、还是恢复差。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">小结</div>
+      <p>一个 Agent 就是一个循环,而循环工程是把它设计好的学问。模型供给推理;循环供给把推理变成可靠工作的控制流——决定何时行动、何时停止、花多少、怎么验证、怎么恢复。随着模型商品化,这套控制流越来越是产品本身:同一个模型在精心设计的循环里能完成任务,在马虎的循环里就一直扑腾到预算耗尽。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>"循环"是什么?</strong> 包住 LLM 调用的控制循环——调用 → 行动 → 观测 → 重复——把一锤子模型变成会探索、自我纠错的 Agent。<br>
+      <strong>循环最难的部分?</strong> 停止条件:知道任务何时真正完成,既不早停也不空转;用验证而不是模型的话来门控。<br>
+      <strong>Agent 为什么要预算?</strong> 循环里的 LLM 无限花钱;步数/token/时间/成本的硬上限是兜底,最好在接近上限时优雅收尾。<br>
+      <strong>什么是死循环、怎么停?</strong> Agent 反复一个失败动作;检测重复(同样调用/错误 N 次)并打破模式——提醒、升级或停——用预算兜底。<br>
+      <strong>循环靠什么收敛而不空转?</strong> 循环内验证——跑测试/构建、把失败喂回去,把每次迭代锚在环境里。<br>
+      <strong>何时用子 Agent?</strong> 任务大或上下文变乱时——把有边界的活委派给有干净上下文的新子 Agent、合并结果,还能并行。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/ai-coding/harness-engineering/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Harness 工程</div>
+      </a>
+      <a href="/zh/ai-coding/llm-evals/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">LLM 应用的评测</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
-<title>Caching — Cache-Aside, Eviction Policies & Redis vs Memcached | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/caching/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/caching/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/caching/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/caching/">
+<meta name="description" content="Caching patterns for backend systems: cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
+<title>Caching — Cache-Aside & Redis vs Memcached | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/caching/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/caching/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/caching/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/caching/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Caching — Cache-Aside, Eviction Policies & Redis vs Memcached">
-<meta property="og:description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/caching/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/caching-1.jpg">
+<meta property="og:description" content="Caching patterns for backend systems: cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/caching/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/caching-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="331">
+<meta property="og:image:alt" content="Caching — Cache-Aside, Eviction Policies & Redis vs Memcached">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/caching-1.jpg">
 <meta name="twitter:title" content="Caching — Cache-Aside, Eviction Policies & Redis vs Memcached">
 <meta name="twitter:description" content="A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Caching — Cache-Aside, Eviction Policies & Redis vs Memcached","description":"A practical guide to caching — cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/caching/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Caching — Cache-Aside, Eviction Policies & Redis vs Memcached","description":"Caching patterns for backend systems: cache-aside, write-through, eviction policies, Redis vs Memcached, and how to avoid cache stampede and inconsistency.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/caching/"},"image":"https://sdeoffer.com/assets/img/caching-1.jpg","dateModified":"2023-04-02","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Cache stampede vs cache avalanche — what's the difference?", "acceptedAnswer": {"@type": "Answer", "text": "Stampede: one popular key expires and many threads hit the DB simultaneously — fix with mutex locking or probabilistic early refresh. Avalanche: many keys expire simultaneously sending a flood of misses — fix with TTL jitter and pre-warming. Distinct problems, distinct fixes."}}, {"@type": "Question", "name": "How do you handle cache penetration?", "acceptedAnswer": {"@type": "Answer", "text": "Cache negative results (a sentinel like \"__null__\" with a short TTL) or place a Bloom filter in front to reject nonexistent keys before they hit the cache or DB."}}, {"@type": "Question", "name": "Redis or Memcached?", "acceptedAnswer": {"@type": "Answer", "text": "Redis for anything beyond simple string caching — persistence, pub/sub, sorted sets for leaderboards, Lua-atomic rate limiters, and streams. Memcached only when raw string throughput at multi-core extreme scale is the sole requirement and ops simplicity is paramount."}}, {"@type": "Question", "name": "What eviction policy do you use?", "acceptedAnswer": {"@type": "Answer", "text": "allkeys-lru for a pure cache; volatile-lru if Redis is dual-purposed with persistent data. Switch to allkeys-lfu when the working set has stable, clearly defined hot keys (leaderboards, viral content)."}}, {"@type": "Question", "name": "How do you handle a hot key saturating one Redis shard?", "acceptedAnswer": {"@type": "Answer", "text": "Replicate the key to N slots with a random suffix and fan out reads; add an in-process L1 cache with a 1-second TTL to absorb the bulk of requests before they even hit Redis."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Caching — Cache-Aside, Eviction Policies & Redis vs Memcached","item":"https://sdeoffer.com/tech-stacks/caching/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,31 +152,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/caching/" class="active">EN</a><a href="/zh/tech-stacks/caching/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/caching/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/caching/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">caching</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">Caching</h1>
     <div class="article-meta">
@@ -200,7 +217,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/caching-1.jpg" alt="Caching layers in a distributed system stack" loading="lazy">
+        <img src="/assets/img/caching-1.jpg" alt="Caching layers in a distributed system stack" width="1024" height="331" fetchpriority="high">
         <figcaption>Caching layers in a distributed system stack</figcaption>
       </figure>
 
@@ -445,7 +462,7 @@ bloom = <span class="fn">BloomFilter</span>(capacity=<span class="num">1_000_000
     </ul>
 
     <h2>Hot Keys: The Silent Bottleneck</h2>
-    <p>In a distributed cache cluster like Redis Cluster, each key lives on exactly one shard. A <strong>hot key</strong> — a single product page, a trending tweet, a viral news article — can receive millions of requests per second, all routed to the same shard. That shard becomes a bottleneck regardless of how many other shards are idle. This is a distinct problem from cache stampede (which is about expiry) — hot keys are a throughput problem that exists even when the key is populated and never expires.</p>
+    <p>In a distributed cache cluster like Redis Cluster, each key lives on exactly one <a href="/tech-stacks/sharding/">shard</a>. A <strong>hot key</strong> — a single product page, a trending tweet, a viral news article — can receive millions of requests per second, all routed to the same shard. That shard becomes a bottleneck regardless of how many other shards are idle. This is a distinct problem from cache stampede (which is about expiry) — hot keys are a throughput problem that exists even when the key is populated and never expires.</p>
 
     <p><strong>Mitigations:</strong></p>
     <ul>
@@ -494,7 +511,7 @@ NUM_REPLICAS = <span class="num">10</span>
       <p>Always write to the database <strong>first</strong>, then invalidate the cache — not the other way around. If you invalidate the cache first and then the DB write fails, you have a cold cache with a stale (or missing) DB value. If you write the DB first and the cache invalidation fails, your cache is briefly stale but the DB is authoritative; the TTL will eventually clean it up. The asymmetry matters.</p>
     </div>
 
-    <p>For systems requiring stronger guarantees, consider <strong>event-driven invalidation via Change Data Capture (CDC)</strong>: a CDC connector (Debezium, Maxwell) reads the database write-ahead log and publishes change events to a message queue. Cache workers subscribe and invalidate or refresh the cache entries. This completely decouples the write path from cache invalidation latency and ensures the cache is eventually consistent with the DB's WAL, which is the authoritative record of all writes.</p>
+    <p>For systems requiring stronger guarantees, consider <strong>event-driven invalidation via Change Data Capture (CDC)</strong>: a CDC connector (Debezium, Maxwell) reads the database write-ahead log and publishes change events to a <a href="/tech-stacks/message-queue/">message queue</a>. Cache workers subscribe and invalidate or refresh the cache entries. This completely decouples the write path from cache invalidation latency and ensures the cache is eventually consistent with the DB's WAL, which is the authoritative record of all writes.</p>
 
     <h2>Redis vs. Memcached: An Honest Comparison</h2>
     <p>Redis and Memcached are both in-memory key-value stores but they diverged substantially in their design philosophy and feature set. The decision is rarely close once you know your requirements.</p>
@@ -516,7 +533,7 @@ NUM_REPLICAS = <span class="num">10</span>
       </tbody>
     </table>
 
-    <p>Redis is the default choice for most new systems. Memcached retains a meaningful edge in <strong>pure raw-string throughput</strong> on multi-core machines — its multi-threaded architecture allows true CPU-level parallelism per connection, whereas Redis's single-threaded command processing serializes all commands regardless of available cores (network I/O was multi-threaded in 6.0, but command execution remains single-threaded). For a workload that is literally millions of simple <code>GET/SET</code> on plain strings with no need for persistence, rich types, or pub/sub, Memcached can outperform Redis by 20–40% at extreme scale. For everything else — sorted set leaderboards, stream processing, Lua-atomic rate limiters, persistent sessions — Redis is unambiguously the better choice.</p>
+    <p><a href="/tech-stacks/redis/">Redis</a> is the default choice for most new systems. Memcached retains a meaningful edge in <strong>pure raw-string throughput</strong> on multi-core machines — its multi-threaded architecture allows true CPU-level parallelism per connection, whereas Redis's single-threaded command processing serializes all commands regardless of available cores (network I/O was multi-threaded in 6.0, but command execution remains single-threaded). For a workload that is literally millions of simple <code>GET/SET</code> on plain strings with no need for persistence, rich types, or pub/sub, Memcached can outperform Redis by 20–40% at extreme scale. For everything else — sorted set leaderboards, stream processing, Lua-atomic rate limiters, persistent sessions — Redis is unambiguously the better choice.</p>
 
     <div class="callout">
       <div class="callout-label">Redis eviction policies to know</div>
@@ -524,7 +541,7 @@ NUM_REPLICAS = <span class="num">10</span>
     </div>
 
     <h2>CDN Edge Caching</h2>
-    <p>A Content Delivery Network is a globally distributed cache that sits at the network edge — geographically close to end users. CDNs are the highest-leverage cache you can deploy for public-facing content: instead of a request from Singapore traveling 200 ms to your US-East origin, it hits a CDN edge node in Singapore and returns in under 10 ms.</p>
+    <p>A <a href="/tech-stacks/cdn/">Content Delivery Network</a> is a globally distributed cache that sits at the network edge — geographically close to end users. CDNs are the highest-leverage cache you can deploy for public-facing content: instead of a request from Singapore traveling 200 ms to your US-East origin, it hits a CDN edge node in Singapore and returns in under 10 ms.</p>
 
     <h3>What to cache at the CDN</h3>
     <ul>
@@ -639,16 +656,17 @@ redis.<span class="fn">call</span>(<span class="str">'PEXPIRE'</span>, key, wind
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

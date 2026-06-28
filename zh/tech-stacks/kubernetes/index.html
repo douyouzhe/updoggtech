@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Kubernetes(k8s)容器编排:Pod/Service/Ingress 等核心原语、Master/Worker 架构、YAML 配置、命名空间、Helm、调度与亲和性、网络(CNI/Service/Ingress)、存储(PV/PVC/StorageClass)、探针、自动扩缩(HPA/VPA/CA)、Operator 模式与资源管理。">
-<title>Kubernetes (k8s) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/kubernetes/">
+<meta name="description" content="容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。">
+<title>Kubernetes (k8s) — Pod、Service 与集群架构 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/kubernetes/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Kubernetes (k8s)">
 <meta property="og:description" content="容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/kubernetes/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/kubernetes/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/kubernetes-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="538">
+<meta property="og:image:alt" content="Kubernetes (k8s)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/kubernetes-1.jpg">
 <meta name="twitter:title" content="Kubernetes (k8s)">
 <meta name="twitter:description" content="K8s 怎么工作:Pod/Service、控制平面、调度、CNI、PV/PVC、探针、HPA/VPA/CA、Operator。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s)","description":"容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/kubernetes/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s)","description":"容器编排平台:Pod/Service、Master/Worker 架构、调度、网络、存储、探针、自动扩缩与 Operator 模式。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/kubernetes/"},"image":"https://sdeoffer.com/assets/img/kubernetes-1.jpg","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Pod 崩溃时会发生什么?", "acceptedAnswer": {"@type": "Answer", "text": "Controller Manager 检测到偏离期望副本数,指示 Scheduler 放置一个新 Pod——整个过程 Service 的 IP 保持不变。"}}, {"@type": "Question", "name": "Deployment vs StatefulSet vs DaemonSet?", "acceptedAnswer": {"@type": "Answer", "text": "Deployment 给无状态应用(可互换 Pod);StatefulSet 给数据库(稳定有序 Pod 身份、每 Pod 一个 PVC);DaemonSet 给节点本地基础设施代理(每节点一个 Pod)。"}}, {"@type": "Question", "name": "etcd 为什么关键?", "acceptedAnswer": {"@type": "Answer", "text": "它是所有集群状态的唯一真相来源;没有备份就丢失 etcd 意味着丢失整个集群配置。"}}, {"@type": "Question", "name": "HPA vs VPA vs Cluster Autoscaler?", "acceptedAnswer": {"@type": "Answer", "text": "HPA 扩缩副本数;VPA 调每 Pod 资源请求;Cluster Autoscaler 增删节点。三者一起用:HPA 用自定义指标、VPA 用建议模式、CA 来供给容量。"}}, {"@type": "Question", "name": "liveness vs readiness probe?", "acceptedAnswer": {"@type": "Answer", "text": "liveness 失败杀掉并重启容器;readiness 失败把它移出 Service 端点而不重启——预热和临时过载用 readiness。"}}, {"@type": "Question", "name": "Operator 模式是什么?", "acceptedAnswer": {"@type": "Answer", "text": "一个把运维 runbook 编码为代码的自定义控制器,用 CRD 把 Kubernetes API 扩展出领域特定资源类型,如 KafkaCluster 或 PostgresCluster。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Kubernetes (k8s)","item":"https://sdeoffer.com/zh/tech-stacks/kubernetes/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/kubernetes/">EN</a>
-        <a href="/zh/tech-stacks/kubernetes/" class="active">中</a>
+        <a href="/tech-stacks/kubernetes/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/kubernetes/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">kubernetes</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Kubernetes (k8s)</h1>
     <div class="article-meta">
@@ -204,17 +222,17 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes 集群架构概览" loading="lazy">
+        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes 集群架构概览" width="1024" height="538" fetchpriority="high">
         <figcaption>Kubernetes 集群架构概览</figcaption>
       </figure>
 
     <h2>核心原语</h2>
 
     <h3>Pod</h3>
-    <p>Kubernetes 中的基本单元。Pod 是<strong>一个或多个容器之上的抽象层</strong>,让 Kubernetes 独立于底层容器运行时(Docker、containerd、CRI-O)。每个 Pod 获得一个供集群内通信的虚拟 IP,但只要 Pod 被替换这个 IP 就会变——这正是 Pod 需要在其上叠加一个稳定寻址机制的原因。</p>
+    <p>Kubernetes 中的基本单元。Pod 是<strong>一个或多个容器之上的抽象层</strong>,让 Kubernetes 独立于底层容器运行时(<a href="/zh/tech-stacks/docker/">Docker</a>、containerd、CRI-O)。每个 Pod 获得一个供集群内通信的虚拟 IP,但只要 Pod 被替换这个 IP 就会变——这正是 Pod 需要在其上叠加一个稳定寻址机制的原因。</p>
 
     <h3>Service</h3>
-    <p>Service 提供一个<strong>独立于 Pod 生命周期、保持不变的静态 IP 地址</strong>。当一个 Pod 死掉、新的启动时,Service 的 IP 保持固定,继续把流量路由到健康的 Pod。Service 还充当内部负载均衡器,把请求分摊到同一应用的多个副本上。</p>
+    <p>Service 提供一个<strong>独立于 Pod 生命周期、保持不变的静态 IP 地址</strong>。当一个 Pod 死掉、新的启动时,Service 的 IP 保持固定,继续把流量路由到健康的 Pod。Service 还充当内部<a href="/zh/tech-stacks/load-balancing/">负载均衡器</a>,把请求分摊到同一应用的多个副本上。</p>
 
     <h3>Ingress</h3>
     <p>Ingress 位于集群边界,行为像一个<strong>反向代理</strong>。它根据路由规则把外部域名(如 <code>api.example.com</code>)翻译成正确的内部 Service IP 和端口,这样你只暴露一个入口,而不是每个服务一个 NodePort。</p>
@@ -249,10 +267,10 @@
 
     <h3>Master 节点组件</h3>
     <ul>
-      <li><strong>API Server</strong>——唯一的集群网关。所有通信(kubectl、内部组件、CI/CD 流水线)都经过 API Server,它处理认证和请求校验。</li>
+      <li><strong>API Server</strong>——唯一的集群网关。所有通信(kubectl、内部组件、<a href="/zh/tech-stacks/ci-cd/">CI/CD</a> 流水线)都经过 API Server,它处理认证和请求校验。</li>
       <li><strong>Scheduler</strong>——监视新建的、尚未分配节点的 Pod,然后根据可用 CPU 和 RAM 选最佳 worker。</li>
       <li><strong>Controller Manager</strong>——运行协调循环。当它检测到期望状态(如 3 副本)偏离实际状态(2 个健康 pod)时,触发重新调度等纠正动作。</li>
-      <li><strong>etcd</strong>——集群的分布式键值存储——Kubernetes 的"大脑"。所有集群状态(节点、pod、配置、secret)都活在 etcd 里。没有备份就丢失 etcd 意味着丢失整个集群状态。</li>
+      <li><strong>etcd</strong>——集群的<a href="/zh/system-design/key-value-store/">分布式键值存储</a>——Kubernetes 的"大脑"。所有集群状态(节点、pod、配置、secret)都活在 etcd 里。没有备份就丢失 etcd 意味着丢失整个集群状态。</li>
     </ul>
 
     <h2>配置(YAML)</h2>
@@ -764,9 +782,10 @@ kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</spa
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -774,7 +793,7 @@ kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</spa
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

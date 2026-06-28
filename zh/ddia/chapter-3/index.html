@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 3 章:数据库如何存储和检索数据——LSM-tree(SSTable/memtable/布隆过滤器/compaction)vs B-tree、WAL、聚簇/非聚簇/覆盖索引、内存数据库、OLTP vs OLAP、数据仓库星型 schema 与列式存储/压缩/向量化。">
-<title>DDIA 第3章 — 存储与检索 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-3/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-3/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-3/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-3/">
+<meta name="description" content="数据库如何存储与检索——DDIA 第 3 章对比 LSM-tree 与 B-tree、WAL、索引、OLTP vs OLAP 与数据仓库列式存储压缩。">
+<title>DDIA 第3章 — 存储与检索 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-3/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-3/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-3/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-3/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="存储与检索">
-<meta property="og:description" content="DDIA 第 3 章:LSM-tree vs B-tree、WAL、索引类型、OLTP/OLAP、列式存储与压缩。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-3/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="数据库如何存储与检索——DDIA 第 3 章对比 LSM-tree 与 B-tree、WAL、索引、OLTP vs OLAP 与数据仓库列式存储压缩。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-3/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第3章 — 存储与检索">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="存储与检索">
 <meta name="twitter:description" content="DDIA 第 3 章:存储引擎 LSM/B-tree、布隆过滤器、覆盖索引、列式存储、星型 schema。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 3 章 — 存储与检索", "description": "DDIA 第 3 章:数据库如何存储和检索数据——LSM-tree(SSTable/memtable/布隆过滤器/compaction)vs B-tree、WAL、聚簇/非聚簇/覆盖索引、内存数据库、OLTP vs OLAP、数据仓库星型 schema 与列式存储/压缩/向量化。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-3/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 3 章 — 存储与检索","description":"数据库如何存储与检索——DDIA 第 3 章对比 LSM-tree 与 B-tree、WAL、索引、OLTP vs OLAP 与数据仓库列式存储压缩。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-3/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "LSM-tree vs B-tree——何时选哪个?", "acceptedAnswer": {"@type": "Answer", "text": "写多负载用 LSM-tree(Cassandra、RocksDB):顺序 memtable 追加 + 后台 compaction 给更高写吞吐和更好压缩,尤其在 SSD。但读可能检查多个 SSTable——靠布隆过滤器缓解。读多或混合 OLTP 用 B-tree(PostgreSQL、MySQL):确定性 O(log n) 根到叶路径给快速可预测的读;写做带 WAL 持久性的随机页更新。对真正混合的负载,MySQL(MyRocks)下的 RocksDB(LSM)是流行混合。"}}, {"@type": "Question", "name": "什么是写放大、读放大、空间放大?", "acceptedAnswer": {"@type": "Answer", "text": "写放大:写到磁盘的字节/应用数据字节(B-tree 的原地页写高;LSM compaction 跨 level 重写数据)。读放大:每次逻辑读所需的磁盘读(LSM 能检查许多 SSTable;B-tree 是一条路径)。空间放大:用的磁盘空间/逻辑数据大小(LSM compaction 期间有旧+新数据;B-tree 快速回收释放页)。"}}, {"@type": "Question", "name": "为什么列式存储让分析更快?", "acceptedAnswer": {"@type": "Answer", "text": "一个 OLAP 查询触及可能数百列中的 3–5 列。行存储必须加载全部 100+ 列来抽取那几列。列存储只读需要的列——常是 10–30× 的 I/O 减少。结合 bitmap/RLE/字典压缩(列值重复)和对压缩块的 CPU SIMD 向量化操作,I/O 和 CPU 周期都大幅减少。"}}, {"@type": "Question", "name": "什么是布隆过滤器、为什么 LSM-tree 用它?", "acceptedAnswer": {"@type": "Answer", "text": "一个无假阴性的概率数据结构:若布隆过滤器说\"key 一定不在这里\",该 key 保证缺席。LSM-tree 每个 SSTable 挂一个,以对不可能含被查 key 的 SSTable 跳过磁盘读——对降低负查找的读放大至关重要。"}}, {"@type": "Question", "name": "什么是预写日志、为什么 B-tree 和 LSM-tree 都需要它?", "acceptedAnswer": {"@type": "Answer", "text": "WAL 是在任何数据修改前写的仅追加持久性日志。B-tree 用它从打断原地页更新(让页部分修改)的崩溃中恢复。LSM-tree 用它在崩溃后恢复未刷盘的 memtable(memtable 内容从 RAM 丢失;WAL 重放它们)。两种情况下,WAL 都是近期写的真相来源,直到它们被持久提交到主数据结构。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第3章 — 存储与检索","item":"https://sdeoffer.com/zh/ddia/chapter-3/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-3/">EN</a>
-        <a href="/zh/ddia/chapter-3/" class="active">中</a>
+        <a href="/ddia/chapter-3/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-3/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-3</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 3 章</span>
     <h1 class="article-title">存储与检索</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
   </div>
 
   <div class="article-body">
-    <p>第 3 章回答每个后端工程师面试时都该能答的问题:"数据库到底如何存储和检索数据?"Kleppmann 走过两个根本不同的存储引擎家族,解释索引如何工作,然后转向数据仓库和列存储的分析世界。</p>
+    <p>第 3 章回答每个后端工程师面试时都该能答的问题:"数据库到底如何存储和检索数据?"Kleppmann 走过两个根本不同的存储引擎家族,解释<a href="/zh/tech-stacks/database-indexing/">索引如何工作</a>,然后转向数据仓库和列存储的分析世界。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -225,7 +243,7 @@
     <h2>原始笔记</h2>
     <p>本章总结所基于的手写学习笔记:</p>
     <figure class="article-figure">
-      <img src="/assets/img/chapter-3-1.jpg" alt="DDIA 第 3 章手写笔记" loading="lazy">
+      <img src="/assets/img/chapter-3-1.jpg" alt="DDIA 第 3 章手写笔记" width="1200" height="2178" fetchpriority="high">
       <figcaption>原始手写笔记——DDIA 第 3 章</figcaption>
     </figure>
 
@@ -250,7 +268,7 @@
 
     <h3>哈希索引(Bitcask)</h3>
     <p>哈希索引是仅追加日志最简单的索引结构。Bitcask(Riak 默认存储引擎)在内存里维护一个从每个 key 到其在日志文件中最新值字节偏移的哈希 map。每次写追加一个新条目到日志并更新内存哈希 map 指针。每次读对存储的偏移做一次磁盘 seek 并加载值。无需扫描。</p>
-    <p>关键约束:<strong>整个 key 集必须装进 RAM</strong>。值可任意大、住在磁盘;只有 key 和偏移需要在内存。这个约束对有界数量的不同 key 但每 key 高更新率的负载可接受——想想 URL 短链(数百万 URL,各被点击和更新许多次)、IoT 传感器读数(数千传感器 ID、数百万时序值),或会话存储(固定用户数、频繁刷新的会话)。</p>
+    <p>关键约束:<strong>整个 key 集必须装进 RAM</strong>。值可任意大、住在磁盘;只有 key 和偏移需要在内存。这个约束对有界数量的不同 key 但每 key 高更新率的负载可接受——想想 <a href="/zh/system-design/url-shortener/">URL 短链</a>(数百万 URL,各被点击和更新许多次)、IoT 传感器读数(数千传感器 ID、数百万时序值),或<a href="/zh/tech-stacks/redis/">会话存储</a>(固定用户数、频繁刷新的会话)。</p>
     <p>日志文件无界增长,所以 Bitcask 把日志分段成最大尺寸的文件。<strong>compaction</strong> 作为后台进程运行:它读多个段文件,只保留每个 key 的最新值(丢弃同 key 的所有较早值),并写一个新的合并段文件。合并文件写完且内存哈希 map 更新后,旧段文件被删除。compaction 并发运行——读继续针对旧段,同时 compaction 写新段,然后一次原子指针交换过渡到新段。</p>
     <p>崩溃恢复时,内存哈希 map 丢失。Bitcask 在重启时通过重放日志重建它——但这对大日志慢。优化是周期性把<strong>哈希 map 快照</strong>写到磁盘;重启时,加载快照并只重放自上次快照以来写入的段条目。</p>
 
@@ -495,9 +513,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -505,7 +524,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

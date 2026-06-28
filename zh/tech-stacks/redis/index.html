@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Redis——内存数据结构存储:为什么单线程却很快、它的数据类型、RDB 与 AOF 持久化、淘汰策略、复制与集群,以及让它不止是缓存的各种用途。">
-<title>Redis — 内存数据结构存储 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/redis/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/redis/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/redis/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/redis/">
+<meta name="description" content="为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。">
+<title>Redis — 内存数据结构存储 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/redis/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/redis/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/redis/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/redis/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Redis — 内存数据结构存储">
 <meta property="og:description" content="为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/redis/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/redis/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Redis — 内存数据结构存储">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Redis — 内存数据结构存储">
 <meta name="twitter:description" content="Redis 原理与用途:数据结构、持久化、淘汰、复制与集群。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Redis — 内存数据结构存储","description":"为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。","datePublished":"2023-09-10","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/redis/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Redis — 内存数据结构存储","description":"为什么单线程却很快、数据类型、RDB 与 AOF 持久化、淘汰、复制与集群,以及各种用途。","datePublished":"2023-09-10","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/redis/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-10"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "单线程的 Redis 为什么快?", "acceptedAnswer": {"@type": "Answer", "text": "数据在内存里、一次只跑一条命令,所以操作原子且无锁;瓶颈是网络/内存而非 CPU。"}}, {"@type": "Question", "name": "RDB 对比 AOF?", "acceptedAnswer": {"@type": "Answer", "text": "RDB = 紧凑的时间点快照,重启快,可能丢最近的写;AOF = 追加每条写,约 1 秒持久性,文件更大、重放更慢。常常两者都开。"}}, {"@type": "Question", "name": "Redis Cluster 怎么分片?", "acceptedAnswer": {"@type": "Answer", "text": "16384 个哈希槽;键经 CRC16 mod 16384 映射到槽;每个主拥有一段槽区间。多键操作需要用 {hash tag} 落到同一个槽。"}}, {"@type": "Question", "name": "Redis 对比 Memcached?", "acceptedAnswer": {"@type": "Answer", "text": "Redis 有丰富数据类型、持久化和复制;Memcached 是更简单的多线程块缓存。除非只要纯缓存,否则选 Redis。"}}, {"@type": "Question", "name": "最大的运维风险?", "acceptedAnswer": {"@type": "Answer", "text": "一条慢的 O(n) 命令(KEYS、大集合读)阻塞单线程,殃及所有客户端。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Redis — 内存数据结构存储","item":"https://sdeoffer.com/zh/tech-stacks/redis/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,13 +153,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -154,22 +171,23 @@
     </ul>
     <div class="nav-right">
       <div class="lang-switch">
-        <a href="/tech-stacks/redis/">EN</a>
-        <a href="/zh/tech-stacks/redis/" class="active">中</a>
+        <a href="/tech-stacks/redis/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/redis/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">redis</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Redis</h1>
     <div class="article-meta">
@@ -348,9 +366,10 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -358,7 +377,7 @@ LPUSH jobs "task1"  /  BRPOP jobs 0  <span class="cm"># 简单队列</span></cod
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Notification system design — multi-channel push/SMS/email/in-app, APNs & FCM, fan-out, dedup, rate limiting, retries, DLQ, at-least-once delivery guarantees.">
+<title>Design a Notification System — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/notification-system/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/notification-system/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/notification-system/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/notification-system/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Design a Notification System — System Design">
+<meta property="og:description" content="Notification system design — multi-channel push/SMS/email/in-app, APNs & FCM, fan-out, dedup, rate limiting, retries, DLQ, at-least-once delivery guarantees.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/notification-system/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design a Notification System — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Design a Notification System — System Design">
+<meta name="twitter:description" content="A system design deep dive into a multi-channel notification system — fan-out, APNs/FCM, templates, user preferences, dedup, retries, DLQ, and delivery guarantees.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Notification System","description":"Notification system design — multi-channel push/SMS/email/in-app, APNs & FCM, fan-out, dedup, rate limiting, retries, DLQ, at-least-once delivery guarantees.","datePublished":"2026-06-28","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/notification-system/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-28","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do you fan out a notification to millions of users without blocking?", "acceptedAnswer": {"@type": "Answer", "text": "Decouple the trigger from delivery with a message queue. The trigger service writes one event; a fan-out worker expands the audience and enqueues one job per (user, channel) onto Kafka. Thousands of channel workers consume in parallel and call APNs/FCM/SMS/email providers. The API call that triggers the notification returns in milliseconds because it only writes a single event, not millions of sends."}}, {"@type": "Question", "name": "At-least-once or exactly-once delivery — which do you pick?", "acceptedAnswer": {"@type": "Answer", "text": "At-least-once. Exactly-once across third-party providers (APNs, Twilio, SES) is impossible because their acknowledgements can be lost after they have already delivered. So you accept at-least-once on the wire and make the consumer idempotent: a dedup key (notification_id + user_id + channel) stored in Redis with a TTL guarantees a duplicate event is dropped before it ever reaches the provider."}}, {"@type": "Question", "name": "How do you handle a third-party provider (APNs/FCM) outage or throttling?", "acceptedAnswer": {"@type": "Answer", "text": "Retry with exponential backoff and jitter for transient 5xx/429 errors, capped at a few attempts. After the cap, route the job to a dead-letter queue for later replay or manual inspection. Honor the provider's rate limits with a token bucket per provider so you never get globally throttled. Permanent errors (invalid token, 410 Gone) are not retried — instead the device token is marked dead and pruned."}}, {"@type": "Question", "name": "How do you respect user preferences and quiet hours at scale?", "acceptedAnswer": {"@type": "Answer", "text": "A preference service is consulted in the fan-out path before any job is enqueued. It stores per-user, per-category channel opt-ins, quiet-hours windows in the user's timezone, and frequency caps. Preferences are cached in Redis for single-digit-millisecond reads. Marketing categories are checked hard; critical transactional notifications (security alerts, OTP) bypass non-essential preferences."}}, {"@type": "Question", "name": "How do you prevent sending the same notification twice?", "acceptedAnswer": {"@type": "Answer", "text": "Idempotency at two layers. The producer attaches a deterministic notification_id (often a hash of event + user + template); the consumer does a SETNX on a Redis dedup key before sending and skips if the key already exists. Combined with a frequency cap (max N per user per category per hour), this collapses duplicate triggers and retry-storms into a single delivered message."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a Notification System — System Design","item":"https://sdeoffer.com/system-design/notification-system/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/system-design/notification-system/" class="active" hreflang="en">EN</a><a href="/zh/system-design/notification-system/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">notification-system</span>
+    </nav>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a Notification System</h1>
+    <div class="article-meta">
+      <span>Jun 28, 2026</span>
+      <span class="separator">·</span>
+      <span>32 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A notification system looks trivial until you remember that one product event — a new like, a shipment update, a fraud alert — may need to reach tens of millions of users within seconds, across four different channels (push, SMS, email, in-app), through external providers you do not control, while respecting each user's opt-outs and quiet hours, never sending the same message twice, and surviving the inevitable APNs or FCM hiccup. The hard parts are not the "send an email" call; they are the fan-out from one event to millions of deliveries, the at-least-once-plus-idempotent delivery semantics, the third-party failure handling, and the preference and rate-limiting logic that keeps you from spamming users. Get those wrong and you either drop critical alerts or wake up your entire user base at 3 a.m. with a retry storm.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Decouple trigger from delivery</strong> — a producer writes one event; a message queue absorbs the spike; fan-out workers expand it into per-(user, channel) jobs.</li>
+        <li><strong>One worker pool per channel</strong> — push, SMS, email, and in-app each have their own queue, provider adapter, rate limits, and retry policy.</li>
+        <li><strong>At-least-once + idempotent consumers</strong> — exactly-once across APNs/Twilio/SES is impossible; dedup on <code>notification_id</code> in Redis instead.</li>
+        <li><strong>Preferences checked in the fan-out path</strong> — per-category opt-ins, quiet hours in the user's timezone, and frequency caps are applied before any job is enqueued.</li>
+        <li><strong>Retries with backoff + DLQ</strong> — transient 5xx/429 retried with exponential backoff and jitter; permanent failures (invalid token) pruned; exhausted jobs go to a dead-letter queue.</li>
+        <li><strong>Template service</strong> — content lives in versioned, localized templates rendered at send time; producers pass IDs and variables, not raw strings.</li>
+        <li><strong>Observability is first-class</strong> — every notification carries an ID traced from trigger → queue → provider → delivery receipt, with funnel metrics per channel.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Split the system into a notification API, a fan-out/preference layer, per-channel queues and workers, and provider adapters (APNs, FCM, Twilio, SES). Use a message queue to decouple the burst trigger from steady delivery. Make delivery at-least-once and consumers idempotent via a Redis dedup key. Apply user preferences, quiet hours, and frequency caps before enqueuing. Retry transient provider errors with backoff and route exhausted jobs to a DLQ. Render content from versioned templates and trace every notification end to end.</p>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>A notification system is a classic interview prompt because the naive answer ("call SendGrid in a loop") collapses the moment you introduce scale, multiple channels, and reliability. Pin down scope first.</p>
+
+    <h3>Functional requirements</h3>
+    <ul>
+      <li>Send notifications across <strong>four channels</strong>: mobile push (iOS/Android), SMS, email, and in-app (a feed/inbox the client polls or receives over a websocket).</li>
+      <li>Support <strong>triggered</strong> (transactional, event-driven: OTP, order shipped) and <strong>scheduled/broadcast</strong> (marketing campaigns to a segment) notifications.</li>
+      <li>Respect <strong>user preferences</strong>: per-category channel opt-in/out, quiet hours, frequency caps, and global unsubscribe.</li>
+      <li>Render content from <strong>templates</strong> with per-locale variants and runtime variables.</li>
+      <li>Provide <strong>delivery status</strong>: queued, sent, delivered, failed, opened (where the provider reports it).</li>
+    </ul>
+
+    <h3>Non-functional requirements</h3>
+    <ul>
+      <li><strong>Scale</strong> — handle bursty fan-out: a single broadcast may produce 50M+ deliveries; steady state is millions of transactional sends per hour.</li>
+      <li><strong>Low trigger latency</strong> — the API that accepts a notification request returns in &lt;100 ms; actual delivery is async.</li>
+      <li><strong>Reliability</strong> — critical notifications (OTP, security) must not be silently dropped; target at-least-once delivery with idempotency.</li>
+      <li><strong>No duplicates</strong> — a user should never receive the same logical notification twice, even when the pipeline retries.</li>
+      <li><strong>Extensibility</strong> — adding a new channel (e.g., WhatsApp) should not require rewriting the core.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Separate <strong>transactional</strong> from <strong>promotional</strong> early. They have opposite priorities: transactional notifications bypass marketing preferences, demand at-least-once delivery, and run on a low-latency lane; promotional notifications are heavily rate-limited, fully opt-out-respecting, and can tolerate seconds-to-minutes of delay. A single pipeline that treats them identically is a red flag.</p>
+    </div>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Sizing tells you where the bottleneck is — it is almost never the database; it is the queue throughput and the provider rate limits.</p>
+
+    <h3>Traffic</h3>
+    <ul>
+      <li>Assume <strong>100M DAU</strong> and an average of <strong>5 notifications/user/day</strong> → 500M notifications/day ≈ <strong>~5,800/sec</strong> average.</li>
+      <li>Peak is spiky: a marketing broadcast to 50M users fires in minutes. If we want it drained in 10 minutes, that is 50M / 600 s ≈ <strong>~83,000 deliveries/sec</strong> sustained — the design must absorb 10–20× the average as a burst.</li>
+      <li>Channel mix is uneven: push dominates (≈70%), in-app (≈20%), email (≈8%), SMS (≈2%, but the most expensive and rate-limited).</li>
+    </ul>
+
+    <h3>Storage</h3>
+    <ul>
+      <li>Notification log record: ~300 bytes (ids, channel, status, timestamps, template_id). 500M/day × 300 B ≈ <strong>~150 GB/day</strong> — this goes to a horizontally scalable store with TTL (e.g., 30–90 days), not a single SQL box.</li>
+      <li>Device tokens: 100M users × ~2 devices × ~100 B ≈ <strong>~20 GB</strong> — small, hot, kept in a fast store and cache.</li>
+      <li>Preferences: 100M users × ~200 B ≈ <strong>~20 GB</strong> — read on every fan-out, so cached aggressively in <a href="/tech-stacks/redis/">Redis</a>.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>The number that should drive the design is not storage; it is the <strong>83K/sec burst</strong> and the fact that providers throttle you. APNs, FCM, Twilio, and SES all impose rate limits. Your queue exists precisely so that an 83K/sec burst is reshaped into a steady stream the providers will accept, instead of getting you globally throttled or blacklisted.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>The public surface is small. The producer describes <em>what</em> to send and to <em>whom</em>; the system decides <em>how</em> and <em>when</em>.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Send a notification (transactional)</span>
+<span class="kw">POST</span> <span class="str">/api/v1/notifications</span>
+     Authorization: Bearer &lt;service-token&gt;
+     Idempotency-Key: <span class="str">"order-9182-shipped"</span>   <span class="cm">// dedup at the edge</span>
+     { <span class="str">"user_id"</span>: <span class="str">"u_123"</span>,
+       <span class="str">"template_id"</span>: <span class="str">"order_shipped_v3"</span>,
+       <span class="str">"channels"</span>: [<span class="str">"push"</span>, <span class="str">"email"</span>],   <span class="cm">// optional; else use prefs</span>
+       <span class="str">"variables"</span>: { <span class="str">"order_id"</span>: <span class="str">"9182"</span>, <span class="str">"eta"</span>: <span class="str">"Jun 30"</span> },
+       <span class="str">"priority"</span>: <span class="str">"transactional"</span> }
+     → <span class="num">202</span> { <span class="str">"notification_id"</span>: <span class="str">"ntf_8f2a"</span>, <span class="str">"status"</span>: <span class="str">"accepted"</span> }
+
+<span class="cm"># Broadcast to a segment (async, returns a job handle)</span>
+<span class="kw">POST</span> <span class="str">/api/v1/broadcasts</span>
+     { <span class="str">"segment_id"</span>: <span class="str">"seg_us_active"</span>, <span class="str">"template_id"</span>: <span class="str">"promo_summer"</span>,
+       <span class="str">"priority"</span>: <span class="str">"promotional"</span>, <span class="str">"send_at"</span>: <span class="str">"2026-07-01T16:00:00Z"</span> }
+     → <span class="num">202</span> { <span class="str">"broadcast_id"</span>: <span class="str">"bc_55"</span>, <span class="str">"status"</span>: <span class="str">"scheduled"</span> }
+
+<span class="cm"># Query delivery status</span>
+<span class="kw">GET</span> <span class="str">/api/v1/notifications/{id}</span>
+     → { <span class="str">"status"</span>: <span class="str">"delivered"</span>, <span class="str">"channel"</span>: <span class="str">"push"</span>,
+         <span class="str">"attempts"</span>: <span class="num">1</span>, <span class="str">"delivered_at"</span>: <span class="str">"..."</span> }
+
+<span class="cm"># Update user preferences</span>
+<span class="kw">PUT</span> <span class="str">/api/v1/users/{id}/preferences</span>
+     { <span class="str">"marketing"</span>: { <span class="str">"push"</span>: <span class="kw">false</span>, <span class="str">"email"</span>: <span class="kw">true</span> },
+       <span class="str">"quiet_hours"</span>: { <span class="str">"start"</span>: <span class="str">"22:00"</span>, <span class="str">"end"</span>: <span class="str">"08:00"</span>, <span class="str">"tz"</span>: <span class="str">"America/New_York"</span> } }</code></pre>
+    </div>
+
+    <p>Two design points. First, the <code>Idempotency-Key</code> header lets the caller make the trigger safe to retry — if the order service crashes and re-POSTs "order-9182-shipped", the API returns the same <code>notification_id</code> instead of sending twice. Second, the endpoint returns <strong>202 Accepted</strong>, not 200: delivery is asynchronous, so the API's only job is to validate, dedup, persist the request, and enqueue. Everything expensive happens downstream.</p>
+
+    <h2>Step 4 — High-Level Architecture</h2>
+    <p>The system is a pipeline of decoupled stages connected by queues. The key principle: <strong>the trigger path is cheap and fast; the delivery path is parallel and absorbs failure.</strong></p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>Producers (order svc, social svc, risk svc, campaign tool)
+   │  POST /notifications  |  POST /broadcasts
+   ▼
+[ Notification API ] ── validate, edge-dedup (Idempotency-Key), persist
+   │  publish 1 event
+   ▼
+[ Kafka: "notification-events" ]   ← absorbs the burst
+   │
+   ▼
+[ Fan-out / Preference workers ]
+   ├── expand audience (1 event → N users)
+   ├── load preferences + device tokens (Redis)
+   ├── drop opted-out / quiet-hours / over-cap
+   └── emit 1 job per (user, channel)
+   ▼
+[ Per-channel queues ]   push | sms | email | in-app
+   │             │         │        │
+   ▼             ▼         ▼        ▼
+[ Push wkr ] [ SMS wkr ] [ Email ] [ In-app wkr ]
+   │  APNs/FCM   │ Twilio   │ SES     │ writes to inbox + websocket push
+   ▼             ▼          ▼         ▼
+[ Provider adapters ] ── retry/backoff, rate-limit, DLQ on exhaustion
+   │  delivery receipts / webhooks
+   ▼
+[ Status store + Observability ]  (per-notification trace, funnel metrics)</code></pre>
+    </div>
+
+    <p>Why a queue between every stage? Because each stage has a different and independent failure mode and throughput ceiling. The fan-out worker can expand an audience far faster than Twilio will accept SMS; the <a href="/tech-stacks/message-queue/">message queue</a> in front of each channel is the shock absorber that lets the fast stages run flat-out while the slow, rate-limited providers drain at their own pace. Kafka also gives you replayability: if the email worker has a bug, you fix it and reprocess from the offset without losing events.</p>
+
+    <h2>Step 5 — Channel Adapters: APNs, FCM, SMS, Email, In-App</h2>
+    <p>Each channel is fundamentally different. The shared abstraction is a <strong>channel adapter interface</strong> — <code>send(job) → {delivered | retryable_error | permanent_error}</code> — but the implementations diverge sharply.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Channel</th><th>Provider</th><th>Transport</th><th>Key constraints</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">iOS push</td><td>APNs</td><td>HTTP/2 persistent connection, token-based (JWT) auth</td><td>Per-connection multiplexing; 410 = token expired → prune</td></tr>
+        <tr><td class="col-a">Android push</td><td>FCM</td><td>HTTP/2 REST, OAuth service account</td><td>Batch up to 500; <code>UNREGISTERED</code> → prune token</td></tr>
+        <tr><td class="col-b">SMS</td><td>Twilio / SNS</td><td>HTTPS REST</td><td>Expensive; strict per-number rate limits; carrier filtering</td></tr>
+        <tr><td class="col-b">Email</td><td>SES / SendGrid</td><td>HTTPS / SMTP</td><td>Reputation/bounce management; DKIM/SPF; async webhooks</td></tr>
+        <tr><td class="col-a">In-app</td><td>internal</td><td>DB write + websocket</td><td>No third party; delivered if user online, else stored in inbox</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Push: APNs and FCM specifics</h3>
+    <p>Push is the highest-volume channel and has the most operational subtlety. APNs uses a long-lived HTTP/2 connection — you authenticate once with a provider JWT (valid ~1 hour, refreshed) and multiplex thousands of sends over the same connection rather than reconnecting per message. FCM lets you batch up to 500 messages per call. Both return a per-token result: a success, a <strong>retryable</strong> error (provider 5xx, connection reset), or a <strong>permanent</strong> error (<code>410 Gone</code> / <code>BadDeviceToken</code> / <code>UNREGISTERED</code>). Permanent errors are a token-management signal, not a retry signal — the worker emits a "prune this token" event so a future send never wastes a slot on a dead device.</p>
+
+    <h3>In-app: online vs offline</h3>
+    <p>In-app is the one channel you fully control. The worker writes the notification to the user's inbox table (so it survives offline), then — if the user has a live <a href="/tech-stacks/websockets/">websocket</a> connection — pushes it in real time. If they are offline, the inbox row is enough; the client fetches unread items on next open. This dual write (durable inbox + best-effort live push) is what makes in-app feel instant without losing notifications for offline users.</p>
+
+    <div class="callout">
+      <div class="callout-label">extensibility</div>
+      <p>The adapter interface is the seam that keeps the core stable. Adding WhatsApp or a web-push channel means writing one new adapter and one new queue — the fan-out, preference, dedup, retry, and observability layers are untouched. Resist the temptation to special-case channel logic in the fan-out worker; push it into the adapter.</p>
+    </div>
+
+    <h2>Step 6 — The Fan-out Problem</h2>
+    <p>Fan-out is the heart of the system: turning <strong>one</strong> trigger event into <strong>N</strong> per-(user, channel) delivery jobs. Two flavors, with very different cost profiles.</p>
+
+    <h3>Triggered fan-out (1 → few)</h3>
+    <p>A transactional event targets one user (or a small set). Fan-out is cheap: load the user's preferences and device tokens, decide channels, emit a handful of jobs. This path is latency-sensitive and runs on a dedicated high-priority lane.</p>
+
+    <h3>Broadcast fan-out (1 → millions)</h3>
+    <p>A campaign targets a segment of 50M users. Doing this in one worker is impossible — it would run for hours and any crash loses progress. The pattern is <strong>hierarchical fan-out with checkpointing</strong>:</p>
+    <ul>
+      <li>The broadcast is split into <strong>chunks</strong> (e.g., 10K users each) by paging the segment with a cursor. Each chunk becomes its own message.</li>
+      <li>Many fan-out workers consume chunks <strong>in parallel</strong>; each expands its 10K users into per-channel jobs.</li>
+      <li>Progress is <strong>checkpointed</strong> per chunk, so a worker crash only re-does one 10K chunk, not the whole 50M broadcast — and because consumers are idempotent, re-doing a chunk does not double-send.</li>
+    </ul>
+
+    <p>This is structurally the same fan-out-on-write vs fan-out-on-read tension you see in a <a href="/system-design/news-feed/">news feed</a>: precompute deliveries up front (write amplification, fast at send) versus compute at read time. For notifications the answer is almost always fan-out-on-write — a notification only matters if it is pushed, so there is no "read time" to defer to.</p>
+
+    <div class="callout">
+      <div class="callout-label">scalability note</div>
+      <p>Keep the broadcast and transactional lanes physically separate — different topics, different worker pools, different priorities. A 50M marketing blast must never delay a 2FA code. Priority queues alone are not enough under sustained load; isolating the pools guarantees the critical lane has reserved capacity.</p>
+    </div>
+
+    <h2>Step 7 — Template Service and Personalization</h2>
+    <p>Producers must not send raw strings. If the order service hard-codes "Your order shipped!", you cannot localize it, A/B test it, or fix a typo without a deploy across every producer. A <strong>template service</strong> centralizes content.</p>
+    <ul>
+      <li><strong>Versioned templates</strong> — <code>order_shipped_v3</code> is an immutable, reviewed artifact. Producers reference a template ID plus a variable map; rendering happens at send time.</li>
+      <li><strong>Per-locale variants</strong> — each template has localized bodies; the renderer picks based on the user's locale, falling back to a default.</li>
+      <li><strong>Per-channel rendering</strong> — the same logical notification renders differently per channel: a 40-char push title, a full HTML email, a 160-char SMS. The template bundles all channel renditions.</li>
+      <li><strong>Safe interpolation</strong> — variables are escaped per channel (HTML-escape for email, no injection for SMS) to prevent content-injection bugs.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">YAML</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="ty">id</span>: order_shipped_v3
+<span class="ty">category</span>: transactional
+<span class="ty">locales</span>:
+  en:
+    push:  { <span class="ty">title</span>: <span class="str">"Shipped!"</span>, <span class="ty">body</span>: <span class="str">"Order {{order_id}} arrives {{eta}}"</span> }
+    email: { <span class="ty">subject</span>: <span class="str">"Your order is on the way"</span>, <span class="ty">html</span>: <span class="str">"templates/shipped.html"</span> }
+    sms:   { <span class="ty">body</span>: <span class="str">"Order {{order_id}} ships, ETA {{eta}}. Track: {{url}}"</span> }
+  es:
+    push:  { <span class="ty">title</span>: <span class="str">"¡Enviado!"</span>, <span class="ty">body</span>: <span class="str">"Pedido {{order_id}} llega {{eta}}"</span> }</code></pre>
+    </div>
+
+    <h2>Step 8 — User Preferences and Opt-out</h2>
+    <p>Preferences are checked in the fan-out path, <strong>before</strong> a job is enqueued — never send first and filter later. The preference service answers, for a given (user, category, channel): <em>is this allowed right now?</em></p>
+    <ul>
+      <li><strong>Per-category, per-channel opt-in</strong> — a user might allow security emails but disable marketing push. Stored as a matrix of (category × channel) booleans.</li>
+      <li><strong>Quiet hours</strong> — no non-critical notifications during the user's sleep window, evaluated in <em>their</em> timezone. A notification generated at 03:00 local is either dropped (promotional) or deferred to the morning (digest).</li>
+      <li><strong>Frequency caps</strong> — "at most 3 marketing pushes per day." Enforced with a Redis counter per (user, category, day) that the fan-out worker increments.</li>
+      <li><strong>Global unsubscribe + legal</strong> — an unsubscribed user is hard-filtered. Email must honor one-click unsubscribe (RFC 8058); SMS must honor STOP.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">critical override</div>
+      <p>Transactional and safety-critical notifications (OTP, login-from-new-device, fraud alerts) <strong>bypass marketing preferences and quiet hours</strong>. The preference check must branch on category: promotional is filtered hard; critical is delivered regardless of opt-out (a user cannot opt out of their own 2FA code). Encoding this distinction wrong is both a product failure and, for some categories, a security failure.</p>
+    </div>
+
+    <h2>Step 9 — Rate Limiting and Deduplication</h2>
+    <p>Two distinct concerns that both protect the user and the providers.</p>
+
+    <h3>Rate limiting</h3>
+    <p>There are three levels, and a good answer names all three. <strong>Per-user</strong> frequency caps (product-level: don't annoy the user). <strong>Per-provider</strong> limits (operational: APNs/Twilio/SES will throttle or ban you if you exceed their quotas) enforced with a token bucket in front of each adapter so the worker pool self-throttles to the provider's ceiling. <strong>Per-tenant</strong> limits if you are a platform serving multiple internal teams, so one team's runaway campaign cannot starve another. This is the same machinery covered in depth in <a href="/system-design/rate-limiter/">designing a rate limiter</a> — a distributed token bucket or sliding window backed by Redis.</p>
+
+    <h3>Deduplication</h3>
+    <p>Dedup is what makes at-least-once delivery tolerable. The same logical notification can arrive at the consumer multiple times — the producer retried the trigger, Kafka redelivered after a rebalance, or a broadcast chunk was reprocessed after a crash. The consumer must collapse these to a single send:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">deliver</span>(job):
+    <span class="cm"># dedup key is deterministic across retries</span>
+    key = <span class="str">f"dedup:{job.notification_id}:{job.user_id}:{job.channel}"</span>
+    <span class="cm"># SETNX returns False if the key already exists → already sent</span>
+    first_time = redis.<span class="fn">set</span>(key, <span class="num">1</span>, nx=<span class="kw">True</span>, ex=<span class="num">86400</span>)
+    <span class="kw">if</span> <span class="kw">not</span> first_time:
+        metrics.<span class="fn">incr</span>(<span class="str">"dedup.suppressed"</span>)   <span class="cm"># dropped a duplicate</span>
+        <span class="kw">return</span>
+    result = adapter.<span class="fn">send</span>(job)        <span class="cm"># call APNs / Twilio / SES</span>
+    <span class="kw">if</span> result.permanent_error:
+        redis.<span class="fn">delete</span>(key)             <span class="cm"># let a corrected retry through</span>
+        prune_token(job)</code></pre>
+    </div>
+
+    <p>The dedup key is <code>notification_id + user_id + channel</code> so the same notification on push and email both go out, but a redelivered push job is suppressed. The TTL (24 h) bounds memory while covering any realistic retry window. The subtle bug to avoid: setting the dedup key <em>after</em> a successful send means a crash between send and set re-sends; setting it <em>before</em> and never clearing it on a permanent error means a fixable failure is wrongly suppressed forever. The ordering above — claim the key first, release it only on permanent error — handles both.</p>
+
+    <h2>Step 10 — Retries, DLQ, and Delivery Guarantees</h2>
+    <p>Providers fail constantly at scale: transient 5xx, connection resets, 429 throttling. The retry policy must distinguish failure classes and never retry forever.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Outcome</th><th>Examples</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Success</td><td>2xx, accepted by provider</td><td>Mark sent; await delivery receipt webhook</td></tr>
+        <tr><td class="col-b">Retryable</td><td>5xx, 429, timeout, connection reset</td><td>Exponential backoff + jitter, cap ~5 attempts, then DLQ</td></tr>
+        <tr><td class="col-b">Permanent</td><td>410 Gone, invalid token, hard bounce, STOP</td><td>No retry; prune token / suppress address; record</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Exponential backoff with jitter</strong> (1s, 2s, 4s… plus randomization) prevents a provider blip from turning into a synchronized retry storm where every worker retries in lockstep and re-overwhelms the recovering provider. After the attempt cap, the job moves to a <strong>dead-letter queue</strong> — a separate topic where exhausted jobs land for inspection, alerting, and optional manual or automated replay once the root cause is fixed. The DLQ is what turns "we silently dropped 200K OTPs during the APNs outage" into "200K jobs are parked in the DLQ and replayed automatically when APNs recovered."</p>
+
+    <h3>Why at-least-once, not exactly-once</h3>
+    <p>Exactly-once delivery to an external provider is unachievable: after you call Twilio and it sends the SMS, the acknowledgement back to you can be lost. You cannot tell "sent but ack lost" from "not sent," so a safe system retries — which means the SMS could go out twice. The honest, standard answer is <strong>at-least-once on the wire plus idempotent consumers</strong>: you accept that the pipeline may attempt a send more than once, and you make duplicate attempts harmless via the dedup key from Step 9. This collapses to effectively-once <em>from the user's perspective</em> without claiming a guarantee the providers cannot give you.</p>
+
+    <div class="callout">
+      <div class="callout-label">delivery semantics</div>
+      <p>State it crisply: <strong>at-least-once delivery + idempotent consumer = effectively-once user experience.</strong> "Exactly-once" is a property of your internal processing (Kafka offsets, dedup key), never of the third-party hop. Claiming exactly-once end-to-end through APNs is a classic interview mistake.</p>
+    </div>
+
+    <h2>Step 11 — Data Model</h2>
+    <p>Three stores, each chosen for its access pattern: device tokens and preferences are hot key-value reads; the notification log is a high-volume append.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- Device tokens (hot KV; cache in Redis)</span>
+<span class="kw">CREATE TABLE</span> device_tokens (
+  user_id    <span class="ty">BIGINT</span>,
+  platform   <span class="ty">VARCHAR</span>(<span class="num">10</span>),       <span class="cm">-- ios | android | web</span>
+  token      <span class="ty">VARCHAR</span>(<span class="num">255</span>),
+  last_seen  <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span> (user_id, platform, token)
+);
+
+<span class="cm">-- Preferences (read on every fan-out; cache aggressively)</span>
+<span class="kw">CREATE TABLE</span> preferences (
+  user_id    <span class="ty">BIGINT</span>      <span class="kw">PRIMARY KEY</span>,
+  matrix     <span class="ty">JSONB</span>,                 <span class="cm">-- {category: {channel: bool}}</span>
+  quiet_start <span class="ty">TIME</span>, quiet_end <span class="ty">TIME</span>, tz <span class="ty">VARCHAR</span>(<span class="num">40</span>),
+  unsubscribed <span class="ty">BOOLEAN</span>  <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>
+);
+
+<span class="cm">-- Notification log (high-volume append; NoSQL / Cassandra, TTL 90d)</span>
+<span class="cm">-- partition by user_id, clustered by created_at desc</span>
+<span class="cm">-- { notification_id, user_id, channel, template_id, status,</span>
+<span class="cm">--   attempts, created_at, sent_at, delivered_at, error_code }</span></code></pre>
+    </div>
+
+    <p>The notification log is append-heavy and queried by "this user's recent notifications" — a perfect fit for a wide-column <a href="/tech-stacks/nosql/">NoSQL store</a> partitioned by <code>user_id</code> with a TTL, not a single relational table that would need constant <a href="/tech-stacks/sharding/">sharding</a> and purging. Device tokens and preferences are small and read on the hot fan-out path, so they live in a fast store fronted by Redis with a short TTL; a token write (login on a new device) invalidates the cache entry.</p>
+
+    <h2>Step 12 — Scaling and Fault Tolerance</h2>
+    <p>Every stage scales horizontally and degrades independently.</p>
+
+    <h3>Scaling</h3>
+    <ul>
+      <li><strong>Workers are stateless</strong> — fan-out and channel workers are Kafka consumer groups; add consumers to add throughput, with partitions sized for peak parallelism. Partition by <code>user_id</code> to preserve per-user ordering where it matters (e.g., "shipped" before "delivered").</li>
+      <li><strong>Channel pools scale independently</strong> — push needs hundreds of workers; SMS needs few because Twilio rate-limits anyway. Autoscale each pool on its own queue depth.</li>
+      <li><strong>Provider connection pooling</strong> — APNs HTTP/2 connections and FCM batches are reused across sends; a connection pool per worker amortizes TLS/handshake cost.</li>
+    </ul>
+
+    <h3>Fault tolerance</h3>
+    <ul>
+      <li><strong>Provider outage</strong> — retries + DLQ absorb it; the affected channel backs up in its queue while others flow. When the provider recovers, drain the backlog and replay the DLQ. Critical: the queue must have enough retention to hold a multi-hour outage's worth of jobs.</li>
+      <li><strong>Worker crash</strong> — Kafka redelivers uncommitted messages to another consumer; idempotent dedup makes the redelivery harmless.</li>
+      <li><strong>Redis (dedup/cache) failure</strong> — degrade gracefully: on a dedup-store outage you can fail open (risk a few duplicates) for non-critical channels rather than halt delivery; preferences fall back to the source DB at higher latency.</li>
+      <li><strong>Poison messages</strong> — a malformed job that always throws is caught by the attempt cap and routed to the DLQ instead of blocking the partition forever.</li>
+    </ul>
+
+    <h2>Step 13 — Observability</h2>
+    <p>You cannot operate a notification system you cannot see into. "Did the user get the OTP?" must be answerable in seconds. <a href="/tech-stacks/observability/">Observability</a> is built around the per-notification trace and the delivery funnel.</p>
+    <ul>
+      <li><strong>End-to-end trace</strong> — every notification carries an ID stamped at the API and propagated through the event, fan-out, queue, worker, and provider call, so you can reconstruct its full timeline: accepted → enqueued → sent → provider-acked → delivery-receipt.</li>
+      <li><strong>Funnel metrics per channel</strong> — accepted, suppressed (prefs/dedup), sent, delivered, failed, opened. A sudden drop in delivered/sent ratio for push is an APNs problem; a spike in suppressed is a preference or dedup anomaly.</li>
+      <li><strong>Delivery receipts / webhooks</strong> — providers report final status asynchronously (SES bounces, APNs feedback, Twilio status callbacks). Ingesting these closes the loop from "sent" to "actually delivered/bounced" and feeds token pruning and bounce suppression.</li>
+      <li><strong>Alerting</strong> — alert on DLQ growth rate, per-provider error rate, and queue lag, not just absolute volume. A growing DLQ is the earliest signal of a provider or token problem.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>Delivery receipts are the difference between "we sent it" and "they got it." A push can be accepted by APNs and still never reach a phone (device off, token silently dead). Without ingesting receipts and feedback, your dashboards lie — they show 100% "sent" while real delivery quietly degrades.</p>
+    </div>
+
+    <h2>Step 14 — Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Delivery semantics</td><td class="col-a">At-least-once + idempotent</td><td>Possible duplicate attempts, suppressed by dedup key; exactly-once is impossible across providers</td></tr>
+        <tr><td>Trigger vs delivery</td><td class="col-a">Fully decoupled via queue</td><td>Added end-to-end latency (sub-second to seconds) for huge throughput and isolation</td></tr>
+        <tr><td>Fan-out timing</td><td class="col-b">Fan-out on write</td><td>Write amplification on broadcast; no read-time path exists for notifications</td></tr>
+        <tr><td>Channel coupling</td><td class="col-a">One queue + adapter per channel</td><td>More moving parts; gains independent scaling, retry, and rate limits</td></tr>
+        <tr><td>Preference checks</td><td class="col-a">In fan-out, before enqueue</td><td>Extra read on the hot path (cached) vs. wasting provider quota on filtered sends</td></tr>
+        <tr><td>Notification log</td><td class="col-b">Wide-column NoSQL + TTL</td><td>No ad-hoc joins; optimized for per-user append and time-range reads</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>A notification system is an exercise in controlled fan-out and graceful failure. The spine is a queue that decouples a bursty trigger from rate-limited providers; the reliability comes from at-least-once delivery made safe by idempotent, dedup-keyed consumers; the product correctness comes from checking preferences before you enqueue and treating transactional notifications as a separate, preference-bypassing lane. Everything else — templates, retries, DLQ, observability — exists to make those three things operate at scale without spamming users or dropping the one OTP that mattered.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>How do you fan out a notification to millions of users without blocking?</strong> Decouple the trigger from delivery with a message queue. The trigger service writes one event; a fan-out worker expands the audience and enqueues one job per (user, channel) onto Kafka. Thousands of channel workers consume in parallel and call APNs/FCM/SMS/email providers. The triggering API call returns in milliseconds because it only writes a single event, not millions of sends.<br>
+      <strong>At-least-once or exactly-once delivery — which do you pick?</strong> At-least-once. Exactly-once across third-party providers (APNs, Twilio, SES) is impossible because their acknowledgements can be lost after they have already delivered. So you accept at-least-once on the wire and make the consumer idempotent: a dedup key (notification_id + user_id + channel) in Redis with a TTL drops a duplicate event before it ever reaches the provider.<br>
+      <strong>How do you handle a third-party provider (APNs/FCM) outage or throttling?</strong> Retry with exponential backoff and jitter for transient 5xx/429, capped at a few attempts; after the cap, route the job to a dead-letter queue for replay. Honor each provider's rate limit with a token bucket so you never get globally throttled. Permanent errors (invalid token, 410 Gone) are not retried — the token is marked dead and pruned.<br>
+      <strong>How do you respect user preferences and quiet hours at scale?</strong> A preference service is consulted in the fan-out path before any job is enqueued. It stores per-user, per-category channel opt-ins, quiet-hours windows in the user's timezone, and frequency caps, cached in Redis for single-digit-millisecond reads. Marketing categories are checked hard; critical transactional notifications (security alerts, OTP) bypass non-essential preferences.<br>
+      <strong>How do you prevent sending the same notification twice?</strong> Idempotency at two layers: the producer attaches a deterministic notification_id (a hash of event + user + template); the consumer does a SETNX on a Redis dedup key before sending and skips if it already exists. Combined with a frequency cap, this collapses duplicate triggers and retry-storms into a single delivered message.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/news-feed/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design a News Feed</div>
+      </a>
+      <a href="/system-design/rate-limiter/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Rate Limiter</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

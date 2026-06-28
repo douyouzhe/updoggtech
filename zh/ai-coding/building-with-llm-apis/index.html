@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AI 编程:用 Claude 与 OpenAI API 构建生产应用——Messages API 结构与角色、streaming、prompt caching、token 成本与估算、延迟优化、错误处理与指数退避、structured output(tool use)、API 密钥管理与服务端代理,以及如何选对模型。">
-<title>用 Claude 与 OpenAI API 构建应用 — AI 编程 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/building-with-llm-apis/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/building-with-llm-apis/">
+<meta name="description" content="用 Claude 与 OpenAI API 构建生产应用:Messages API、streaming、prompt caching、token 成本、延迟优化、structured output、密钥安全,以及如何选对模型。">
+<title>用 Claude 与 OpenAI API 构建应用 — AI 编程 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/building-with-llm-apis/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="用 Claude 与 OpenAI API 构建应用">
-<meta property="og:description" content="用 Claude 与 OpenAI API 构建:Messages API、streaming、prompt caching、structured output、密钥安全、模型选择。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/building-with-llm-apis/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="用 Claude 与 OpenAI API 构建生产应用:Messages API、streaming、prompt caching、token 成本、延迟优化、structured output、密钥安全,以及如何选对模型。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="用 Claude 与 OpenAI API 构建应用 — AI 编程">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="用 Claude 与 OpenAI API 构建应用">
 <meta name="twitter:description" content="LLM API 生产实践:streaming、prompt caching、token 成本、指数退避、structured output、密钥管理。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "用 Claude 与 OpenAI API 构建应用", "description": "AI 编程:用 Claude 与 OpenAI API 构建生产应用——Messages API 结构与角色、streaming、prompt caching、token 成本与估算、延迟优化、错误处理与指数退避、structured output(tool use)、API 密钥管理与服务端代理,以及如何选对模型。", "datePublished": "2026-05-18", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/building-with-llm-apis/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"用 Claude 与 OpenAI API 构建应用","description":"用 Claude 与 OpenAI API 构建生产应用:Messages API、streaming、prompt caching、token 成本、延迟优化、structured output、密钥安全,以及如何选对模型。","datePublished":"2026-05-18","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-18"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "prompt caching 是什么,为何重要?", "acceptedAnswer": {"@type": "Answer", "text": "API 预处理一个稳定的输入前缀(system prompt、文档)并为后续相同前缀的调用复用 KV cache——在被缓存部分上带来 90% 成本下降和 3–5 倍延迟改善。对文档 Q&A、代码评审流水线,以及任何带固定上下文的高量工作负载不可或缺。"}}, {"@type": "Question", "name": "如何保证 LLM 的 structured output?", "acceptedAnswer": {"@type": "Answer", "text": "把期望 schema 定义为 tool 定义里的一个 JSON Schema,并经 tool_choice 强制模型调用该 tool。模型无法产出任何不符合 schema 的东西。纯 prompt 指示“返回 JSON”大多时候有效但在生产会失败——schema 约束的 tool use 才是可靠方法。"}}, {"@type": "Question", "name": "为什么模型选择是工程决策,而非“总用最好的”决策?", "acceptedAnswer": {"@type": "Answer", "text": "输出 token 是输入 token 的 3–5 倍;大模型比小模型贵 10–20 倍。对分类、抽取、路由任务,小模型在质量上与大模型持平,却把成本降低一个数量级。在你的任务上度量质量,实测算出成本/质量权衡。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"用 Claude 与 OpenAI API 构建应用 — AI 编程","item":"https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -140,13 +154,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -159,21 +176,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ai-coding/building-with-llm-apis/">EN</a>
-        <a href="/zh/ai-coding/building-with-llm-apis/" class="active">中</a>
+        <a href="/ai-coding/building-with-llm-apis/" hreflang="en">EN</a>
+        <a href="/zh/ai-coding/building-with-llm-apis/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">building-with-llm-apis</span>
-    </div>
+    </nav>
     <span class="article-tag">AI 编程</span>
     <h1 class="article-title">用 Claude 与 OpenAI API 构建应用</h1>
     <div class="article-meta">
@@ -193,7 +211,7 @@
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
       <ul>
-        <li><strong>Messages API 有三种角色</strong>——<code>system</code>、<code>user</code>、<code>assistant</code>——理解每一个是 prompt 设计的基础。system 角色设定持久指令;user/assistant 交替构成对话。</li>
+        <li><strong>Messages API 有三种角色</strong>——<code>system</code>、<code>user</code>、<code>assistant</code>——理解每一个是 <a href="/zh/ai-coding/prompt-engineering-for-code/">prompt 设计</a>的基础。system 角色设定持久指令;user/assistant 交替构成对话。</li>
         <li><strong>对面向用户的 feature,streaming 几乎总是正确的默认。</strong>首 token 延迟感觉上比等整段响应快得多,即便总时间相同。</li>
         <li><strong>prompt caching 能把成本砍掉 80–90%</strong>——对那些有大而稳定前缀(system prompt、文档、代码库)的工作负载。缓存命中也比完整推理快 3–5 倍。</li>
         <li><strong>token 成本累加得很快。</strong>理解你的输入/输出 token 比例,实测它,并设计 prompt 来最小化不必要的输入重复。</li>
@@ -292,7 +310,7 @@ final = stream.<span class="fn">get_final_message</span>()
 <span class="fn">print</span>(<span class="str">f"\nTotal tokens: {final.usage.input_tokens + final.usage.output_tokens}"</span>)</code></pre>
     </div>
 
-    <p>在 web 应用里,你通常用 Server-Sent Events(SSE)或 WebSocket 把流从服务器代理到浏览器。浏览器随每个 chunk 到达即渲染。多数 LLM API SDK 在服务端替你处理 SSE 分帧——你只管迭代这个流。</p>
+    <p>在 web 应用里,你通常用 Server-Sent Events(SSE)或 <a href="/zh/tech-stacks/websockets/">WebSocket</a> 把流从服务器代理到浏览器。浏览器随每个 chunk 到达即渲染。多数 LLM API SDK 在服务端替你处理 SSE 分帧——你只管迭代这个流。</p>
 
     <h3>JavaScript 里的 streaming</h3>
     <div class="code-block">
@@ -430,7 +448,7 @@ usage = response.usage
       <li><strong>流式响应。</strong>TTFT 降到模型开始生成第一个 token 的时间——主流 API 通常 200–800ms——与总响应长度无关。</li>
       <li><strong>用 prompt caching。</strong>缓存命中跳过输入处理,对大的被缓存前缀把 TTFT 降低 3–5 倍。</li>
       <li><strong>用地理上更近的 API 端点。</strong>到 API 服务器的往返延迟直接加到 TTFT 上。Anthropic 和 OpenAI 都提供区域端点。</li>
-      <li><strong>减小输入体量。</strong>更小的 prompt 处理起步更快。若你在加载一整份大文档,考虑改用检索(只取相关片段)。</li>
+      <li><strong>减小输入体量。</strong>更小的 prompt 处理起步更快。若你在加载一整份大文档,考虑改用<a href="/zh/system-design/rag-system/">检索</a>(只取相关片段)。</li>
     </ul>
 
     <h3>降低总完成时间</h3>
@@ -500,7 +518,7 @@ usage = response.usage
     <ol>
       <li><strong>纯 prompt 的 JSON:</strong>在 system prompt 里指示模型“返回有效 JSON”并给一个例子。在强模型上 80–95% 的时候有效;其余情况产出带尾随文本、缺引号或转义非法的 JSON。没有校验 + 重试循环的话不可用于生产。</li>
       <li><strong>JSON 模式:</strong>一个参数(OpenAI 上 <code>response_format: {type: "json_object"}</code>),约束模型始终产出有效 JSON。解决语法错误;但不保证 schema(键、类型、嵌套)符合你的预期。</li>
-      <li><strong>schema 约束生成(把 tool use 当输出):</strong>把期望输出经由 tool 定义为一个 JSON Schema;模型被迫发出一个符合该 schema 的 tool call。这是最可靠的方法,也是我们对生产的推荐。</li>
+      <li><strong>schema 约束生成(把 <a href="/zh/ai-coding/tool-use-function-calling-mcp/">tool use</a> 当输出):</strong>把期望输出经由 tool 定义为一个 JSON Schema;模型被迫发出一个符合该 schema 的 tool call。这是最可靠的方法,也是我们对生产的推荐。</li>
     </ol>
 
     <div class="code-block">
@@ -607,9 +625,10 @@ extracted = tool_call.input  <span class="cm"># 已是解析好的 dict,无需 j
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -617,7 +636,7 @@ extracted = tool_call.input  <span class="cm"># 已是解析好的 dict,无需 j
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

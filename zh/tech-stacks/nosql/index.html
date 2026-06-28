@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 NoSQL:四大类(键值/文档/列族/图)及其适用场景、CAP 定理与 PACELC、一致性模型谱系、BASE vs ACID、数据建模(嵌入 vs 引用、面向查询建表)、DynamoDB/MongoDB/Cassandra/Neo4j 代表产品、何时不该用 NoSQL,以及分片与冲突解决。">
-<title>NoSQL | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/nosql/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/nosql/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/nosql/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/nosql/">
+<meta name="description" content="四大类 NoSQL、CAP/PACELC、一致性模型、BASE vs ACID、数据建模、DynamoDB/MongoDB/Cassandra/Neo4j。">
+<title>NoSQL — 文档/键值/列族与 CAP 定理 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/nosql/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/nosql/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/nosql/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/nosql/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="NoSQL">
 <meta property="og:description" content="四大类 NoSQL、CAP/PACELC、一致性模型、BASE vs ACID、数据建模、DynamoDB/MongoDB/Cassandra/Neo4j。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/nosql/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/nosql/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/nosql-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="510">
+<meta property="og:image:alt" content="NoSQL">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/nosql-1.jpg">
 <meta name="twitter:title" content="NoSQL">
 <meta name="twitter:description" content="NoSQL 怎么选:键值/文档/列族/图、CAP、一致性模型、何时用、何时不用。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"NoSQL","description":"四大类 NoSQL、CAP/PACELC、一致性模型、BASE vs ACID、数据建模、DynamoDB/MongoDB/Cassandra/Neo4j。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/nosql/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"NoSQL","description":"四大类 NoSQL、CAP/PACELC、一致性模型、BASE vs ACID、数据建模、DynamoDB/MongoDB/Cassandra/Neo4j。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/nosql/"},"image":"https://sdeoffer.com/assets/img/nosql-1.jpg","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "解释 CAP 定理及\"P 是强制的\"是什么意思。", "acceptedAnswer": {"@type": "Answer", "text": "任何分布式系统里网络分区都会发生——所以你不能牺牲 P。真正的取舍是 CP(分区期间返回错误或阻塞以保持一致,如 HBase)vs AP(返回可能陈旧的数据以保持可用,如 Cassandra)。PACELC 扩展它:即便没有分区,也有日常更重要的持续延迟/一致性取舍。"}}, {"@type": "Question", "name": "什么时候选列族而非文档存储?", "acceptedAnswer": {"@type": "Answer", "text": "当你写吞吐极高(百万/秒)、读模式前期已知、且你能负担围绕查询设计表时。Cassandra 的 LSM-tree 写路径让写无论数据量多大都 O(1)——文档存储在高量时付随机写代价。"}}, {"@type": "Question", "name": "为什么不能一切都用 NoSQL?", "acceptedAnswer": {"@type": "Answer", "text": "NoSQL 用多表 ACID 事务和灵活临时查询换规模和 schema 灵活性。若你的领域有复杂关系且需要 join 或跨实体事务,SQL 几乎总是更简单、更安全、运维更便宜。过早加 NoSQL 增加运维复杂度而无瓶颈可解。"}}, {"@type": "Question", "name": "什么是最终一致性、何时危险?", "acceptedAnswer": {"@type": "Answer", "text": "最终一致意味着副本会随时间收敛,但读在过渡期可能返回陈旧数据。它对库存计数(两个线程都读到 1 并写 0,导致负库存)、金融余额,以及任何陈旧读导致现实世界动作的场景危险。对这些用强一致(Cassandra 的 QUORUM、DynamoDB 的强一致读)——以更高延迟为代价。"}}, {"@type": "Question", "name": "DynamoDB 的单表设计模式是什么?", "acceptedAnswer": {"@type": "Answer", "text": "把所有实体类型存在一张表,用复合排序键(如 ORDER#2024-01、PROFILE)共置相关记录,这样多个实体类型能在单次查询里取出而无 join。它需要前期访问模式分析,但为所有建模过的模式提供 O(1) 读。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"NoSQL","item":"https://sdeoffer.com/zh/tech-stacks/nosql/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/nosql/">EN</a>
-        <a href="/zh/tech-stacks/nosql/" class="active">中</a>
+        <a href="/tech-stacks/nosql/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/nosql/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">nosql</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">NoSQL</h1>
     <div class="article-meta">
@@ -204,7 +222,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/nosql-1.jpg" alt="NoSQL 数据库分类与数据模型" loading="lazy">
+        <img src="/assets/img/nosql-1.jpg" alt="NoSQL 数据库分类与数据模型" width="1024" height="510" fetchpriority="high">
         <figcaption>NoSQL 数据库分类与数据模型</figcaption>
       </figure>
 
@@ -214,10 +232,10 @@
     <p>最简单的数据模型:每个值存在一个唯一 key 下。按 key 读写是 O(1)——字面上一次哈希表查找。没有查询语言、没有 schema、没有关系——只有精确查找的纯速度。值本身对存储完全不透明;它可以是字符串、序列化对象、二进制 blob 或计数器。数据库不解释它。</p>
     <ul>
       <li><strong>示例:</strong>Redis、DynamoDB(KV 模式)、Memcached</li>
-      <li><strong>最适合:</strong>会话存储、缓存层、限流计数器、特性开关、排行榜(配 Redis 有序集合)、分布式锁</li>
+      <li><strong>最适合:</strong>会话存储、缓存层、限流计数器、特性开关、<a href="/zh/system-design/leaderboard/">排行榜</a>(配 Redis 有序集合)、分布式锁</li>
       <li><strong>局限:</strong>只能按精确 key 访问数据;无额外基础设施则无范围扫描;除非数据库把它作为单独功能层加上,否则无二级索引</li>
     </ul>
-    <p>Redis 值得特别关注,因为它远超简单 KV 存储。它的数据结构——字符串、列表、集合、有序集合、哈希、流、HyperLogLog——让你实现精巧的模式,如滑动窗口限流(对时间戳 <code>ZRANGEBYSCORE</code>)、pub/sub 扇出、排行榜(<code>ZADD</code>/<code>ZRANK</code>),以及通过 <code>SET key value NX PX ttl</code> 原子条件写实现的分布式锁。关键洞见是 Redis 在单线程事件循环里原子地执行所有操作,消除了困扰多线程进程内缓存的并发 bug。</p>
+    <p><a href="/zh/tech-stacks/redis/">Redis</a> 值得特别关注,因为它远超简单 KV 存储。它的数据结构——字符串、列表、集合、有序集合、哈希、流、HyperLogLog——让你实现精巧的模式,如滑动窗口限流(对时间戳 <code>ZRANGEBYSCORE</code>)、pub/sub 扇出、排行榜(<code>ZADD</code>/<code>ZRANK</code>),以及通过 <code>SET key value NX PX ttl</code> 原子条件写实现的分布式锁。关键洞见是 Redis 在单线程事件循环里原子地执行所有操作,消除了困扰多线程进程内缓存的并发 bug。</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -331,7 +349,7 @@
     <ul>
       <li><strong>示例:</strong>Neo4j、Amazon Neptune、ArangoDB、TigerGraph</li>
       <li><strong>最适合:</strong>社交网络、推荐引擎、欺诈检测(交易图)、知识图谱、网络拓扑</li>
-      <li><strong>局限:</strong>不适合大批量表格数据;横向分片比其他 NoSQL 类型更难,因为跨分区切图造成跨分片遍历开销;大多数图 DB 最好跑在单台强力节点或小集群上</li>
+      <li><strong>局限:</strong>不适合大批量表格数据;横向<a href="/zh/tech-stacks/sharding/">分片</a>比其他 NoSQL 类型更难,因为跨分区切图造成跨分片遍历开销;大多数图 DB 最好跑在单台强力节点或小集群上</li>
     </ul>
 
     <div class="code-block">
@@ -360,7 +378,7 @@
     </div>
 
     <h2>CAP 定理——分布式系统约束</h2>
-    <p>CAP 定理由 Eric Brewer 提出、Gilbert 和 Lynch 形式化,陈述一个分布式数据存储只能同时保证以下三个属性中的两个:</p>
+    <p><a href="/zh/ddia/chapter-9/">CAP 定理</a>由 Eric Brewer 提出、Gilbert 和 Lynch 形式化,陈述一个分布式数据存储只能同时保证以下三个属性中的两个:</p>
     <table class="compare-table">
       <thead>
         <tr><th>属性</th><th>含义</th></tr>
@@ -570,9 +588,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -580,7 +599,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

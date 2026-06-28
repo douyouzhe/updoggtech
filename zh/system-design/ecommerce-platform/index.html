@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:电商平台——微服务 + API 网关、多语言持久化(SQL/NoSQL/Cassandra/Redis/ES)、结账管道与 Saga、订单状态机、库存与超卖、支付幂等、CDC 搜索、高峰扩展(缓存/分片)、可靠性与可观测性、安全与欺诈、退款与多区域、ML 推荐、关键取舍。">
-<title>设计电商平台 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/ecommerce-platform/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ecommerce-platform/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ecommerce-platform/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ecommerce-platform/">
+<meta name="description" content="电商平台系统设计：微服务与 API 网关、多语言持久化、结账 Saga、订单状态机、库存防超卖、支付幂等、CDC 搜索、高峰扩展与关键取舍。">
+<title>设计电商平台 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ecommerce-platform/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ecommerce-platform/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计电商平台">
-<meta property="og:description" content="电商系统设计:微服务、SQL/NoSQL、Redis TTL 持有、Kafka 结账、Saga、超卖防护、CDC 搜索。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/ecommerce-platform/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="电商平台系统设计：微服务与 API 网关、多语言持久化、结账 Saga、订单状态机、库存防超卖、支付幂等、CDC 搜索、高峰扩展与关键取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/ecommerce-platform/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/ecommerce-platform-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="704">
+<meta property="og:image:alt" content="设计电商平台 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/ecommerce-platform-1.jpg">
 <meta name="twitter:title" content="设计电商平台">
 <meta name="twitter:description" content="设计电商平台:微服务、polyglot 存储、结账 Saga、超卖防护、CDC 搜索、高峰扩展。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计电商平台", "description": "系统设计:电商平台——微服务 + API 网关、多语言持久化(SQL/NoSQL/Cassandra/Redis/ES)、结账管道与 Saga、订单状态机、库存与超卖、支付幂等、CDC 搜索、高峰扩展(缓存/分片)、可靠性与可观测性、安全与欺诈、退款与多区域、ML 推荐、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/ecommerce-platform/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计电商平台","description":"电商平台系统设计：微服务与 API 网关、多语言持久化、结账 Saga、订单状态机、库存防超卖、支付幂等、CDC 搜索、高峰扩展与关键取舍。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/ecommerce-platform/"},"image":"https://sdeoffer.com/assets/img/ecommerce-platform-1.jpg","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "闪购期间怎么防止超卖?", "acceptedAnswer": {"@type": "Answer", "text": "Redis TTL 持有(~10 分钟)在加入购物车时软预留;只在确认结账时经原子条件递减永久扣减;过期持有自动释放。"}}, {"@type": "Question", "name": "为什么结账和支付间用 Kafka?", "acceptedAnswer": {"@type": "Answer", "text": "把面向用户延迟与下游工作解耦——即时订单确认,同时库存、支付和通知异步进行,Kafka 也缓冲突发。"}}, {"@type": "Question", "name": "不用 2PC 怎么保持三个服务一致?", "acceptedAnswer": {"@type": "Answer", "text": "Saga 模式——由事件串联的本地事务,失败时带补偿动作(释放库存、取消订单)。"}}, {"@type": "Question", "name": "为什么 CDC 进 Elasticsearch 而非双写?", "acceptedAnswer": {"@type": "Answer", "text": "CDC 让索引作为可重放投影与 DB 一致;双写若索引写失败就分歧。"}}, {"@type": "Question", "name": "怎么避免给客户双重扣款?", "acceptedAnswer": {"@type": "Answer", "text": "扣款调用上的幂等键加 webhook 驱动状态和每晚对账。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计电商平台 — 系统设计","item":"https://sdeoffer.com/zh/system-design/ecommerce-platform/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/ecommerce-platform/">EN</a>
-        <a href="/zh/system-design/ecommerce-platform/" class="active">中</a>
+        <a href="/system-design/ecommerce-platform/" hreflang="en">EN</a>
+        <a href="/zh/system-design/ecommerce-platform/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ecommerce-platform</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计电商平台</h1>
     <div class="article-meta">
@@ -223,7 +241,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/ecommerce-platform-1.jpg" alt="电商平台高层架构" loading="lazy">
+      <img src="/assets/img/ecommerce-platform-1.jpg" alt="电商平台高层架构" width="1024" height="704" fetchpriority="high">
       <figcaption>电商平台高层架构</figcaption>
     </figure>
 
@@ -277,7 +295,7 @@
     </div>
 
     <h2>第 3 步 — API 设计</h2>
-    <p>通过 API 网关暴露干净的 REST 面。几个代表性端点:</p>
+    <p>通过 <a href="/zh/tech-stacks/api-gateway/">API 网关</a>暴露干净的 REST 面。几个代表性端点:</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -378,7 +396,7 @@
     <p><code>idempotency_key UNIQUE</code> 约束是使重试结账在数据库级别安全的东西:第二次插入只是唯一性检查失败,服务返回已创建的订单。库存上的 <code>version</code> 列支持乐观并发控制,下面覆盖。</p>
 
     <h2>第 7 步 — 结账管道</h2>
-    <p>结账是最关键——也最复杂——的流程。关键设计洞见是用 Kafka <strong>把面向用户的确认与下游订单处理链解耦</strong>。用户得到即时确认;库存扣减、支付扣款、通知派发和履约启动异步发生。</p>
+    <p>结账是最关键——也最复杂——的流程。关键设计洞见是用 <a href="/zh/tech-stacks/kafka/">Kafka</a> <strong>把面向用户的确认与下游订单处理链解耦</strong>。用户得到即时确认;库存扣减、支付扣款、通知派发和履约启动异步发生。</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -468,7 +486,7 @@
     </div>
 
     <h2>第 10 步 — 搜索与发现</h2>
-    <p>商品和店铺更新经<strong>变更数据捕获(CDC)</strong>流入 Elasticsearch 集群:主数据库发出变更事件,一个 CDC 连接器(如 Debezium)把它们发布到 Kafka,Kafka 喂搜索索引器。这让索引保持最终一致而不把写延迟耦合到索引——并避免双写陷阱。</p>
+    <p>商品和店铺更新经<strong>变更数据捕获(CDC)</strong>流入 <a href="/zh/tech-stacks/elasticsearch/">Elasticsearch</a> 集群:主数据库发出变更事件,一个 CDC 连接器(如 Debezium)把它们发布到 Kafka,Kafka 喂搜索索引器。这让索引保持最终一致而不把写延迟耦合到索引——并避免双写陷阱。</p>
     <p>搜索服务处理模糊匹配、同义词和 type-ahead。可服务性服务随后在结果返回前按请求用户的地区和购买资格过滤它们。排序混合文本相关性与业务信号(热度、转化率、利润)。</p>
 
     <div class="callout">
@@ -509,11 +527,11 @@
       <li><strong>订单</strong>——按 <code>user_id</code> 分片,使一个用户的完整历史住一个分片、常见的"我的订单"读保持单分片。按 <code>order_id</code> 分片会把一个用户的订单散到节点。</li>
       <li><strong>目录</strong>——按 <code>product_id</code> 哈希分片以均匀分布、无热分区。</li>
       <li><strong>跨分片查询</strong>——"本月某区域所有订单"必须扇出到每个分片并合并,慢;把这类分析查询路由到 OLAP/数仓副本而非 OLTP 路径。</li>
-      <li><strong>重分片</strong>——用一致性哈希或一个查找/目录服务,使加容量移动最少数据。朴素取模分片在分片数变化时重洗几乎每行。</li>
+      <li><strong>重分片</strong>——用<a href="/zh/tech-stacks/sharding/">一致性哈希</a>或一个查找/目录服务,使加容量移动最少数据。朴素取模分片在分片数变化时重洗几乎每行。</li>
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/ecommerce-platform-2.jpg" alt="店铺和商品类图" loading="lazy">
+      <img src="/assets/img/ecommerce-platform-2.jpg" alt="店铺和商品类图" loading="lazy" width="1024" height="703">
       <figcaption>店铺和商品类图</figcaption>
     </figure>
 
@@ -601,9 +619,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -611,7 +630,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

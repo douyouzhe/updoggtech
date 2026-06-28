@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 gRPC 与 Protocol Buffers——契约优先的 RPC、protobuf 二进制格式、HTTP/2 基础、四种流式调用、代码生成,以及 gRPC 对比 REST 与 GraphQL。">
-<title>gRPC 与 Protobuf | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/grpc/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/grpc/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/grpc/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/grpc/">
+<meta name="description" content="契约优先 RPC、protobuf 二进制格式、HTTP/2、四种流式调用,以及 gRPC 对比 REST/GraphQL。">
+<title>gRPC 与 Protobuf | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/grpc/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/grpc/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/grpc/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/grpc/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="gRPC 与 Protobuf">
 <meta property="og:description" content="契约优先 RPC、protobuf 二进制格式、HTTP/2、四种流式调用,以及 gRPC 对比 REST/GraphQL。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/grpc/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/grpc/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="gRPC 与 Protobuf">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="gRPC 与 Protobuf">
 <meta name="twitter:description" content="gRPC 怎么工作:protobuf、HTTP/2、流式调用,以及何时用它而非 REST。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"gRPC 与 Protobuf","description":"契约优先 RPC、protobuf 二进制格式、HTTP/2、四种流式调用,以及 gRPC 对比 REST/GraphQL。","datePublished":"2023-10-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/grpc/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"gRPC 与 Protobuf","description":"契约优先 RPC、protobuf 二进制格式、HTTP/2、四种流式调用,以及 gRPC 对比 REST/GraphQL。","datePublished":"2023-10-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/grpc/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-10-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "什么是 gRPC?", "acceptedAnswer": {"@type": "Answer", "text": "用 Protocol Buffers 跑在 HTTP/2 上的契约优先 RPC 框架,生成类型化 stub,让远程调用看起来像本地方法。"}}, {"@type": "Question", "name": "为什么比 REST/JSON 快?", "acceptedAnswer": {"@type": "Answer", "text": "protobuf 是紧凑二进制(用 tag 而非字段名)、解析快,HTTP/2 在一条连接上多路复用许多调用并压缩头部。"}}, {"@type": "Question", "name": "四种调用类型?", "acceptedAnswer": {"@type": "Answer", "text": "一元、服务端流、客户端流、双向流——由 HTTP/2 的流实现。"}}, {"@type": "Question", "name": "什么时候不该用 gRPC?", "acceptedAnswer": {"@type": "Answer", "text": "公开 API(想要可读 JSON)和浏览器直连(需要 grpc-web 代理);那里用 REST/GraphQL。"}}, {"@type": "Question", "name": "它和 protobuf schema 演化的关系?", "acceptedAnswer": {"@type": "Answer", "text": "用新 tag 号加字段,绝不复用或改 tag——从而向后/向前兼容(见编码与演化)。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"gRPC 与 Protobuf","item":"https://sdeoffer.com/zh/tech-stacks/grpc/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/grpc/">EN</a>
-        <a href="/zh/tech-stacks/grpc/" class="active">中</a>
+        <a href="/tech-stacks/grpc/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/grpc/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">grpc</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">gRPC 与 Protobuf</h1>
     <div class="article-meta">
@@ -319,9 +337,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -329,7 +348,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

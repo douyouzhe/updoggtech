@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.9 of DDIA: consistency and consensus — linearizability, the CAP theorem, ordering and causality, Lamport timestamps, total order broadcast, two-phase commit, consensus algorithms, and ZooKeeper.">
-<title>DDIA Ch.9 — Consistency &amp; Consensus | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-9/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-9/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-9/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-9/">
+<meta name="description" content="Consistency and consensus: linearizability, the CAP theorem, causality and ordering, Lamport timestamps, total order broadcast, two-phase commit, and ZooKeeper.">
+<title>DDIA Ch.9 — Consistency &amp; Consensus | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-9/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-9/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-9/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-9/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.9 — Consistency &amp; Consensus">
-<meta property="og:description" content="Linearizability, the CAP theorem, causality and ordering, total order broadcast, two-phase commit, and consensus.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-9/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Consistency and consensus: linearizability, the CAP theorem, causality and ordering, Lamport timestamps, total order broadcast, two-phase commit, and ZooKeeper.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-9/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.9 — Consistency &amp; Consensus">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.9 — Consistency &amp; Consensus">
 <meta name="twitter:description" content="The strongest consistency models and how distributed nodes agree: linearizability, CAP, and consensus.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.9 — Consistency & Consensus","description":"Linearizability, the CAP theorem, causality and ordering, total order broadcast, two-phase commit, and consensus.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-9/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.9 — Consistency & Consensus","description":"Consistency and consensus: linearizability, the CAP theorem, causality and ordering, Lamport timestamps, total order broadcast, two-phase commit, and ZooKeeper.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-9/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-08","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Linearizability vs serializability?", "acceptedAnswer": {"@type": "Answer", "text": "Linearizability = recency for single objects (looks like one copy); serializability = isolation for multi-object transactions. Strict serializability is both."}}, {"@type": "Question", "name": "What does CAP actually say?", "acceptedAnswer": {"@type": "Answer", "text": "During a network partition, choose consistency (linearizable, reject some requests) or availability (serve stale data). It's narrow — one fault, one model — but the trade is real."}}, {"@type": "Question", "name": "Why is 2PC fragile?", "acceptedAnswer": {"@type": "Answer", "text": "If the coordinator crashes after the prepare phase, participants are in doubt — they can't decide alone and block holding locks. The coordinator is a single point of failure."}}, {"@type": "Question", "name": "Why use ZooKeeper instead of writing consensus?", "acceptedAnswer": {"@type": "Answer", "text": "Consensus (Paxos/Raft) is famously hard to get right; ZooKeeper/etcd package linearizable ops, total ordering, and failure detection so you build leader election and locks on top."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.9 — Consistency &amp; Consensus","item":"https://sdeoffer.com/ddia/chapter-9/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-9/" class="active">EN</a><a href="/zh/ddia/chapter-9/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-9/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-9/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-9</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.9</span>
     <h1 class="article-title">Consistency &amp; Consensus</h1>
     <div class="article-meta">
@@ -199,7 +217,7 @@
   </div>
 
   <div class="article-body">
-    <p>Chapter 9 is the climax of Part II. Having catalogued everything that can go wrong (Chapter 8), Kleppmann now builds the positive tools: general-purpose abstractions with strong guarantees that let applications ignore some of the chaos beneath them. The two big ideas are <strong>linearizability</strong> (the strongest single-object consistency model) and <strong>consensus</strong> (getting nodes to agree on something despite faults). The chapter's punchline is that a surprising number of problems — leader election, uniqueness constraints, atomic commit, lock services — are all equivalent to consensus, so solving consensus once (or outsourcing it to ZooKeeper) solves them all.</p>
+    <p>Chapter 9 is the climax of Part II. Having catalogued everything that can go wrong (<a href="/ddia/chapter-8/">Chapter 8</a>), Kleppmann now builds the positive tools: general-purpose abstractions with strong guarantees that let applications ignore some of the chaos beneath them. The two big ideas are <strong>linearizability</strong> (the strongest single-object consistency model) and <strong>consensus</strong> (getting nodes to agree on something despite faults). The chapter's punchline is that a surprising number of problems — leader election, uniqueness constraints, atomic commit, lock services — are all equivalent to consensus, so solving consensus once (or outsourcing it to ZooKeeper) solves them all.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -232,7 +250,7 @@
         <tr><td>About</td><td class="col-a">Recency of single-object reads/writes</td><td class="col-b">Isolation of multi-object transactions</td></tr>
         <tr><td>Guarantee</td><td class="col-a">Looks like one copy, real-time order</td><td class="col-b">Txns equivalent to some serial order</td></tr>
         <tr><td>Concerns</td><td class="col-a">Replication / freshness</td><td class="col-b">Concurrency / interleaving</td></tr>
-        <tr><td>Together</td><td class="col-a" colspan="2">Strict serializability = both at once (e.g. two-phase locking, Spanner)</td></tr>
+        <tr><td>Together</td><td class="col-a" colspan="2">Strict serializability = both at once (e.g. <a href="/ddia/chapter-7/">two-phase locking</a>, Spanner)</td></tr>
       </tbody>
     </table>
 
@@ -245,7 +263,7 @@
     </ul>
 
     <h3>How It's Implemented, and the CAP Cost</h3>
-    <p>Which replication methods are linearizable? Single-leader replication <em>can</em> be (if you read only from the leader, and it really is the leader). Consensus algorithms <em>are</em>. Multi-leader is not. Leaderless (Dynamo-style) is generally <strong>not</strong> linearizable even with strict quorums, because clock skew and the timing of read repair break the recency guarantee. The deep reason linearizability is hard is captured by the <strong>CAP theorem</strong>: when a network partition occurs, a system must choose — remain <strong>consistent</strong> (linearizable) by refusing requests on the side that can't reach a quorum (sacrificing availability), or remain <strong>available</strong> by serving possibly-stale data (sacrificing linearizability). CAP is often stated too broadly; it only concerns one fault (partitions) and one model (linearizability). But the practical lesson holds: linearizability requires network round-trips, so it's <strong>slow</strong>, and many systems deliberately give it up for performance and availability.</p>
+    <p>Which replication methods are linearizable? <a href="/ddia/chapter-5/">Single-leader replication</a> <em>can</em> be (if you read only from the leader, and it really is the leader). Consensus algorithms <em>are</em>. Multi-leader is not. Leaderless (Dynamo-style) is generally <strong>not</strong> linearizable even with strict quorums, because clock skew and the timing of read repair break the recency guarantee. The deep reason linearizability is hard is captured by the <strong>CAP theorem</strong>: when a network partition occurs, a system must choose — remain <strong>consistent</strong> (linearizable) by refusing requests on the side that can't reach a quorum (sacrificing availability), or remain <strong>available</strong> by serving possibly-stale data (sacrificing linearizability). CAP is often stated too broadly; it only concerns one fault (partitions) and one model (linearizability). But the practical lesson holds: linearizability requires network round-trips, so it's <strong>slow</strong>, and many systems deliberately give it up for performance and availability.</p>
 
     <h2>Ordering and Causality</h2>
     <p>Ordering keeps recurring because it's deeply tied to causality. <strong>Causality</strong> imposes an order on events: a question must come before its answer; a row must be created before it's updated. Causality defines a <strong>partial order</strong> — some events are ordered (causally related), others are incomparable (concurrent). Linearizability, by contrast, imposes a <strong>total order</strong>: every operation is in one timeline. Linearizability implies causality, but it's stronger (and costlier) than necessary.</p>
@@ -320,9 +338,10 @@ phase 2 (commit):   coordinator → participants: "commit!"
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -330,7 +349,7 @@ phase 2 (commit):   coordinator → participants: "commit!"
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AI 编程:function calling(tool use)与 MCP 深入——机制与三阶段交互、用 JSON Schema 定义工具、tool-use 循环、并行 tool call、把 tool use 当 structured output、MCP 架构(Host/Client/Server)、三种原语、最小 MCP server、MCP vs. function calling、MCP vs. RAG,以及安全考量。">
-<title>工具使用、函数调用与 MCP — AI 编程 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/tool-use-function-calling-mcp/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/tool-use-function-calling-mcp/">
+<meta name="description" content="function calling(tool use)与 MCP 深入:三阶段交互、用 JSON Schema 定义工具、tool-use 循环、并行调用、MCP 架构(Host/Client/Server)与三种原语,以及安全考量。">
+<title>工具使用、函数调用与 MCP — AI 编程 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/tool-use-function-calling-mcp/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="工具使用、函数调用与 MCP">
-<meta property="og:description" content="function calling 与 MCP:机制、JSON Schema、tool-use 循环、并行调用、MCP 架构与生态、安全。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/tool-use-function-calling-mcp/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="function calling(tool use)与 MCP 深入:三阶段交互、用 JSON Schema 定义工具、tool-use 循环、并行调用、MCP 架构(Host/Client/Server)与三种原语,以及安全考量。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="工具使用、函数调用与 MCP — AI 编程">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="工具使用、函数调用与 MCP">
 <meta name="twitter:description" content="tool use / function calling 与 MCP:执行循环、并行调用、structured output、MCP Host/Client/Server。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "工具使用、函数调用与 MCP", "description": "AI 编程:function calling(tool use)与 MCP 深入——机制与三阶段交互、用 JSON Schema 定义工具、tool-use 循环、并行 tool call、把 tool use 当 structured output、MCP 架构(Host/Client/Server)、三种原语、最小 MCP server、MCP vs. function calling、MCP vs. RAG,以及安全考量。", "datePublished": "2026-05-20", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/tool-use-function-calling-mcp/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"工具使用、函数调用与 MCP","description":"function calling(tool use)与 MCP 深入:三阶段交互、用 JSON Schema 定义工具、tool-use 循环、并行调用、MCP 架构(Host/Client/Server)与三种原语,以及安全考量。","datePublished":"2026-05-20","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-20"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "在 API 层面解释 function calling 循环。", "acceptedAnswer": {"@type": "Answer", "text": "模型发出一个 tool_use 块(名称 + 参数 JSON) → 你的代码执行真正的函数 → 你追加一条 tool_result 消息 → 模型继续。模型从不直接执行代码;它只发出由你的 controller 据以行动的意图。"}}, {"@type": "Question", "name": "为什么工具描述比 schema 更重要?", "acceptedAnswer": {"@type": "Answer", "text": "schema 在模型已决定调用某工具后约束参数。描述才是模型读来决定是否调用该工具的依据。含糊的描述导致错误的工具选择,这是任何 schema 都修不了的——模型会用完全有效的参数调错工具。"}}, {"@type": "Question", "name": "MCP 解决了 function calling 解决不了的什么问题?", "acceptedAnswer": {"@type": "Answer", "text": "function calling 是按应用的:每个 agent 独立重造同样的工具。MCP 标准化了工具实现(server)与 agent host 之间的接口,使一个工具写一次即可在任何 MCP 兼容 agent 上复用——正是 REST API 给 web 服务带来的那种可组合性收益。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"工具使用、函数调用与 MCP — AI 编程","item":"https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -140,13 +154,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -159,21 +176,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ai-coding/tool-use-function-calling-mcp/">EN</a>
-        <a href="/zh/ai-coding/tool-use-function-calling-mcp/" class="active">中</a>
+        <a href="/ai-coding/tool-use-function-calling-mcp/" hreflang="en">EN</a>
+        <a href="/zh/ai-coding/tool-use-function-calling-mcp/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">tool-use-function-calling-mcp</span>
-    </div>
+    </nav>
     <span class="article-tag">AI 编程</span>
     <h1 class="article-title">工具使用、函数调用与 MCP</h1>
     <div class="article-meta">
@@ -188,7 +206,7 @@
   <div class="article-body">
     <p>语言模型本身,是一个精巧的文本变换器:它读文本、产文本。我们称作“agent”的一切——能读文件、查数据库、调 API、跑代码、与世界交互的系统——都是一个配备了工具的语言模型。<strong>function calling</strong>(Anthropic 叫“tool use”,OpenAI 叫“function calling”,是同一个概念)正是那个把“能<em>描述</em>一个动作的模型”与“能真正<em>采取</em>它的模型”衔接起来的机制。</p>
 
-    <p>深入理解 function calling——schema 如何工作、执行循环如何结构化、并行调用长什么样、它与 structured output 有何关系——是任何构建 LLM 驱动应用的人的基础。其上还有一个更新的层:<strong>Model Context Protocol(MCP)</strong>,Anthropic 推出的一个开放标准,把 agent 在多样生态中如何连接工具的方式标准化了。MCP 之于 agent,正如 REST 之于 web 服务:一个让组件无需定制集成即可互操作的通用接口。本文对两者都做完整深入的讲解。</p>
+    <p>深入理解 function calling——schema 如何工作、执行循环如何结构化、并行调用长什么样、它与 structured output 有何关系——是任何构建 LLM 驱动应用的人的基础。其上还有一个更新的层:<strong>Model Context Protocol(MCP)</strong>,Anthropic 推出的一个开放标准,把 agent 在多样生态中如何连接工具的方式标准化了。MCP 之于 agent,正如 <a href="/zh/tech-stacks/graphql-rest-comparison/">REST</a> 之于 web 服务:一个让组件无需定制集成即可互操作的通用接口。本文对两者都做完整深入的讲解。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -440,7 +458,7 @@ messages = [{<span class="str">"role"</span>: <span class="str">"user"</span>, <
     <p>MCP 定义三种角色:</p>
 
     <ul>
-      <li><strong>MCP Host:</strong>运行 LLM 并管理 agentic 循环的应用。Claude Code、Cursor、一个自定义 agent——任何想用工具的应用都可以是 MCP host。host 为它连接的每个 server 含一个 MCP client。</li>
+      <li><strong>MCP Host:</strong>运行 LLM 并管理 <a href="/zh/ai-coding/how-ai-coding-agents-work/">agentic 循环</a>的应用。Claude Code、Cursor、一个自定义 agent——任何想用工具的应用都可以是 MCP host。host 为它连接的每个 server 含一个 MCP client。</li>
       <li><strong>MCP Client:</strong>host 内部的一个薄层,维持到某个 MCP server 的持久连接,处理协议分帧(连接、能力协商、请求/响应)。</li>
       <li><strong>MCP Server:</strong>一个进程,经 MCP 协议暴露一组工具(可选还有 resource 和 prompt)。真正的功能活在 server 里:它可能包装一个 GitHub API client、一个数据库连接、一个文件系统层、一个 web 浏览器,或别的什么。</li>
     </ul>
@@ -559,7 +577,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
     <p>对一个你同时掌控 LLM 循环和所有工具的小而单一用途的 agent,传统 function calling 更简单。MCP 的价值随你拥有更多 agent、更多工具,或想跨团队共享工具实现而复利增长。把它想成 REST vs. 直连数据库的权衡:对单个用例直连更简单;有许多客户端时标准接口胜出。</p>
 
     <h2>MCP vs. RAG:互补,而非竞争</h2>
-    <p>检索增强生成(RAG)在生成前抓取相关文档并插入模型上下文。它是只读、被动的:模型不请求检索;应用替模型检索。MCP 工具是主动、按需的:模型决定何时调一个工具、要什么。</p>
+    <p><a href="/zh/system-design/rag-system/">检索增强生成(RAG)</a>在生成前抓取相关文档并插入模型上下文。它是只读、被动的:模型不请求检索;应用替模型检索。MCP 工具是主动、按需的:模型决定何时调一个工具、要什么。</p>
 
     <table class="compare-table">
       <thead>
@@ -582,7 +600,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
     <ul>
       <li><strong>Filesystem</strong>——读写本地文件,可配置访问控制。Anthropic 的参考实现。</li>
       <li><strong>Git</strong>——列出改动文件、读 diff、创建 commit、管理分支。</li>
-      <li><strong>GitHub / GitLab</strong>——创建/评审 PR、管理 issue、触发 CI 工作流。</li>
+      <li><strong>GitHub / GitLab</strong>——创建/评审 PR、管理 issue、触发 <a href="/zh/tech-stacks/ci-cd/">CI</a> 工作流。</li>
       <li><strong>PostgreSQL / SQLite</strong>——跑查询、检视 schema、列出表。</li>
       <li><strong>Browser</strong>——导航页面、点击元素、抽取内容(用于 web 自动化 agent)。</li>
       <li><strong>Slack / Linear / Jira</strong>——读写 issue、发消息、管理项目。</li>
@@ -629,9 +647,10 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -639,7 +658,7 @@ mcp = <span class="fn">FastMCP</span>(<span class="str">"dev-tools"</span>)
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

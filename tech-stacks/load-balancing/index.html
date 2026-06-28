@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
-<title>Load Balancing — Algorithms, Layer 4 vs 7, Health Checks | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/load-balancing/">
+<meta name="description" content="Load balancing for scalable systems: balancing algorithms, layer 4 vs layer 7, health checks, sticky sessions, and the tradeoffs that come up in interviews.">
+<title>Load Balancing — Algorithms, Layer 4 vs 7 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/load-balancing/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Load Balancing — Algorithms, Layer 4 vs 7, Health Checks">
-<meta property="og:description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/load-balancing/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/load-balancing-1.jpg">
+<meta property="og:description" content="Load balancing for scalable systems: balancing algorithms, layer 4 vs layer 7, health checks, sticky sessions, and the tradeoffs that come up in interviews.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/load-balancing/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/load-balancing-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="739">
+<meta property="og:image:alt" content="Load Balancing — Algorithms, Layer 4 vs 7, Health Checks">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/load-balancing-1.jpg">
 <meta name="twitter:title" content="Load Balancing — Algorithms, Layer 4 vs 7, Health Checks">
 <meta name="twitter:description" content="A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Load Balancing — Algorithms, Layer 4 vs 7, Health Checks","description":"A practical guide to load balancing — algorithms, layer 4 vs layer 7, health checks, sticky sessions, and common interview tradeoffs.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/load-balancing/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Load Balancing — Algorithms, Layer 4 vs 7, Health Checks","description":"Load balancing for scalable systems: balancing algorithms, layer 4 vs layer 7, health checks, sticky sessions, and the tradeoffs that come up in interviews.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/load-balancing/"},"image":"https://sdeoffer.com/assets/img/load-balancing-1.jpg","dateModified":"2023-04-02","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Layer 4 vs Layer 7 — when do you pick each?", "acceptedAnswer": {"@type": "Answer", "text": "Layer 4 for raw TCP throughput, non-HTTP protocols, or when you need Direct Server Return to keep return traffic off the LB; Layer 7 when you need path-based routing, TLS termination, gRPC support, or header-based decisions."}}, {"@type": "Question", "name": "How does a load balancer detect a failed server?", "acceptedAnswer": {"@type": "Answer", "text": "Active health checks (synthetic probes to /health on a schedule) or passive health checks (infer from 5xx error rates on real traffic). Active checks detect pre-traffic failures; passive checks detect in-flight failures."}}, {"@type": "Question", "name": "Why are sticky sessions a problem?", "acceptedAnswer": {"@type": "Answer", "text": "They reduce load distribution, complicate scaling, and mean all session data is lost if that server goes down — the fix is externalizing session state to Redis so any server can handle any request."}}, {"@type": "Question", "name": "What is consistent hashing and when is it used?", "acceptedAnswer": {"@type": "Answer", "text": "Maps servers and requests to a ring; adding/removing a server affects only ~1/n of keys instead of reshuffling everything. Used by distributed caches, CDNs, database sharding, and Kafka partition assignment."}}, {"@type": "Question", "name": "How does Anycast work?", "acceptedAnswer": {"@type": "Answer", "text": "The same IP is announced via BGP from multiple geographic PoPs; the Internet's routing naturally delivers packets to the topologically nearest PoP — no DNS resolution, no TTL caching, sub-second failover when a PoP goes down."}}, {"@type": "Question", "name": "Why can't an L4 LB balance gRPC traffic?", "acceptedAnswer": {"@type": "Answer", "text": "gRPC multiplexes many calls over a single HTTP/2 connection; an L4 LB routes the entire connection to one backend. Only an L7 proxy that understands HTTP/2 framing can distribute individual calls across backends."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Load Balancing — Algorithms, Layer 4 vs 7, Health Checks","item":"https://sdeoffer.com/tech-stacks/load-balancing/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -143,31 +156,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/load-balancing/" class="active">EN</a><a href="/zh/tech-stacks/load-balancing/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/load-balancing/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/load-balancing/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">load-balancing</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">Load Balancing</h1>
     <div class="article-meta">
@@ -199,7 +216,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/load-balancing-1.jpg" alt="Load balancing distributing traffic across backend servers" loading="lazy">
+        <img src="/assets/img/load-balancing-1.jpg" alt="Load balancing distributing traffic across backend servers" width="1024" height="739" fetchpriority="high">
         <figcaption>Load balancing distributing traffic across backend servers</figcaption>
       </figure>
 
@@ -275,7 +292,7 @@
 
     <h2>Sticky Sessions</h2>
     <p>Some applications store session state on the server (in-process caches, file uploads in progress). <strong>Sticky sessions</strong> (also called session persistence) ensure that a given client's requests always go to the same backend. The load balancer typically implements this by setting a cookie on the client's first request and reading it on subsequent ones.</p>
-    <p>Sticky sessions are a double-edged sword: they improve compatibility with stateful applications but reduce the even distribution of load and complicate failure handling — if the sticky server goes down, all its sessions are lost anyway. The preferred fix is to move session state to a shared store (Redis, a database) so any server can handle any request.</p>
+    <p>Sticky sessions are a double-edged sword: they improve compatibility with stateful applications but reduce the even distribution of load and complicate failure handling — if the sticky server goes down, all its sessions are lost anyway. The preferred fix is to move session state to a shared store (<a href="/tech-stacks/redis/">Redis</a>, a database) so any server can handle any request.</p>
 
     <h2>Load Balancer Redundancy</h2>
     <p>The load balancer itself is a potential single point of failure. Production deployments use an <strong>active-passive</strong> or <strong>active-active</strong> pair, often with a <strong>Virtual IP (VIP)</strong> address that floats between nodes. DNS or BGP routes the VIP to the active node; if it fails, the passive node claims the VIP within seconds via protocols like VRRP (HAProxy + Keepalived) or by updating the DNS record.</p>
@@ -318,7 +335,7 @@
         <span class="kw">return</span> self.ring[self.keys[idx]]   <span class="cm"># clockwise successor</span></code></pre>
     </div>
 
-    <p>Consistent hashing is used by: distributed caches (Memcached, Redis Cluster), CDN edge servers, database sharding routers, and Kafka's partition assignment. It is the answer whenever session affinity or cache locality matters and you need to add/remove nodes without catastrophic key remapping.</p>
+    <p>Consistent hashing is used by: distributed caches (Memcached, Redis Cluster), CDN edge servers, <a href="/tech-stacks/sharding/">database sharding</a> routers, and <a href="/tech-stacks/kafka/">Kafka</a>'s partition assignment. It is the answer whenever session affinity or cache locality matters and you need to add/remove nodes without catastrophic key remapping.</p>
 
     <h2>L4 vs L7 — Going Deeper</h2>
     <p>The high-level distinction is well known, but the implementation details determine which you should reach for in each scenario.</p>
@@ -335,7 +352,7 @@
     <ul>
       <li><strong>Request-level routing</strong> — <code>POST /api/orders</code> → order service; <code>GET /api/products</code> → product service.</li>
       <li><strong>Header manipulation</strong> — add <code>X-Request-ID</code>, rewrite <code>Host</code>, strip internal headers before sending to backends.</li>
-      <li><strong>TLS termination</strong> — decrypt at the LB (or service mesh sidecar), inspect the plaintext, optionally re-encrypt to backend (TLS origination). Centralizes certificate management.</li>
+      <li><strong>TLS termination</strong> — decrypt at the LB (or <a href="/tech-stacks/api-gateway/">service mesh</a> sidecar), inspect the plaintext, optionally re-encrypt to backend (TLS origination). Centralizes certificate management.</li>
       <li><strong>Authentication offload</strong> — validate JWTs or API keys at the LB, forward only authenticated requests to backends.</li>
       <li><strong>Rate limiting and circuit breaking</strong> — count requests per client/API key and reject excess before they reach backends.</li>
       <li><strong>gRPC load balancing</strong> — L4 LBs can't balance individual gRPC calls within a long-lived HTTP/2 connection; only an L7 proxy that understands HTTP/2 framing can distribute calls across backends.</li>
@@ -621,16 +638,17 @@ vrrp_instance VI_1 {
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.10 of DDIA: batch processing — the Unix philosophy, MapReduce and distributed filesystems, joins and grouping, dataflow engines like Spark and Flink, and the output of batch workflows.">
-<title>DDIA Ch.10 — Batch Processing | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-10/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-10/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-10/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-10/">
+<meta name="description" content="Batch processing with the Unix philosophy, MapReduce and distributed filesystems, joins and grouping, dataflow engines like Spark and Flink, and batch outputs.">
+<title>DDIA Ch.10 — Batch Processing | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-10/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-10/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-10/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-10/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.10 — Batch Processing">
-<meta property="og:description" content="The Unix philosophy, MapReduce, joins and grouping, dataflow engines (Spark, Flink), and the output of batch jobs.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-10/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Batch processing with the Unix philosophy, MapReduce and distributed filesystems, joins and grouping, dataflow engines like Spark and Flink, and batch outputs.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-10/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.10 — Batch Processing">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.10 — Batch Processing">
 <meta name="twitter:description" content="From Unix pipes to MapReduce to dataflow engines: how large bounded datasets are processed.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.10 — Batch Processing","description":"The Unix philosophy, MapReduce, joins and grouping, dataflow engines (Spark, Flink), and the output of batch jobs.","datePublished":"2023-04-09","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-10/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.10 — Batch Processing","description":"Batch processing with the Unix philosophy, MapReduce and distributed filesystems, joins and grouping, dataflow engines like Spark and Flink, and batch outputs.","datePublished":"2023-04-09","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-10/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-09","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What are the three stages of MapReduce?", "acceptedAnswer": {"@type": "Answer", "text": "Map (emit key-value pairs), shuffle (framework sorts and groups by key), reduce (process each key's values). The shuffle is the expensive, essential middle."}}, {"@type": "Question", "name": "Reduce-side vs map-side join?", "acceptedAnswer": {"@type": "Answer", "text": "Reduce-side (sort-merge) is general but shuffles everything; map-side (broadcast or partitioned hash) skips the shuffle when one input is small or both are co-partitioned."}}, {"@type": "Question", "name": "Why is batch fault tolerance easy?", "acceptedAnswer": {"@type": "Answer", "text": "Inputs are immutable and jobs deterministic with no side effects, so a failed task is simply rerun and produces the same result."}}, {"@type": "Question", "name": "Why are Spark/Flink faster than MapReduce?", "acceptedAnswer": {"@type": "Answer", "text": "They model the workflow as one operator graph and pipeline data in memory instead of materializing every intermediate step to disk."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.10 — Batch Processing","item":"https://sdeoffer.com/ddia/chapter-10/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-10/" class="active">EN</a><a href="/zh/ddia/chapter-10/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-10/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-10/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-10</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.10</span>
     <h1 class="article-title">Batch Processing</h1>
     <div class="article-meta">
@@ -199,7 +217,7 @@
   </div>
 
   <div class="article-body">
-    <p>Chapter 10 opens Part III, "Derived Data," which is about systems that take data from one place and transform it into another — indexes, caches, aggregates, models. It starts with <strong>batch processing</strong>: jobs that take a large, <em>bounded</em> input, crunch it, and produce an output, with no expectation of low latency. Kleppmann builds the ideas from the ground up — starting with humble Unix command-line tools, whose design philosophy turns out to be the conceptual ancestor of MapReduce and the modern dataflow engines that power large-scale analytics.</p>
+    <p>Chapter 10 opens Part III, "Derived Data," which is about systems that take data from one place and transform it into another — indexes, <a href="/tech-stacks/caching/">caches</a>, aggregates, models. It starts with <strong>batch processing</strong>: jobs that take a large, <em>bounded</em> input, crunch it, and produce an output, with no expectation of low latency. Kleppmann builds the ideas from the ground up — starting with humble Unix command-line tools, whose design philosophy turns out to be the conceptual ancestor of MapReduce and the modern dataflow engines that power large-scale analytics.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -265,7 +283,7 @@
     <p>Batch jobs typically produce <em>bulk</em> outputs: building a search index (how Google originally used MapReduce), training a recommendation/ML model, or constructing read-only key-value stores to be loaded into serving systems. The crucial design principle is that <strong>inputs are immutable and jobs have no side effects</strong> — a job only reads its input and writes a fresh output, never modifying the input in place. This gives fault tolerance almost for free: if a task fails (machine crash), the framework simply <strong>reruns it</strong> on another machine, because the deterministic computation on the same immutable input yields the same result. It also makes experimentation safe — a buggy job can be rerun without having corrupted anything.</p>
 
     <h2>Beyond MapReduce: Dataflow Engines</h2>
-    <p>MapReduce's biggest inefficiency: it <strong>materializes intermediate state to disk</strong> (the distributed filesystem) between every map-reduce step. For a workflow of many steps, this means writing and re-reading (and re-replicating) gigabytes repeatedly, and each step can't start until the previous fully finishes. <strong>Dataflow engines</strong> — Spark, Tez, Flink — fix this by modeling the entire workflow as a single job of connected operators:</p>
+    <p>MapReduce's biggest inefficiency: it <strong>materializes intermediate state to disk</strong> (the distributed filesystem) between every map-reduce step. For a workflow of many steps, this means writing and re-reading (and re-replicating) gigabytes repeatedly, and each step can't start until the previous fully finishes. <strong>Dataflow engines</strong> — <a href="/tech-stacks/spark-joins/">Spark</a>, Tez, Flink — fix this by modeling the entire workflow as a single job of connected operators:</p>
     <ul>
       <li>They avoid unnecessary materialization, <strong>pipelining</strong> data between operators and keeping it in memory where possible.</li>
       <li>They schedule the whole graph together, so operators can overlap and the engine can optimize across step boundaries.</li>
@@ -289,7 +307,7 @@
 
     <div class="callout">
       <div class="callout-label">takeaway</div>
-      <p>Batch processing's enduring lessons are about <em>design discipline</em>, not just throughput: immutable inputs and side-effect-free, deterministic jobs make fault tolerance, retries, and experimentation trivial. MapReduce proved the model at scale by borrowing the Unix philosophy; dataflow engines refined it by not touching the disk between every step. The same "derived data from immutable inputs" idea reappears, in continuous form, in stream processing.</p>
+      <p>Batch processing's enduring lessons are about <em>design discipline</em>, not just throughput: immutable inputs and side-effect-free, deterministic jobs make fault tolerance, retries, and experimentation trivial. MapReduce proved the model at scale by borrowing the Unix philosophy; dataflow engines refined it by not touching the disk between every step. The same "derived data from immutable inputs" idea reappears, in continuous form, in <a href="/ddia/chapter-11/">stream processing</a>.</p>
     </div>
 
     <div class="callout">
@@ -313,9 +331,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -323,7 +342,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

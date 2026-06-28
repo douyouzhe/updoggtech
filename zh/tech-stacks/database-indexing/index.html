@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解数据库索引——为什么需要索引、B-Tree 与 LSM-Tree 两种结构、聚簇索引与二级索引、复合索引与覆盖索引、最左前缀规则,以及什么时候不该建索引。">
-<title>数据库索引 — B-Tree 对比 LSM-Tree | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/database-indexing/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/database-indexing/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/database-indexing/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/database-indexing/">
+<meta name="description" content="为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。">
+<title>数据库索引 — B-Tree 对比 LSM-Tree | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/database-indexing/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/database-indexing/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="数据库索引 — B-Tree 对比 LSM-Tree">
 <meta property="og:description" content="为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/database-indexing/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/database-indexing/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="数据库索引 — B-Tree 对比 LSM-Tree">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="数据库索引 — B-Tree 对比 LSM-Tree">
 <meta name="twitter:description" content="数据库索引怎么工作:B-Tree 对比 LSM-Tree、聚簇与二级、复合与覆盖索引。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"数据库索引 — B-Tree 对比 LSM-Tree","description":"为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。","datePublished":"2023-09-16","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/database-indexing/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"数据库索引 — B-Tree 对比 LSM-Tree","description":"为什么需要索引、B-Tree 与 LSM-Tree、聚簇与二级索引、复合与覆盖索引、最左前缀规则。","datePublished":"2023-09-16","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/database-indexing/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-16"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "索引的代价是什么?", "acceptedAnswer": {"@type": "Answer", "text": "存储加写变慢——每次写都更新每个索引。它换来 O(log n) 读而非 O(n) 扫描。"}}, {"@type": "Question", "name": "B-Tree 对比 LSM-Tree?", "acceptedAnswer": {"@type": "Answer", "text": "B-Tree = 有序、原地、读优化(关系库);LSM = memtable + 不可变 SSTable + compaction,写优化(Cassandra、RocksDB)。"}}, {"@type": "Question", "name": "聚簇 vs 二级索引?", "acceptedAnswer": {"@type": "Answer", "text": "聚簇定义表的物理顺序(表即索引);二级是独立结构、指回行(多一跳)。"}}, {"@type": "Question", "name": "最左前缀规则?", "acceptedAnswer": {"@type": "Answer", "text": "(a,b,c) 上的复合索引服务查 a、a+b、a+b+c——不服务单查 b 或 c。列序必须匹配查询模式。"}}, {"@type": "Question", "name": "覆盖索引是什么?", "acceptedAnswer": {"@type": "Answer", "text": "包含查询所需全部列的索引,只靠索引就能回答、不用读表。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"数据库索引 — B-Tree 对比 LSM-Tree","item":"https://sdeoffer.com/zh/tech-stacks/database-indexing/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/database-indexing/">EN</a>
-        <a href="/zh/tech-stacks/database-indexing/" class="active">中</a>
+        <a href="/tech-stacks/database-indexing/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/database-indexing/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">database-indexing</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">数据库索引</h1>
     <div class="article-meta">
@@ -343,9 +361,10 @@ WHERE name=?                            ✗ 用不上
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -353,7 +372,7 @@ WHERE name=?                            ✗ 用不上
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

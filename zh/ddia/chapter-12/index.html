@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 12 章:数据系统的未来——数据集成(记录系统 + 派生数据、批与流统一)、解绑数据库(以事件日志为集成点、数据流派生函数、读/写路径)、追求正确性(端到端幂等、完整性 vs 及时性、审计),以及数据伦理。">
-<title>DDIA 第12章 — 数据系统的未来 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-12/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-12/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-12/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-12/">
+<meta name="description" content="数据系统的未来——DDIA 第 12 章讲数据集成、解绑数据库、数据流派生、端到端正确性、完整性 vs 及时性,以及数据伦理。">
+<title>DDIA 第12章 — 数据系统的未来 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-12/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-12/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-12/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-12/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="数据系统的未来">
-<meta property="og:description" content="DDIA 第 12 章:数据集成、解绑数据库、数据流、端到端正确性、完整性 vs 及时性、数据伦理。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-12/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="数据系统的未来——DDIA 第 12 章讲数据集成、解绑数据库、数据流派生、端到端正确性、完整性 vs 及时性,以及数据伦理。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-12/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第12章 — 数据系统的未来">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="数据系统的未来">
 <meta name="twitter:description" content="DDIA 第 12 章:解绑数据库、事件日志、端到端幂等、完整性优先、数据伦理。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 12 章 — 数据系统的未来", "description": "DDIA 第 12 章:数据系统的未来——数据集成(记录系统 + 派生数据、批与流统一)、解绑数据库(以事件日志为集成点、数据流派生函数、读/写路径)、追求正确性(端到端幂等、完整性 vs 及时性、审计),以及数据伦理。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-12/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 12 章 — 数据系统的未来","description":"数据系统的未来——DDIA 第 12 章讲数据集成、解绑数据库、数据流派生、端到端正确性、完整性 vs 及时性,以及数据伦理。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-12/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "\"解绑数据库\"是什么意思?", "acceptedAnswer": {"@type": "Answer", "text": "围绕一个事件日志作集成点组合专门系统(存储、索引、缓存、流处理器),而非一个单体数据库——\"把数据库翻里朝外\"。"}}, {"@type": "Question", "name": "为什么正确性是端到端关切?", "acceptedAnswer": {"@type": "Answer", "text": "重试在许多层发生,所以去重需要一个端到端标识符(客户端请求 ID)和幂等操作——没有单层能保证它。"}}, {"@type": "Question", "name": "及时性 vs 完整性?", "acceptedAnswer": {"@type": "Answer", "text": "及时性 = 最新(一个滞后,自我纠正);完整性 = 无损坏/丢失(永久、严重)。完整性更要紧,基于日志的派生使它容易。"}}, {"@type": "Question", "name": "读路径 vs 写路径?", "acceptedAnswer": {"@type": "Answer", "text": "物化视图把工作移到写时,使读成为便宜查找——用写成本和存储换读延迟。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第12章 — 数据系统的未来","item":"https://sdeoffer.com/zh/ddia/chapter-12/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-12/">EN</a>
-        <a href="/zh/ddia/chapter-12/" class="active">中</a>
+        <a href="/ddia/chapter-12/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-12/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-12</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 12 章</span>
     <h1 class="article-title">数据系统的未来</h1>
     <div class="article-meta">
@@ -223,10 +241,10 @@
     </div>
 
     <h2>数据集成(Data Integration)</h2>
-    <p>因为没有单一工具满足所有访问模式,每个非平凡应用最终组合几个——一个事务数据库、一个搜索索引、一个缓存、一个分析仓库,也许一个推荐系统。核心实际问题是随数据变化保持它们<strong>彼此一致</strong>。本书反复的答案:挑一个<strong>记录系统(system of record)</strong>(权威来源)并把其他一切当作从它计算的<strong>派生数据</strong>,通过把记录系统的变更日志(经 CDC 或事件溯源)<em>按定义的顺序</em>喂进每个派生系统来保持同步。一个清晰的写全序是让这可靠的东西;没有它,对不同系统的并发更新竞争并分歧。</p>
+    <p>因为没有单一工具满足所有访问模式,每个非平凡应用最终组合几个——一个事务数据库、一个<a href="/zh/tech-stacks/elasticsearch/">搜索索引</a>、一个<a href="/zh/tech-stacks/caching/">缓存</a>、一个分析仓库,也许一个推荐系统。核心实际问题是随数据变化保持它们<strong>彼此一致</strong>。本书反复的答案:挑一个<strong>记录系统(system of record)</strong>(权威来源)并把其他一切当作从它计算的<strong>派生数据</strong>,通过把记录系统的变更日志(经 CDC 或事件溯源)<em>按定义的顺序</em>喂进每个派生系统来保持同步。一个清晰的写全序是让这可靠的东西;没有它,对不同系统的并发更新竞争并分歧。</p>
 
     <h3>批与流,一起</h3>
-    <p>批处理和流处理都是派生数据的工具;它们主要区别在输入是否有界。<strong>Lambda 架构</strong>提议同时跑两者——一个批层从所有历史重算准确视图、一个速度层给低延迟近似结果——但维护两条代码路径很痛苦。Kleppmann 主张趋势是<strong>统一</strong>它们:一个强大的流处理器也能<em>重处理</em>历史数据(从头重放日志),所以你能在改代码时从头重建一个派生数据集,而无需单独的批系统。</p>
+    <p><a href="/zh/ddia/chapter-10/">批处理</a>和<a href="/zh/ddia/chapter-11/">流处理</a>都是派生数据的工具;它们主要区别在输入是否有界。<strong>Lambda 架构</strong>提议同时跑两者——一个批层从所有历史重算准确视图、一个速度层给低延迟近似结果——但维护两条代码路径很痛苦。Kleppmann 主张趋势是<strong>统一</strong>它们:一个强大的流处理器也能<em>重处理</em>历史数据(从头重放日志),所以你能在改代码时从头重建一个派生数据集,而无需单独的批系统。</p>
 
     <h2>解绑数据库</h2>
     <p>传统数据库捆绑许多特性:一个存储引擎、二级索引、复制、查询优化器、物化视图。Kleppmann 把整个应用重新设想为一个<em>翻里朝外</em>的数据库:不用一个内部做一切的单体,你把这些特性<strong>解绑</strong>成独立、专门的系统,并用一个<strong>事件日志作集成点</strong>把它们接在一起。索引、缓存和物化视图成为独立系统,各订阅日志并异步维护自己的派生状态。</p>
@@ -318,9 +336,10 @@ server:
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -328,7 +347,7 @@ server:
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

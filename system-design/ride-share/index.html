@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building a ride-share app — GPS ingestion, bipartite graph matching, geospatial indexing, and async payment processing.">
-<title>Design a Ride-Sharing App (Uber) — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/ride-share/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ride-share/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ride-share/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ride-share/">
+<meta name="description" content="Uber ride-sharing design — ingest driver GPS at scale, match riders with bipartite graph matching over a geospatial index, and settle fares asynchronously.">
+<title>Design a Ride-Sharing App (Uber) — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/ride-share/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ride-share/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ride-share/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ride-share/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design a Ride-Sharing App (Uber) — System Design">
-<meta property="og:description" content="A system design deep dive into building a ride-share app — GPS ingestion, bipartite graph matching, geospatial indexing, and async payment processing.">
-<meta property="og:url" content="https://updoggtech.com/system-design/ride-share/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/ride-share-1.jpg">
+<meta property="og:description" content="Uber ride-sharing design — ingest driver GPS at scale, match riders with bipartite graph matching over a geospatial index, and settle fares asynchronously.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/ride-share/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/ride-share-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="587">
+<meta property="og:image:alt" content="Design a Ride-Sharing App (Uber) — System Design">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/ride-share-1.jpg">
 <meta name="twitter:title" content="Design a Ride-Sharing App (Uber) — System Design">
 <meta name="twitter:description" content="A system design deep dive into building a ride-share app — GPS ingestion, bipartite graph matching, geospatial indexing, and async payment processing.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Ride-Sharing App (Uber)","description":"A system design deep dive into building a ride-share app — GPS ingestion, bipartite graph matching, geospatial indexing, and async payment processing.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/ride-share/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Ride-Sharing App (Uber)","description":"Uber ride-sharing design — ingest driver GPS at scale, match riders with bipartite graph matching over a geospatial index, and settle fares asynchronously.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/ride-share/"},"image":"https://sdeoffer.com/assets/img/ride-share-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why bipartite graph matching instead of greedy nearest-driver?", "acceptedAnswer": {"@type": "Answer", "text": "Greedy assigns each rider to their nearest driver independently, which is locally optimal but globally suboptimal — it can leave nearby riders with much farther drivers. Batching requests and solving the bipartite assignment minimizes average pickup time across all riders."}}, {"@type": "Question", "name": "Why at-most-once for GPS vs. at-least-once for payments?", "acceptedAnswer": {"@type": "Answer", "text": "A dropped GPS packet has negligible impact (next arrives in 5 s); a dropped payment event has real financial consequences. Delivery guarantees should match the business cost of a lost message."}}, {"@type": "Question", "name": "Why partition driver location data by city and product type?", "acceptedAnswer": {"@type": "Answer", "text": "UberX and UberPool draw from separate driver pools; cross-city supply is irrelevant. Partitioning isolates load by market and makes matching queries fast within each segment."}}, {"@type": "Question", "name": "How do you prevent a driver from being double-matched?", "acceptedAnswer": {"@type": "Answer", "text": "The matching service atomically flips the driver's status from AVAILABLE to IN_TRIP in the spatial index before sending the offer. Any concurrent match attempt reads the updated status and skips that driver."}}, {"@type": "Question", "name": "How does the surge multiplier get computed?", "acceptedAnswer": {"@type": "Answer", "text": "Every 60–120 s, count pending_requests and available_drivers per geohash cell; compute their ratio; map to a multiplier table; write to Redis with a short TTL. Pricing reads are Redis hits — never a direct spatial index query."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a Ride-Sharing App (Uber) — System Design","item":"https://sdeoffer.com/system-design/ride-share/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/ride-share/" class="active">EN</a><a href="/zh/system-design/ride-share/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/ride-share/" class="active" hreflang="en">EN</a><a href="/zh/system-design/ride-share/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ride-share</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design a Ride-share App</h1>
     <div class="article-meta">
@@ -220,7 +237,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-1.jpg" alt="High-level ride-share app architecture" loading="lazy">
+      <img src="/assets/img/ride-share-1.jpg" alt="High-level ride-share app architecture" width="1024" height="587" fetchpriority="high">
       <figcaption>High-level ride-share app architecture</figcaption>
     </figure>
 
@@ -321,13 +338,13 @@
     <p>The <code>POST /driver/location</code> endpoint is called at very high frequency and uses <strong>at-most-once</strong> delivery — the server accepts and moves on; no acknowledgement retry. The trip lifecycle endpoints are idempotent — calling <code>/complete</code> twice on an already-completed trip is a no-op at the state machine level.</p>
 
     <h2>Step 4 — Driver and Rider Registration</h2>
-    <p>The User Service handles authentication and profile management for both sides of the marketplace. Driver onboarding involves an additional <strong>Background Checker</strong> that validates accident history, license validity, SSN, and vehicle status before a driver is activated. Frequently accessed user profiles are cached in Redis to reduce database load on high-traffic lookup paths.</p>
+    <p>The User Service handles authentication and profile management for both sides of the marketplace. Driver onboarding involves an additional <strong>Background Checker</strong> that validates accident history, license validity, SSN, and vehicle status before a driver is activated. Frequently accessed user profiles are cached in <a href="/tech-stacks/redis/">Redis</a> to reduce database load on high-traffic lookup paths.</p>
     <p>Driver profiles carry additional state beyond what a rider profile needs: vehicle details (make, model, license plate, color), current availability status (<code>OFFLINE</code> / <code>AVAILABLE</code> / <code>IN_TRIP</code>), and product type eligibility (UberX, Comfort, Black, Pool). This eligibility is stored in SQL and cached; the matching service reads it to filter the driver pool before running the assignment algorithm.</p>
 
     <h2>Step 5 — GPS Ingestion Pipeline</h2>
     <p>Every active driver transmits a GPS packet approximately every <strong>5 seconds</strong>, containing their <code>user_id</code>, current location, and a timestamp. At 15 million trips per day and assuming ~1M concurrent active drivers at peak, this produces ~200,000 writes per second — a high-volume, bursty write stream that a synchronous HTTP endpoint cannot absorb without being a bottleneck.</p>
 
-    <p>A <strong>message queue</strong> (Kafka or a purpose-built low-latency alternative) decouples the GPS producers from the location processing consumers, absorbing variability in QPS. Drivers write to the queue without waiting for confirmation; the consumers — the location update workers — drain the queue and update the in-memory spatial index and Cassandra asynchronously.</p>
+    <p>A <a href="/tech-stacks/message-queue/"><strong>message queue</strong></a> (Kafka or a purpose-built low-latency alternative) decouples the GPS producers from the location processing consumers, absorbing variability in QPS. Drivers write to the queue without waiting for confirmation; the consumers — the location update workers — drain the queue and update the in-memory spatial index and Cassandra asynchronously.</p>
 
     <p>The delivery guarantee is <strong>at-most-once</strong>. A single lost GPS packet is acceptable because the next one arrives 5 seconds later — the cost of guaranteed delivery (retry loops, deduplication, higher latency) adds complexity for a negligible benefit. The contrast with payments is instructive: payment events use at-least-once because losing a payment message has real financial consequences.</p>
 
@@ -411,7 +428,7 @@ length  cell width  cell height  use case
     <p>Cassandra is chosen for the persistent tier because it handles <strong>high write throughput</strong> with eventual consistency — the exact profile of GPS history. The partition key is <code>(driver_id, date_hour_bucket)</code> so all location records for a driver in a time window are co-located on one node, making "reconstruct this driver's route during trip X" a single partition read.</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-2.jpg" alt="Pickup time optimization and driver matching" loading="lazy">
+      <img src="/assets/img/ride-share-2.jpg" alt="Pickup time optimization and driver matching" loading="lazy" width="1024" height="524">
       <figcaption>Pickup time optimization and driver matching</figcaption>
     </figure>
 
@@ -459,7 +476,7 @@ avg pickup = 4 min
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-3.jpg" alt="Time-series GPS data storage schema" loading="lazy">
+      <img src="/assets/img/ride-share-3.jpg" alt="Time-series GPS data storage schema" loading="lazy" width="1024" height="352">
       <figcaption>Time-series GPS data storage schema</figcaption>
     </figure>
 
@@ -623,7 +640,7 @@ COMPLETED               ← fare computed, payment triggered
       <li><strong>Direct third-party integration</strong> (PayPal, Block/Square) — simpler, but tied to one provider.</li>
       <li><strong>Unbranded payment gateway via processor partner</strong> — Uber's initial approach with Braintree; enables multi-provider flexibility and regional payment processor support without exposing the payment brand.</li>
     </ul>
-    <p>Payment deductions and driver payout calculations are handled <strong>asynchronously</strong> to keep them off the critical trip-completion path. When a trip reaches <code>COMPLETED</code>, the trip service publishes a <code>TripCompleted</code> event to Kafka. The payment service consumes this event, computes the final fare (actual distance × actual duration × surge multiplier), charges the rider's saved payment method via the processor API, and triggers driver payout (typically daily batch settlement rather than per-trip to reduce transfer fees).</p>
+    <p>Payment deductions and driver payout calculations are handled <strong>asynchronously</strong> to keep them off the critical trip-completion path. When a trip reaches <code>COMPLETED</code>, the trip service publishes a <code>TripCompleted</code> event to <a href="/tech-stacks/kafka/">Kafka</a>. The payment service consumes this event, computes the final fare (actual distance × actual duration × surge multiplier), charges the rider's saved payment method via the processor API, and triggers driver payout (typically daily batch settlement rather than per-trip to reduce transfer fees).</p>
 
     <h3>Payment idempotency</h3>
     <p>The payment service passes a unique <strong>idempotency key</strong> (e.g., <code>trip_id + "charge"</code>) to the payment processor on every charge call. If the network drops after the charge succeeds but before the response arrives, the retry with the same key is a no-op at the processor — the rider is not double-charged. A webhook from the processor confirms success or failure, which updates the trip record's payment status. A nightly reconciliation job catches any discrepancies between trip records and processor settlements.</p>
@@ -637,7 +654,7 @@ COMPLETED               ← fare computed, payment triggered
     <p>A global ride-share platform must survive regional outages, handle millions of concurrent connections, and route traffic intelligently across a distributed fleet of services.</p>
 
     <h3>Sharding the location index</h3>
-    <p>The in-memory spatial index is sharded by city and product type — UberX in San Francisco is a completely separate data set from Comfort in London. Within a city, consistent hashing (Ringpop) distributes geohash prefixes across worker nodes. A driver moving between geohash cells triggers a location update that the hash ring routes to the correct shard automatically. When a node is added or removed, only the keys on the affected arc of the ring are remapped — minimizing data movement compared to naive modulo partitioning.</p>
+    <p>The in-memory spatial index is sharded by city and product type — UberX in San Francisco is a completely separate data set from Comfort in London. Within a city, <a href="/tech-stacks/sharding/">consistent hashing</a> (Ringpop) distributes geohash prefixes across worker nodes. A driver moving between geohash cells triggers a location update that the hash ring routes to the correct shard automatically. When a node is added or removed, only the keys on the affected arc of the ring are remapped — minimizing data movement compared to naive modulo partitioning.</p>
 
     <h3>Multi-region deployment</h3>
     <p>Each major metro area runs its own matching, GPS ingestion, and spatial index cluster — a rider in Chicago never needs data from London. Cross-region communication is limited to user profile reads (cached aggressively) and global analytics pipelines. This geographic isolation keeps latency low, failure blast radius small, and regulatory data-residency requirements satisfied.</p>
@@ -701,16 +718,17 @@ COMPLETED               ← fare computed, payment triggered
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

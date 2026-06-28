@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 1 章:什么让系统可靠、如何用负载参数和百分位延迟推理可扩展性,以及可维护性的三大支柱(可运维性、简单性、可演化性)。">
-<title>DDIA 第1章 — 可靠、可扩展与可维护 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-1/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-1/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-1/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-1/">
+<meta name="description" content="可靠性、可扩展性、可维护性——DDIA 第 1 章讲清故障 vs 失效、负载参数与百分位延迟,以及可运维性、简单性、可演化性三支柱。">
+<title>DDIA 第1章 — 可靠、可扩展与可维护 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-1/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-1/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-1/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-1/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="可靠、可扩展与可维护">
-<meta property="og:description" content="DDIA 第 1 章:可靠性(故障 vs 失效)、可扩展性(负载参数、尾延迟)、可维护性三支柱。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-1/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="可靠性、可扩展性、可维护性——DDIA 第 1 章讲清故障 vs 失效、负载参数与百分位延迟,以及可运维性、简单性、可演化性三支柱。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-1/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第1章 — 可靠、可扩展与可维护">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="可靠、可扩展与可维护">
 <meta name="twitter:description" content="DDIA 第 1 章:可靠、可扩展、可维护——故障类型、p99、Twitter 扇出、队头阻塞。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 1 章 — 可靠、可扩展与可维护", "description": "DDIA 第 1 章:什么让系统可靠、如何用负载参数和百分位延迟推理可扩展性,以及可维护性的三大支柱(可运维性、简单性、可演化性)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-1/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 1 章 — 可靠、可扩展与可维护","description":"可靠性、可扩展性、可维护性——DDIA 第 1 章讲清故障 vs 失效、负载参数与百分位延迟,以及可运维性、简单性、可演化性三支柱。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-1/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "故障和失效的区别是什么?", "acceptedAnswer": {"@type": "Answer", "text": "故障是一个组件偏离其规格;失效是整个系统停止提供所需服务。容错系统防止故障级联成失效——刻意触发故障(混沌工程)是你验证机制有效的方式。"}}, {"@type": "Question", "name": "为什么用 p99 而非平均延迟?", "acceptedAnswer": {"@type": "Answer", "text": "平均隐藏尾部行为。最慢的 1% 用户往往是你最高价值的客户(最多数据、最活跃)。SLA 正因此用百分位写。还有:一个由 20 个并行调用组成、每个 p95 = 200 ms 的页面,统计上几乎每次渲染都有一个慢调用——每调用的平均延迟与页面延迟无关。"}}, {"@type": "Question", "name": "写时扇出 vs 读时——Twitter 怎么解决?", "acceptedAnswer": {"@type": "Answer", "text": "写时扇出在写时预计算主页时间线(读快,对高关注账号昂贵)。Twitter 用混合:普通用户写时扇出,名人读时拉。关键负载参数是关注者数的分布,而非平均发推率。"}}, {"@type": "Question", "name": "什么是队头阻塞?", "acceptedAnswer": {"@type": "Answer", "text": "慢请求占据服务器线程,导致后续请求在它们后面排队。即便大多数请求快,一个 p95 慢请求能阻塞队列并抬高所有并发请求的端到端延迟。客户端(而非服务端)延迟测量能捕获这个。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第1章 — 可靠、可扩展与可维护","item":"https://sdeoffer.com/zh/ddia/chapter-1/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-1/">EN</a>
-        <a href="/zh/ddia/chapter-1/" class="active">中</a>
+        <a href="/ddia/chapter-1/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-1/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-1</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 1 章</span>
     <h1 class="article-title">可靠、可扩展与可维护</h1>
     <div class="article-meta">
@@ -225,7 +243,7 @@
     <h2>原始笔记</h2>
     <p>本章总结所基于的手写学习笔记:</p>
     <figure class="article-figure">
-      <img src="/assets/img/chapter-1-1.jpg" alt="DDIA 第 1 章手写笔记" loading="lazy">
+      <img src="/assets/img/chapter-1-1.jpg" alt="DDIA 第 1 章手写笔记" width="1200" height="1554" fetchpriority="high">
       <figcaption>原始手写笔记——DDIA 第 1 章</figcaption>
     </figure>
 
@@ -234,7 +252,7 @@
 
     <h3>硬件故障</h3>
     <p>硬盘崩溃、内存出坏位、电网闪断、有人拔错线缆。单块硬盘的平均无故障时间约 10–50 年,但在 1 万块硬盘的集群里你预期每天丢一块。直到不久前,标准应对是硬件级冗余——RAID 阵列、双电源、热插拔 CPU、柴油发电机。当单台机器是部署单元时这些足够。</p>
-    <p>随着数据量和计算需求增长,应用开始在大量商用机器上运行。云平台(AWS、GCP、Azure)明确不保证单机可靠性;它们转而为虚拟机抢占和节点丢失而设计。现代答案是软件里的<strong>多机冗余</strong>:复制的数据库、负载均衡器后的无状态应用服务器,以及<strong>滚动升级</strong>——一次下线一个节点,使系统全程保持服务。硬件故障仍然相关,但现在由架构而非仅靠硬件开销处理。</p>
+    <p>随着数据量和计算需求增长,应用开始在大量商用机器上运行。云平台(AWS、GCP、Azure)明确不保证单机可靠性;它们转而为虚拟机抢占和节点丢失而设计。现代答案是软件里的<strong>多机冗余</strong>:<a href="/zh/ddia/chapter-5/">复制的数据库</a>、<a href="/zh/tech-stacks/load-balancing/">负载均衡器</a>后的无状态应用服务器,以及<strong>滚动升级</strong>——一次下线一个节点,使系统全程保持服务。硬件故障仍然相关,但现在由架构而非仅靠硬件开销处理。</p>
 
     <div class="callout">
       <div class="callout-label">关键区别</div>
@@ -249,7 +267,7 @@
       <li>一个服务响应请求变慢,导致依赖服务级联超时、堆积连接并耗尽自己的线程池——一种在微服务图里传播的失效模式。</li>
       <li>一个依赖在版本升级后开始返回损坏或意外的响应,悄悄污染调用方的数据。</li>
     </ul>
-    <p>没有银弹。缓解靠工程纪律:设计时仔细推理假设和交互、单元/集成/端到端各级别的彻底自动化测试、进程隔离以限制爆炸半径、崩溃即重启策略(让它快速失败而非带病运行污染数据),以及持续监控并对意外的不变量违反告警。系统性故障常蛰伏数月直到特定条件触发它,这就是为什么即便一切看起来正常时,生产中监控不变量也很重要。</p>
+    <p>没有银弹。缓解靠工程纪律:设计时仔细推理假设和交互、单元/集成/端到端各级别的彻底自动化测试、进程隔离以限制爆炸半径、崩溃即重启策略(让它快速失败而非带病运行污染数据),以及<a href="/zh/tech-stacks/observability/">持续监控</a>并对意外的不变量违反告警。系统性故障常蛰伏数月直到特定条件触发它,这就是为什么即便一切看起来正常时,生产中监控不变量也很重要。</p>
 
     <h3>人为错误</h3>
     <p>大规模互联网服务宕机的事后分析一致地将操作员失误识别为头号原因——配错的部署、误删、错误的数据库连接串、应用到错误环境的 schema 迁移。人既是这些系统的设计者也是操作者,且不可避免地会犯错。好的系统设计接受这点并减少爆炸半径:</p>
@@ -413,9 +431,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -423,7 +442,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

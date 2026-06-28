@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="ChatGPT system design — stream tokens over SSE, store conversations, scale the inference layer behind an LLM gateway, plus memory, RAG, safety, and cost.">
+<title>Design ChatGPT — an AI Chat Assistant at Scale | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Design ChatGPT — an AI Chat Assistant at Scale">
+<meta property="og:description" content="ChatGPT system design — stream tokens over SSE, store conversations, scale the inference layer behind an LLM gateway, plus memory, RAG, safety, and cost.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design ChatGPT — an AI Chat Assistant at Scale">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Design ChatGPT — System Design">
+<meta name="twitter:description" content="How to design a streaming AI chat assistant at scale: inference, streaming, memory, gateway, cost.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design ChatGPT — an AI Chat Assistant at Scale","description":"ChatGPT system design — stream tokens over SSE, store conversations, scale the inference layer behind an LLM gateway, plus memory, RAG, safety, and cost.","datePublished":"2026-06-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/ai-chat-assistant/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-16","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why is this different from a chat app?", "acceptedAnswer": {"@type": "Answer", "text": "The response is generated token-by-token on a GPU — slow and costly — so you optimize for time-to-first-token and streaming, and the GPU tier dominates capacity and cost."}}, {"@type": "Question", "name": "What transport for streaming?", "acceptedAnswer": {"@type": "Answer", "text": "SSE — one-way server push over plain HTTP, simple and proxy-friendly. WebSocket only if you need rich bidirectional (voice/interrupts)."}}, {"@type": "Question", "name": "How does \"memory\" work?", "acceptedAnswer": {"@type": "Answer", "text": "The model is stateless; you resend recent history (summarizing old turns) plus any retrieved facts each turn, within the context window."}}, {"@type": "Question", "name": "What's the biggest throughput lever?", "acceptedAnswer": {"@type": "Answer", "text": "Continuous batching on the GPU workers; concurrency is then capped by KV-cache memory, and TTFT by the prefill phase."}}, {"@type": "Question", "name": "How do you control cost?", "acceptedAnswer": {"@type": "Answer", "text": "Model tiering, prompt/semantic caching, prefix (KV) caching, quantization, token quotas, and summarizing long contexts."}}, {"@type": "Question", "name": "How do you handle a capacity spike?", "acceptedAnswer": {"@type": "Answer", "text": "Queue with backpressure and degrade to smaller models — turn a GPU shortage into slower service, not an outage; admission-control free users first."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design ChatGPT — an AI Chat Assistant at Scale","item":"https://sdeoffer.com/system-design/ai-chat-assistant/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent2); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.09), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent); }
+
+  /* FIGURES (inline SVG diagrams) */
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.5; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent2); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/system-design/ai-chat-assistant/" class="active" hreflang="en">EN</a><a href="/zh/system-design/ai-chat-assistant/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">ai-chat-assistant</span>
+    </nav>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design ChatGPT — an AI Chat Assistant at Scale</h1>
+    <div class="article-meta">
+      <span>Jun 16, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>"Design ChatGPT" has quietly become one of the most common system design interview questions, and it's a great one: it looks like a <a href="/system-design/chat-app/">chat app</a>, but the interesting parts are nothing like one. The response isn't a row you read from a database — it's <em>generated token by token</em> by a model running on a GPU, costs real money per request, takes seconds (not milliseconds), and can fail or misbehave in ways a CRUD service never does. This piece walks the whole design end to end: gathering requirements, sizing the load, the request path, streaming, conversation storage, the inference layer, an LLM gateway, memory and retrieval, safety, cost, and the tradeoffs an interviewer will push on.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>The defining constraint is the response: slow, streamed, and expensive.</strong> A reply takes seconds and is produced token-by-token, so the whole architecture optimizes for <em>time-to-first-token</em> and streaming, not request/response latency.</li>
+        <li><strong>Streaming is the core UX</strong> — use Server-Sent Events (SSE) to push tokens as they're generated; the connection stays open for the duration of a single answer.</li>
+        <li><strong>Separate the stateless API tier from the GPU inference tier.</strong> They scale on completely different axes (cheap CPU boxes vs scarce, expensive GPUs) and have different failure modes.</li>
+        <li><strong>The model is stateless; you rebuild context every turn.</strong> "Memory" is the harness re-sending conversation history (plus retrieved facts) on each request, within a finite context window.</li>
+        <li><strong>Put a gateway in front of inference</strong> for routing, per-user rate limits and token quotas, prompt caching, and provider/model fallback.</li>
+        <li><strong>Cost and capacity are dominated by GPUs.</strong> Continuous batching, KV-cache reuse, quantization, and routing cheap queries to small models are the levers that keep it affordable.</li>
+        <li><strong>It can produce harmful or wrong output</strong>, so moderation, abuse limits, and evals are first-class components, not afterthoughts.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>A chat assistant is a streaming front door (SSE) over a stateless API tier, backed by a GPU inference tier fronted by an LLM gateway. Conversations live in a regular database; "memory" is just resending history each turn within the context window, optionally augmented by retrieval (RAG). The hard parts are all consequences of one fact — answers are generated slowly and expensively on GPUs — which forces streaming, continuous batching, caching, quotas, and careful cost control. Safety and evals run alongside the request path.</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Detailed architecture of an AI chat assistant: stateless app tier, data stores, a GPU serving tier, and observability">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arb" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#38bdf8"/></marker>
+        </defs>
+        <rect x="150" y="44"  width="320" height="250" rx="12" fill="#0f1b27" stroke="#1c4a63"/>
+        <text x="164" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#38bdf8" letter-spacing="1">STATELESS APP TIER</text>
+        <rect x="150" y="316" width="320" height="210" rx="12" fill="#181428" stroke="#3b2f63"/>
+        <text x="164" y="338" font-family="'JetBrains Mono',monospace" font-size="10" fill="#a78bfa" letter-spacing="1">DATA STORES</text>
+        <rect x="540" y="44"  width="300" height="400" rx="12" fill="#231521" stroke="#5e2a45"/>
+        <text x="554" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#f472b6" letter-spacing="1">LLM SERVING · GPU TIER</text>
+        <rect x="540" y="466" width="300" height="62"  rx="12" fill="#10241a" stroke="#1f5036"/>
+        <text x="554" y="483" font-family="'JetBrains Mono',monospace" font-size="9"  fill="#4ade80" letter-spacing="1">OBSERVABILITY · EVALS · FEEDBACK</text>
+
+        <line x1="132" y1="106" x2="166" y2="103" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="150" y="96"  font-family="'JetBrains Mono',monospace" font-size="9" fill="#38bdf8" text-anchor="middle">SSE</text>
+        <line x1="310" y1="120" x2="310" y2="140" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="236" y1="190" x2="236" y2="212" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="384" y1="190" x2="384" y2="212" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="236" y1="258" x2="236" y2="356" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="246" y="332" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0">history</text>
+        <line x1="384" y1="258" x2="384" y2="356" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="394" y="332" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0">top-k</text>
+        <line x1="452" y1="160" x2="558" y2="106" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="503" y="123" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">prompt</text>
+        <path d="M558,300 L452,182" fill="none" stroke="#38bdf8" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arb)"/>
+        <text x="500" y="250" font-family="'JetBrains Mono',monospace" font-size="9" fill="#38bdf8" text-anchor="middle">token stream</text>
+        <line x1="689" y1="134" x2="689" y2="146" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="180" x2="689" y2="192" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="230" x2="689" y2="242" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="444" x2="689" y2="466" stroke="#7a8aa0" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="24"  y="84"  width="108" height="44" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="78"  y="111" font-size="12" fill="#e2e8f0">Client</text>
+
+          <rect x="168" y="82"  width="284" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="310" y="106" font-size="12" fill="#e2e8f0">API Gateway · Load Balancer</text>
+          <rect x="168" y="140" width="284" height="50" rx="8" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="310" y="161" font-size="12" fill="#e2e8f0">Chat Orchestrator ×N</text>
+          <text x="310" y="178" font-size="9"  fill="#7a8aa0">stateless · holds SSE · builds prompt</text>
+          <rect x="168" y="212" width="136" height="46" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="236" y="232" font-size="11" fill="#e2e8f0">Input</text>
+          <text x="236" y="248" font-size="11" fill="#e2e8f0">Moderation</text>
+          <rect x="316" y="212" width="136" height="46" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="384" y="240" font-size="11" fill="#e2e8f0">Embedder</text>
+
+          <rect x="168" y="356" width="136" height="46" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="236" y="383" font-size="11" fill="#e2e8f0">Conversation DB</text>
+          <rect x="316" y="356" width="136" height="46" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="384" y="383" font-size="11" fill="#e2e8f0">Vector DB · RAG</text>
+          <rect x="168" y="420" width="284" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="310" y="445" font-size="11" fill="#e2e8f0">Object Store (files / blobs)</text>
+
+          <rect x="560" y="82"  width="258" height="52" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="689" y="104" font-size="12" fill="#e2e8f0">LLM Gateway</text>
+          <text x="689" y="120" font-size="9"  fill="#7a8aa0">route · token quota · fallback</text>
+          <rect x="560" y="146" width="258" height="34" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="689" y="168" font-size="11" fill="#e2e8f0">Semantic / prompt cache</text>
+          <rect x="560" y="192" width="258" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="689" y="216" font-size="12" fill="#e2e8f0">Inference Queue</text>
+          <rect x="560" y="242" width="258" height="122" rx="8" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="689" y="262" font-size="12" fill="#e2e8f0">GPU pools</text>
+          <text x="689" y="277" font-size="9"  fill="#7a8aa0">continuous batching · KV cache</text>
+          <rect x="578" y="290" width="222" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="689" y="309" font-size="10" fill="#c8d3e0">small-model pool</text>
+          <rect x="578" y="326" width="222" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="689" y="345" font-size="10" fill="#c8d3e0">large-model pool</text>
+          <text x="689" y="390" font-size="9" fill="#7a8aa0">autoscaled · ~1,000 GPUs @ peak</text>
+
+          <rect x="556" y="492" width="92" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="602" y="510" font-size="10" fill="#c8d3e0">Metrics</text>
+          <rect x="658" y="492" width="80" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="698" y="510" font-size="10" fill="#c8d3e0">Evals</text>
+          <rect x="748" y="492" width="84" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="790" y="510" font-size="10" fill="#c8d3e0">Feedback</text>
+        </g>
+      </svg>
+      <figcaption>End-to-end architecture — a stateless app tier (auth, orchestration, moderation, embedding) over data stores and a GPU serving tier (gateway → queue → batched GPU pools); tokens stream back over SSE, and the path emits to observability &amp; evals</figcaption>
+    </figure>
+
+    <h2>Step 1 — Clarify the Requirements</h2>
+    <p>As always, start by scoping. The interviewer wants to see you separate the chat <em>product</em> from the LLM <em>plumbing</em>, and decide what's in scope. A focused set:</p>
+
+    <h3>Functional requirements</h3>
+    <ul>
+      <li>A user sends a message in a conversation and gets a model-generated reply, <strong>streamed</strong> back as it's produced.</li>
+      <li>Conversations are <strong>persistent and multi-turn</strong> — the assistant remembers earlier messages in the same thread.</li>
+      <li>Users can list past conversations, resume them, rename, and delete.</li>
+      <li>Users can <strong>stop a generation</strong> mid-stream and regenerate a response.</li>
+      <li>(Stretch) The model can call <strong>tools</strong> (web search, code execution) and ground answers in <strong>retrieved documents</strong>.</li>
+    </ul>
+
+    <h3>Non-functional requirements</h3>
+    <ul>
+      <li><strong>Low time-to-first-token (TTFT)</strong> — the user should see words within ~1 second; total answers take many seconds, which is fine if streaming.</li>
+      <li><strong>High availability</strong> for the API/chat tier; graceful degradation when GPU capacity is saturated (queue, or fall back to a smaller model).</li>
+      <li><strong>Scale</strong> to millions of daily users and tens of thousands of concurrent in-flight generations.</li>
+      <li><strong>Cost control</strong> — GPU inference is the dominant cost; the design must actively manage it.</li>
+      <li><strong>Safety</strong> — filter abusive input and harmful output; enforce per-user limits.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Say out loud that you're treating the model as a <strong>black box that streams tokens, slowly and for a per-token cost</strong>. That single framing drives every later decision — streaming transport, batching, quotas, caching — and signals you understand what makes this different from designing a messaging app.</p>
+    </div>
+
+    <h2>Step 2 — Back-of-the-Envelope Estimates</h2>
+    <p>Rough numbers keep the design honest, and here they expose why GPUs dominate. Assume <strong>10M daily active users</strong>, ~10 messages each → <strong>100M messages/day</strong> ≈ <strong>~1,200 messages/sec average</strong>, call it <strong>~5,000/sec peak</strong>. Each answer averages, say, <strong>500 output tokens</strong>.</p>
+    <ul>
+      <li><strong>Token throughput:</strong> 5,000 req/s × 500 tokens ≈ <strong>2.5M output tokens/sec</strong> at peak. This, not QPS, is the real load number — it's what GPUs must produce.</li>
+      <li><strong>Concurrency:</strong> if an answer takes ~5s to generate, peak concurrent generations ≈ 5,000 × 5 = <strong>~25,000 in-flight streams</strong>. Each holds an open connection plus GPU memory for its KV cache.</li>
+      <li><strong>GPU sizing:</strong> if one GPU sustains ~2,500 output tokens/sec (with batching), you need on the order of <strong>2.5M / 2,500 ≈ 1,000 GPUs</strong> for peak — the headline cost. (Numbers are illustrative; real throughput depends on model size, batching, and hardware.)</li>
+      <li><strong>Storage:</strong> 100M messages/day × ~1KB ≈ <strong>100GB/day</strong> of conversation text — trivial compared to the compute. Storage is cheap here; <em>compute</em> is the scarce resource.</li>
+    </ul>
+    <p>The takeaway to state explicitly: <strong>this is a compute-bound system, not a storage- or QPS-bound one.</strong> Most of the architecture exists to use those ~1,000 GPUs efficiently.</p>
+
+    <h2>Step 3 — High-Level Architecture</h2>
+    <p>Split the system into a <strong>stateless application tier</strong> (cheap to scale, handles auth, conversations, and the streaming connection) and a <strong>GPU inference tier</strong> (scarce, expensive, fronted by a gateway and a queue). Keeping them separate is the single most important structural decision.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">request path — clients to GPUs</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>client ──SSE──▶ API gateway / LB
+                    │
+                    ▼
+            chat service (stateless)
+             ├─ auth, rate-limit check
+             ├─ load conversation history  ◀── Conversation DB
+             ├─ (optional) retrieve context ◀── Vector DB (RAG)
+             ├─ moderate input
+             └─ build prompt ──▶ LLM gateway
+                                   ├─ route by model/tier
+                                   ├─ token quota check
+                                   ├─ prompt / semantic cache  ◀── Cache
+                                   └─ enqueue ──▶ inference queue
+                                                     │
+                                                     ▼
+                                          GPU inference workers (batched)
+                                                     │  tokens stream back
+                                   ◀────────────── token stream ──────────┘
+            chat service relays tokens ──SSE──▶ client
+                    │ on completion
+                    └─ persist assistant message ──▶ Conversation DB</code></pre>
+    </div>
+
+    <p>Key components: an <strong>API/chat service</strong> (stateless, holds the SSE connection and orchestrates a turn), a <strong>Conversation DB</strong> (durable message history), a <strong>Vector DB</strong> (optional, for retrieval), an <strong>LLM gateway</strong> (routing, quotas, caching, fallback), an <strong>inference queue</strong>, and the <strong>GPU inference workers</strong> that actually run the model. A separate <strong>moderation</strong> path and an offline <strong>eval/analytics</strong> pipeline sit alongside.</p>
+
+    <h2>Step 4 — Streaming the Response</h2>
+    <p>The defining UX choice. Because an answer takes seconds, you must not make users stare at a spinner — you stream tokens as they're generated. The standard transport is <strong>Server-Sent Events (SSE)</strong>: a single long-lived HTTP response where the server pushes <code>data:</code> events. SSE fits perfectly because the stream is <em>one-directional</em> (server → client) for the duration of an answer, it's plain HTTP (works through proxies and load balancers), and it auto-reconnects.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Transport</th><th>Fit for token streaming</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">SSE</td><td class="col-b">Ideal: one-way server push over plain HTTP, simple, proxy-friendly. The default choice.</td></tr>
+        <tr><td class="col-a">WebSocket</td><td class="col-b">Works, but bidirectional and heavier than needed; useful if you want rich duplex (live voice, interrupts) on the same channel.</td></tr>
+        <tr><td class="col-a">Long polling</td><td class="col-b">Fallback only — re-establishing a connection per chunk is wasteful for token-level streaming.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the chat service relays a token stream over SSE</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">async def</span> <span class="fn">stream_reply</span>(conversation_id, user_msg):
+    history = db.<span class="fn">load_history</span>(conversation_id)
+    prompt  = <span class="fn">build_prompt</span>(history, user_msg)     <span class="cm"># rebuild context every turn</span>
+    full = []
+    <span class="kw">async for</span> token <span class="kw">in</span> gateway.<span class="fn">generate</span>(prompt):  <span class="cm"># tokens arrive from a GPU worker</span>
+        full.append(token)
+        <span class="kw">yield</span> <span class="str">f"data: {token}\n\n"</span>             <span class="cm"># SSE frame, flushed immediately</span>
+    db.<span class="fn">save</span>(conversation_id, user_msg, <span class="str">""</span>.join(full))  <span class="cm"># persist after stream ends</span>
+    <span class="kw">yield</span> <span class="str">"data: [DONE]\n\n"</span></code></pre>
+    </div>
+
+    <p>Two consequences worth raising in an interview. First, <strong>the connection is stateful for the duration of one answer</strong> — the chat box holding it must stay alive ~5s per request, so a single box handles far fewer <em>concurrent</em> requests than a typical stateless API; size the fleet on concurrency, not QPS. Second, <strong>"stop generation" is a real feature</strong>: the client closes the SSE stream, and the chat service must propagate cancellation down to the GPU worker so it stops decoding and frees the slot — otherwise you keep paying for tokens nobody will read.</p>
+
+    <h2>Step 5 — Conversations and State</h2>
+    <p>This part is refreshingly normal. Conversations and messages are classic relational/document data with a simple schema; the volume (~100GB/day of text) is small. The interesting design choice is <em>how history feeds back into the model</em>.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">conversation schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>conversations(id, user_id, title, created_at, updated_at)
+messages(id, conversation_id, role, content, token_count, created_at)
+              role ∈ {<span class="str">"user"</span>, <span class="str">"assistant"</span>, <span class="str">"system"</span>, <span class="str">"tool"</span>}
+
+<span class="cm"># read pattern: latest N messages for a conversation, ordered by created_at</span>
+<span class="cm"># partition/shard by conversation_id (or user_id) — reads are per-thread</span></code></pre>
+    </div>
+
+    <p>Partition by <code>conversation_id</code> (or <code>user_id</code>): every read is "give me this thread's messages," so co-locating a conversation avoids cross-shard reads. The store can be Postgres or a wide-column/document DB — the access pattern is simple key-ordered reads, so almost anything works. Because the model has a finite <strong>context window</strong>, you don't blindly send the entire thread: you send the most recent messages that fit, and for very long conversations you <strong>summarize older turns</strong> into a compact running summary that's prepended — trading some fidelity for staying within the window (and within token cost).</p>
+
+    <h2>Step 6 — The Inference Layer</h2>
+    <p>This is the heart of the system and what makes it different from any CRUD design. GPU workers run the model and turn a prompt into a stream of tokens. Three ideas dominate how you make this efficient.</p>
+
+    <h3>Continuous batching</h3>
+    <p>GPUs are massively parallel, so running one request at a time wastes them. Inference servers (vLLM, TGI, TensorRT-LLM) use <strong>continuous (in-flight) batching</strong>: they merge many users' requests into one batch on the GPU and, crucially, swap finished sequences out and new ones in <em>each decoding step</em> rather than waiting for the whole batch to finish. This keeps the GPU saturated and is the single biggest throughput lever.</p>
+
+    <h3>The KV cache</h3>
+    <p>Generating each new token requires attention over all previous tokens. Recomputing that every step would be quadratic, so workers keep a <strong>KV cache</strong> — the attention keys/values for the prompt and tokens so far — in GPU memory. This makes decoding fast but means <strong>GPU memory per in-flight request grows with context length</strong>; the KV cache, not compute, is often what caps how many concurrent streams a GPU can hold. <strong>Prefix caching</strong> reuses the KV cache for a shared prompt prefix (e.g. the same system prompt across users), cutting the cost of the prompt-processing ("prefill") phase.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Continuous batching and the KV cache on a GPU worker">
+        <defs>
+          <marker id="ar3" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7a8aa0"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace">
+          <text x="20" y="44" font-size="10" fill="#7a8aa0">queued</text>
+          <rect x="20" y="52"  width="86" height="26" rx="5" fill="#1e2535" stroke="#2a3347"/><text x="63" y="69" font-size="10" fill="#e2e8f0" text-anchor="middle">req E</text>
+          <rect x="20" y="86"  width="86" height="26" rx="5" fill="#1e2535" stroke="#2a3347"/><text x="63" y="103" font-size="10" fill="#e2e8f0" text-anchor="middle">req F</text>
+          <line x1="110" y1="92" x2="168" y2="92" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <rect x="172" y="20" width="396" height="244" rx="10" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="370" y="42" font-size="12" fill="#e2e8f0" text-anchor="middle">GPU worker — one batch, decoded in lockstep</text>
+          <text x="188" y="78" font-size="10" fill="#7a8aa0">seq A</text>
+          <rect x="230" y="66" width="210" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="442" y="66" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="110" font-size="10" fill="#7a8aa0">seq B</text>
+          <rect x="230" y="98" width="120" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="352" y="98" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="142" font-size="10" fill="#7a8aa0">seq C</text>
+          <rect x="230" y="130" width="300" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="532" y="130" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="174" font-size="10" fill="#7a8aa0">seq D</text>
+          <rect x="230" y="162" width="170" height="18" rx="3" fill="#1e2535" stroke="#2a3347" stroke-dasharray="3 3"/><text x="315" y="175" font-size="9" fill="#7a8aa0" text-anchor="middle">done → swap out</text>
+          <rect x="200" y="226" width="14" height="12" rx="2" fill="#13314f" stroke="#38bdf8"/><text x="220" y="236" font-size="10" fill="#7a8aa0">KV cache (grows with context)</text>
+          <rect x="430" y="226" width="14" height="12" rx="2" fill="#4ade80"/><text x="450" y="236" font-size="10" fill="#7a8aa0">next token</text>
+          <line x1="568" y1="75"  x2="626" y2="75"  stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <line x1="568" y1="107" x2="626" y2="107" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <line x1="568" y1="139" x2="626" y2="139" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <text x="660" y="100" font-size="10" fill="#7a8aa0" text-anchor="middle">tokens</text>
+          <text x="660" y="114" font-size="10" fill="#7a8aa0" text-anchor="middle">out</text>
+        </g>
+      </svg>
+      <figcaption>Continuous batching &amp; the KV cache — finished sequences swap out and queued ones swap in each decoding step; each sequence's KV cache (GPU memory) grows with its context length</figcaption>
+    </figure>
+
+    <h3>Prefill vs decode</h3>
+    <p>A request has two phases with different cost profiles: <strong>prefill</strong> (process the whole prompt in parallel — compute-heavy, fast, determines TTFT) and <strong>decode</strong> (generate tokens one at a time — memory-bandwidth-bound, sequential, determines tokens/sec). Some systems even disaggregate them onto different GPU pools. You don't need that depth in an interview, but naming the two phases and that TTFT comes from prefill shows real understanding.</p>
+
+    <div class="callout">
+      <div class="callout-label">key point</div>
+      <p>Treat GPUs as a <strong>scarce, batched, memory-constrained pool</strong>, not as ordinary stateless workers. Throughput comes from continuous batching; concurrency is capped by KV-cache memory; latency (TTFT) comes from prefill. These three facts explain most of the rest of the design.</p>
+    </div>
+
+    <h2>Step 7 — The LLM Gateway</h2>
+    <p>Don't let the chat service call GPU workers directly. Put a <strong>gateway</strong> in between — the same pattern as an <a href="/tech-stacks/api-gateway/">API gateway</a>, specialized for models. It centralizes the cross-cutting concerns that every request needs.</p>
+    <ul>
+      <li><strong>Routing &amp; model tiering:</strong> send simple/short queries to a small cheap model and hard ones to a large model; route by user tier (free vs paid), region, or A/B experiment.</li>
+      <li><strong>Token quotas &amp; rate limits:</strong> limits are best expressed in <em>tokens per minute</em>, not requests per minute, since cost scales with tokens. Enforce per-user and per-org budgets here.</li>
+      <li><strong>Caching:</strong> an exact-match cache for identical prompts, and a <strong>semantic cache</strong> (embed the prompt, return a cached answer if a near-identical question was asked) for common questions.</li>
+      <li><strong>Fallback &amp; resilience:</strong> if a model/provider is down or saturated, retry, degrade to a smaller model, or queue — so a GPU shortage becomes slower service, not an outage.</li>
+      <li><strong>Observability &amp; accounting:</strong> log tokens, latency, cost, and model per request for billing and capacity planning.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">gateway: route, quota, cache, then dispatch</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">handle</span>(req):
+    <span class="kw">if</span> <span class="kw">not</span> quota.<span class="fn">allow</span>(req.user, est_tokens=req.<span class="fn">size</span>()):
+        <span class="kw">return</span> <span class="fn">error</span>(<span class="num">429</span>)                  <span class="cm"># token budget exceeded</span>
+    <span class="kw">if</span> hit := cache.<span class="fn">lookup</span>(req.prompt):       <span class="cm"># exact or semantic match</span>
+        <span class="kw">return</span> hit                          <span class="cm"># 0 GPU cost</span>
+    model = router.<span class="fn">pick</span>(req)               <span class="cm"># small vs large, by difficulty/tier</span>
+    <span class="kw">try</span>:
+        <span class="kw">return</span> pool[model].<span class="fn">enqueue</span>(req)      <span class="cm"># into the batched inference queue</span>
+    <span class="kw">except</span> Saturated:
+        <span class="kw">return</span> pool[fallback].<span class="fn">enqueue</span>(req)  <span class="cm"># degrade, don't fail</span></code></pre>
+    </div>
+
+    <h2>Step 8 — Memory, Context, and RAG</h2>
+    <p>Users perceive the assistant as having memory, but the model is stateless — <strong>"memory" is something the harness rebuilds every turn</strong> by choosing what to put in the context window. There are three tiers worth distinguishing:</p>
+    <ul>
+      <li><strong>Working memory:</strong> the recent messages of the current thread, sent verbatim each turn (with older turns summarized when the window fills).</li>
+      <li><strong>Long-term memory:</strong> durable facts about the user ("prefers Python", "is allergic to peanuts") stored separately and injected when relevant — often retrieved by embedding similarity.</li>
+      <li><strong>Retrieved knowledge (RAG):</strong> for questions over private/up-to-date documents, embed the query, fetch the top-k relevant chunks from a <a href="/tech-stacks/vector-databases/">vector DB</a>, and prepend them to the prompt so the answer is grounded in real sources.</li>
+    </ul>
+    <p>All three are the same move: <em>fetch the right text and put it in the window before calling the model.</em> The design implication is a retrieval step (embedding + vector search) on the request path, and a budget decision — how many tokens of history vs retrieved context vs room for the answer. (Retrieval at scale is its own design; this is the hook for a <a href="/system-design/rag-system/">RAG system</a> deep dive.)</p>
+
+    <h2>Step 9 — Safety and Abuse</h2>
+    <p>Unlike a CRUD app, this system can <em>emit harmful content</em> and is a magnet for abuse, so safety is a real subsystem. On the way in, a <strong>moderation</strong> check (a classifier, often a smaller model) screens for disallowed input and prompt-injection attempts. On the way out, generated tokens can be screened too — though streaming makes this tricky, since you've already sent earlier tokens; a common compromise is to moderate in small windows and cut the stream if it crosses a line. Around all of it sit <strong>per-user rate limits and token budgets</strong> (to stop scraping and cost-bombing), authentication, and audit logging. Treat the gateway and moderation as the policy-enforcement layer the model itself can't provide.</p>
+
+    <h2>Step 10 — Cost and Latency Optimization</h2>
+    <p>Because ~1,000 GPUs dominate the bill, cost optimization is a design feature, not an afterthought. The main levers:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Lever</th><th>What it buys</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">Continuous batching</td><td class="col-b">Highest GPU utilization → most tokens per GPU. The biggest single win.</td></tr>
+        <tr><td class="col-a">Model tiering / routing</td><td class="col-b">Cheap small model for easy/short queries; reserve the large model for hard ones.</td></tr>
+        <tr><td class="col-a">Prompt &amp; semantic caching</td><td class="col-b">Repeat or near-repeat questions cost ~0 GPU.</td></tr>
+        <tr><td class="col-a">Prefix caching (KV reuse)</td><td class="col-b">Shared system prompts / long docs aren't re-processed per request.</td></tr>
+        <tr><td class="col-a">Quantization (e.g. 8-/4-bit)</td><td class="col-b">More requests per GPU and lower memory, at a small quality cost.</td></tr>
+        <tr><td class="col-a">Token caps &amp; summarization</td><td class="col-b">Bounding context and output length directly bounds cost per turn.</td></tr>
+      </tbody>
+    </table>
+
+    <p>On latency, the metric users feel is <strong>TTFT</strong> (driven by queue wait + prefill), and after that <strong>inter-token latency</strong> (decode speed). You improve TTFT by keeping queues short (autoscale GPU pools, shed load to smaller models under pressure) and by prefix-caching long shared prompts so prefill is cheaper. Streaming hides total latency: as long as words start flowing in ~1s and keep coming faster than the user reads, a 6-second answer feels fine.</p>
+
+    <h2>Step 11 — Bottlenecks and Tradeoffs</h2>
+    <p>Close by naming where this design strains and what you'd trade — interviewers reward this more than another box on the diagram.</p>
+    <ul>
+      <li><strong>GPU capacity is the bottleneck and the budget.</strong> A traffic spike can't be absorbed by spinning up cheap boxes; GPUs are scarce and slow to provision. Mitigation: queue with backpressure, degrade to smaller models, and admission-control free users before paid ones.</li>
+      <li><strong>Concurrency, not QPS, sizes the fleet.</strong> Long-lived streams mean each box/GPU holds requests for seconds; KV-cache memory caps concurrent streams per GPU.</li>
+      <li><strong>Context window vs cost vs quality.</strong> More history/retrieved context can improve answers but costs more tokens and latency; summarization saves money but loses detail.</li>
+      <li><strong>Quality is probabilistic.</strong> The same prompt can yield different or wrong answers, so you need evals, A/B testing of prompts/models, and feedback capture (thumbs up/down) as part of the system — not just uptime dashboards.</li>
+      <li><strong>Multi-region is hard for GPUs.</strong> You want low TTFT globally, but GPU availability is regional and uneven; you often route to where capacity exists, trading a little latency for not failing.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Strip away the LLM mystique and a chat assistant is a streaming front door over a scarce GPU pool. Get four things right and the rest follows: <strong>stream</strong> tokens (SSE), <strong>separate</strong> the stateless API tier from the GPU tier, <strong>rebuild context</strong> every turn within the window, and <strong>front inference with a gateway</strong> that does routing, token quotas, caching, and fallback. Everything else — batching, KV cache, moderation, cost levers — exists to serve those expensive tokens efficiently and safely.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why is this different from a chat app?</strong> The response is generated token-by-token on a GPU — slow and costly — so you optimize for time-to-first-token and streaming, and the GPU tier dominates capacity and cost.<br>
+      <strong>What transport for streaming?</strong> SSE — one-way server push over plain HTTP, simple and proxy-friendly. WebSocket only if you need rich bidirectional (voice/interrupts).<br>
+      <strong>How does "memory" work?</strong> The model is stateless; you resend recent history (summarizing old turns) plus any retrieved facts each turn, within the context window.<br>
+      <strong>What's the biggest throughput lever?</strong> Continuous batching on the GPU workers; concurrency is then capped by KV-cache memory, and TTFT by the prefill phase.<br>
+      <strong>How do you control cost?</strong> Model tiering, prompt/semantic caching, prefix (KV) caching, quantization, token quotas, and summarizing long contexts.<br>
+      <strong>How do you handle a capacity spike?</strong> Queue with backpressure and degrade to smaller models — turn a GPU shortage into slower service, not an outage; admission-control free users first.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/chat-app/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Design a Chat App</div>
+      </a>
+      <a href="/system-design/rag-system/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a RAG System at Scale</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

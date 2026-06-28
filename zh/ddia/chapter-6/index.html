@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 6 章:数据分区(分片)——键范围 vs 哈希分区、倾斜与热点、二级索引的本地(按文档)vs 全局(按 term)、再平衡(避开 hash mod N、固定/动态分区数),以及请求路由(路由层/分区感知客户端/ZooKeeper)。">
-<title>DDIA 第6章 — 分区 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-6/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-6/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-6/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-6/">
+<meta name="description" content="数据分区(分片)实战——DDIA 第 6 章讲键范围 vs 哈希分区、热点、本地/全局二级索引、再平衡,以及请求路由。">
+<title>DDIA 第6章 — 分区 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-6/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-6/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-6/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-6/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="分区 (Partitioning)">
-<meta property="og:description" content="DDIA 第 6 章:键范围/哈希分区、热点、本地/全局二级索引、再平衡、请求路由。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-6/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="数据分区(分片)实战——DDIA 第 6 章讲键范围 vs 哈希分区、热点、本地/全局二级索引、再平衡,以及请求路由。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-6/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第6章 — 分区">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="分区 (Partitioning)">
 <meta name="twitter:description" content="DDIA 第 6 章:分区方案、倾斜与热点、二级索引、再平衡、ZooKeeper 路由。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 6 章 — 分区", "description": "DDIA 第 6 章:数据分区(分片)——键范围 vs 哈希分区、倾斜与热点、二级索引的本地(按文档)vs 全局(按 term)、再平衡(避开 hash mod N、固定/动态分区数),以及请求路由(路由层/分区感知客户端/ZooKeeper)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-6/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 6 章 — 分区","description":"数据分区(分片)实战——DDIA 第 6 章讲键范围 vs 哈希分区、热点、本地/全局二级索引、再平衡,以及请求路由。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-6/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "键范围 vs 哈希分区?", "acceptedAnswer": {"@type": "Answer", "text": "范围保持键有序(便宜扫描)但在顺序键上冒热点;哈希均匀分散负载但杀死范围查询。Cassandra 的复合键两者皆得。"}}, {"@type": "Question", "name": "本地 vs 全局二级索引?", "acceptedAnswer": {"@type": "Answer", "text": "本地(按文档)= 便宜写、scatter/gather 读;全局(按 term)= 便宜读、昂贵的多分区写(通常异步)。"}}, {"@type": "Question", "name": "为什么不 hash mod N?", "acceptedAnswer": {"@type": "Answer", "text": "改 N 重映射几乎每个键。用固定的大分区数或动态拆分/合并,使只有整个分区移动。"}}, {"@type": "Question", "name": "请求怎么路由?", "acceptedAnswer": {"@type": "Answer", "text": "通过路由层、分区感知客户端,或任意节点转发——通常由协调服务(ZooKeeper)或 gossip 支撑以跟踪分配。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第6章 — 分区","item":"https://sdeoffer.com/zh/ddia/chapter-6/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-6/">EN</a>
-        <a href="/zh/ddia/chapter-6/" class="active">中</a>
+        <a href="/ddia/chapter-6/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-6/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-6</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 6 章</span>
     <h1 class="article-title">分区 (Partitioning)</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
   </div>
 
   <div class="article-body">
-    <p>复制(第 5 章)在多个节点上保留同一数据的副本。但若数据集对任何单节点太大、或查询负载太重,你需要把数据拆成叫<strong>分区(partition)</strong>(也叫分片 shard)的片。第 6 章讲如何明智地拆分数据,让每片能住在不同节点上,让你随机器数大致线性地扩展存储和吞吐。分区几乎总与复制结合:每个分区本身跨多个节点复制以容错。</p>
+    <p>复制(第 5 章)在多个节点上保留同一数据的副本。但若数据集对任何单节点太大、或查询负载太重,你需要把数据拆成叫<strong>分区(partition)</strong>(也叫<a href="/zh/tech-stacks/sharding/">分片</a> shard)的片。第 6 章讲如何明智地拆分数据,让每片能住在不同节点上,让你随机器数大致线性地扩展存储和吞吐。分区几乎总与复制结合:每个分区本身跨多个节点复制以容错。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -232,7 +250,7 @@
     <p>给每个分区分配一个连续的<strong>键范围</strong>(从某最小到某最大),像纸质百科全书的各卷(A–B、C–D、…)。若你知道边界,你就知道哪个分区持有一个键。边界无需均匀间隔——它们被选来平衡数据。大优势是<strong>键在每个分区内保持有序</strong>,所以范围扫描高效。大风险是倾斜访问模式造成的热点:若键是时间戳,那么当前那天的每个写都去同一分区,使它过载而历史分区空闲。HBase 和 Bigtable 使用。常见缓解是给键加个前缀(如传感器名)使写分散。</p>
 
     <h3>按键的哈希分区</h3>
-    <p>对每个键应用哈希函数并把哈希范围分给分区。一个好的哈希函数把倾斜输入变成均匀分布,所以数据和负载均匀分散。代价:你<strong>失去做高效范围查询的能力</strong>,因为相邻键现在散布在所有分区——范围扫描必须查每个分区。Cassandra 和 MongoDB(带基于哈希的分片)使用。Cassandra 用<strong>复合主键</strong>提供折中:第一列被哈希以选分区,其余列用于在那个分区<em>内</em>排序数据——所以你跨分区得到均匀分布、在一个分区内得到高效范围扫描。</p>
+    <p>对每个键应用哈希函数并把哈希范围分给分区。一个好的哈希函数把倾斜输入变成均匀分布,所以数据和负载均匀分散。代价:你<strong>失去做高效范围查询的能力</strong>,因为相邻键现在散布在所有分区——范围扫描必须查每个分区。<a href="/zh/tech-stacks/nosql/">Cassandra 和 MongoDB</a>(带基于哈希的分片)使用。Cassandra 用<strong>复合主键</strong>提供折中:第一列被哈希以选分区,其余列用于在那个分区<em>内</em>排序数据——所以你跨分区得到均匀分布、在一个分区内得到高效范围扫描。</p>
 
     <h3>哈希也救不了的热点</h3>
     <p>哈希减少但不消除热点。单个被重度访问的键——一个收到数百万互动的名人用户 ID——仍哈希到单个分区,而没有哈希函数有帮助因为它是一个键。今天大多数系统不能自动补偿;它留给应用。一个典型技巧是给热点键加一个随机两位后缀,把它的写拆到比如不同分区上的 100 个键——代价是读时必须读并合并全部 100 个。</p>
@@ -243,7 +261,7 @@
     </div>
 
     <h2>分区与二级索引</h2>
-    <p>目前为止一切都假设一个键值模型,你按主键查记录。真实系统也有<strong>二级索引</strong>(找所有 color = red 的记录)。二级索引不整齐映射到分区,有两种方式处理它们。</p>
+    <p>目前为止一切都假设一个键值模型,你按主键查记录。真实系统也有<strong><a href="/zh/tech-stacks/database-indexing/">二级索引</a></strong>(找所有 color = red 的记录)。二级索引不整齐映射到分区,有两种方式处理它们。</p>
 
     <h3>按文档(本地索引)</h3>
     <p>每个分区维护自己的二级索引,只覆盖<em>那个分区里的</em>文档——<strong>本地索引</strong>。写简单:你只触及持有该文档的那一个分区。但读昂贵:因为匹配文档可能在任何分区,二级索引上的查询必须发给<em>所有</em>分区并合并结果。这种 <strong>scatter/gather</strong> 方法使读延迟受制于最慢分区,且易于尾延迟放大。大多数数据库(MongoDB、Cassandra、Elasticsearch、Riak)用文档分区的索引。</p>
@@ -337,9 +355,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -347,7 +366,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

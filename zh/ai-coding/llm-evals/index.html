@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="LLM 应用的评测:如何真正测试一个概率系统与 Agent——评测数据集、打分方法(启发式、代码、LLM-as-judge、人工)、Agent 轨迹评测、离线门禁 vs 在线评测,以及那些坑。">
+<title>LLM 应用的评测 —— 如何测试一个 Agent | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/llm-evals/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="LLM 应用的评测 —— 如何测试一个 Agent">
+<meta property="og:description" content="LLM 应用的评测:如何真正测试一个概率系统与 Agent——评测数据集、打分方法(启发式、代码、LLM-as-judge、人工)、Agent 轨迹评测、离线门禁 vs 在线评测,以及那些坑。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/llm-evals/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="LLM 应用的评测 —— 如何测试一个 Agent">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="LLM 应用的评测">
+<meta name="twitter:description" content="如何真正评测 LLM 应用与 Agent —— 数据集、打分器、LLM-as-judge、轨迹评测、CI 门禁。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"LLM 应用的评测 —— 如何测试一个 Agent","description":"LLM 应用的评测:如何真正测试一个概率系统与 Agent——评测数据集、打分方法(启发式、代码、LLM-as-judge、人工)、Agent 轨迹评测、离线门禁 vs 在线评测,以及那些坑。","datePublished":"2026-06-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/llm-evals/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-16","inLanguage":"zh"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么 LLM 应用没法做单测?", "acceptedAnswer": {"@type": "Answer", "text": "它非确定、\"正确\"开放式,所以你统计地评——很多用例上的一个率,而不是单个输入/输出。"}}, {"@type": "Question", "name": "评测里最重要的是什么?", "acceptedAnswer": {"@type": "Answer", "text": "数据集——从线上流量长出来的精选黄金集,带一份你从不调参的保留集。"}}, {"@type": "Question", "name": "怎么给模糊输出打分?", "acceptedAnswer": {"@type": "Answer", "text": "带明确细则的 LLM-as-judge(尽量成对),对齐人工标注、并消位置/冗长偏差。"}}, {"@type": "Question", "name": "怎么评一个 Agent?", "acceptedAnswer": {"@type": "Answer", "text": "除了最终成功,还评轨迹:工具调用正确性、步骤顺序合理、不空转,以及步/token/成本预算。"}}, {"@type": "Question", "name": "离线 vs 在线评测?", "acceptedAnswer": {"@type": "Answer", "text": "离线套件在 CI 把关发版(抓回归);在线 A/B + 护栏评测 + 用户反馈抓离线集漏掉的,并把新用例回灌。"}}, {"@type": "Question", "name": "最大风险?", "acceptedAnswer": {"@type": "Answer", "text": "过拟合评测集或信一个没校准的 judge——你优化的是指标而不是产品。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"LLM 应用的评测 —— 如何测试一个 Agent","item":"https://sdeoffer.com/zh/ai-coding/llm-evals/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.2); border-left: 3px solid var(--accent4); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent4); }
+  .compare-table .col-b { color: var(--accent2); }
+
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.6; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/ai-coding/llm-evals/" hreflang="en">EN</a><a href="/zh/ai-coding/llm-evals/" class="active" hreflang="zh" lang="zh">中</a></div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">AI 编程</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">llm-evals</span>
+    </nav>
+    <span class="article-tag">AI 编程</span>
+    <h1 class="article-title">LLM 应用的评测 —— 如何测试一个 Agent</h1>
+    <div class="article-meta">
+      <span>2026年6月16日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI 编程</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>你能给一个函数写单测:相同输入、相同输出,绿或红。但你没法用同样的方式给 LLM 写单测——同一个 prompt 可能给出不同答案,"正确"是模糊的,一个修好某个用例的改动会悄悄弄坏另外十个。于是团队靠<em>感觉</em>发版:某人试几个 prompt,"好像变好了",就上线了。这不可扩展,还会藏住回归。<strong>评测(Evals)</strong>就是用测量取代感觉的那套功夫——一种可重复地给 LLM 应用或 Agent 打分的办法,让你靠证据而不是靠希望去迭代。本文讲怎么搭这套:数据集、打分方法、用模型来评判、评测 <em>Agent</em>、以及把它接进 CI 和线上。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 快速要点</div>
+      <ul>
+        <li><strong>概率系统没法做单测</strong> —— 评测是统计性的:跑很多用例、打分、看通过率。单个例子说明不了什么。</li>
+        <li><strong>评测集才是资产。</strong> 一份精挑的"黄金集"(真实用例:输入 → 期望/标准),从线上轨迹里长出来,比任何单一指标都值钱。</li>
+        <li><strong>四种打分法:</strong> 启发式/精确、代码断言、<em>LLM-as-judge</em>、人工——对每个标准用最便宜又可信的那种。</li>
+        <li><strong>LLM-as-judge 把人类判断规模化</strong>处理模糊标准,但它有偏差(位置、冗长、偏爱自己),必须<em>对齐人工标注做校准</em>。</li>
+        <li><strong>Agent 需要轨迹评测</strong>,不只是看最终答案——它选对工具了吗、顺序合理吗、有没有空转或烧爆预算?</li>
+        <li><strong>两个循环:</strong> 离线评测把关发版(CI 回归),在线评测(A/B + 护栏)抓住离线集漏掉的。</li>
+        <li><strong>评测会被刷分。</strong> 过拟合到你的集合,你提升的是数字不是产品——留一份保留集,并从真实流量持续刷新。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>评测 harness 就是给"不确定性"写的测试套件:一份用例数据集、一种在每个用例上跑你系统的方式、一个或多个打分器(启发式、代码、LLM-judge、人工)给输出打分,以及把分数聚合成可与基线对比的指标。数据集从真实流量建,模糊的东西用你已对齐人工的 LLM-judge 打,Agent 评<em>轨迹</em>而不只是答案,发版用离线集把关,并保持在线评测在跑——因为线上总会给你惊喜。</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="评测闭环:数据集、跑系统、打分、聚合对比、然后发布或迭代,线上轨迹回灌数据集">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arp" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="30"  y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="115" y="84" font-size="12" fill="#e2e8f0">评测数据集</text><text x="115" y="102" font-size="9" fill="#7a8aa0">黄金集:输入 → 期望</text>
+          <rect x="250" y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="335" y="84" font-size="12" fill="#e2e8f0">被测系统</text><text x="335" y="102" font-size="9" fill="#7a8aa0">prompt · RAG · agent</text>
+          <rect x="470" y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/><text x="555" y="84" font-size="12" fill="#e2e8f0">打分器</text><text x="555" y="102" font-size="9" fill="#7a8aa0">启发式·代码·judge·人工</text>
+          <rect x="690" y="56" width="240" height="66" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="810" y="84" font-size="12" fill="#e2e8f0">聚合与对比</text><text x="810" y="102" font-size="9" fill="#7a8aa0">通过率 · 忠实度 · 成本 vs 基线</text>
+          <rect x="690" y="176" width="240" height="56" rx="9" fill="#161b25" stroke="#a78bfa" stroke-width="1.5"/><text x="810" y="200" font-size="12" fill="#e2e8f0">发布 ✓  /  迭代 ↺</text><text x="810" y="218" font-size="9" fill="#7a8aa0">有回归?把关发版</text>
+          <rect x="30"  y="290" width="190" height="52" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="125" y="313" font-size="11" fill="#e2e8f0">线上轨迹</text><text x="125" y="328" font-size="9" fill="#7a8aa0">+ 用户反馈</text>
+        </g>
+        <line x1="200" y1="89" x2="248" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="420" y1="89" x2="468" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="640" y1="89" x2="688" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="810" y1="122" x2="810" y2="176" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <path d="M690,204 L335,204 L335,124" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="500" y="196" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">迭代 —— 改 prompt / 模型 / 检索</text>
+        <path d="M125,290 L125,124" fill="none" stroke="#7a8aa0" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="150" y="210" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="start">curate 新用例</text>
+      </svg>
+      <figcaption>评测闭环 —— 在数据集上跑系统、给每个输出打分、与基线聚合对比,然后发布或迭代;线上轨迹持续把新用例回灌进数据集</figcaption>
+    </figure>
+
+    <h2>为什么要评测,而不是凭感觉</h2>
+    <p>LLM 应用有三个性质打破了常规测试。它们<strong>非确定</strong>(同一输入会变,所以跑一遍说明不了什么)。"正确"是<strong>开放式的</strong>(很少有唯一正确字符串——一段摘要可以好在很多方面)。改动有<strong>非局部影响</strong>(为一个用例改好 prompt 会悄悄拖垮别的)。后果是你必须<em>统计地</em>评估:跑一群用例、追踪成功<strong>率</strong>,就像追踪一个模型的准确率——而不是盯着单个输出。评测就是团队用一个数字而不是一场争论来回答"这一版到底有没有更好"。</p>
+
+    <h2>评什么:评测金字塔</h2>
+    <p>别只端到端测整体。像测试金字塔一样混合粒度:大量便宜的<strong>组件评测</strong>(检索器返回对的文档了吗?路由选对工具了吗?输出能解析成合法 JSON 吗?)、较少的<strong>端到端评测</strong>(给定用户请求,最终答案好吗?),以及薄薄一层昂贵的<strong>人工评审</strong>。组件评测能定位失败——端到端掉分时,它们告诉你<em>哪一级</em>坏了——这正是 <a href="/zh/system-design/rag-system/">RAG</a> 或 Agent 这种多步流水线最需要的。</p>
+
+    <h2>评测数据集</h2>
+    <p>一切都建在数据集上,而好的数据集才是真正的护城河。一个用例 = <strong>一个输入 + 一种判断输出的办法</strong>——有时是精确的期望答案,更多时候是一组标准或一个用于对比的参照。用例从哪来?</p>
+    <ul>
+      <li><strong>线上轨迹</strong> —— 最好的来源。挖真实用户输入(尤其是失败和点踩),整理成用例。你的评测集应该长得像你的流量。</li>
+      <li><strong>手写边界用例</strong> —— 你知道难的那些棘手输入:歧义查询、对抗 prompt、空/垃圾输入、长尾。</li>
+      <li><strong>合成生成</strong> —— LLM 能起草候选用例来快速铺覆盖率,但必须有人审,否则你是在拿编出来的"真值"打分。</li>
+    </ul>
+    <p>两条规矩让集合保持诚实:<strong>标一份你从不调参的保留集</strong>(这样你量的是泛化,不是记忆),以及<strong>不断从新流量刷新</strong>(静态集会随用法漂移而过时)。目标是覆盖输入分布和失败模式,而不是堆数量——几百个精选用例胜过几千个近似重复。</p>
+
+    <h2>怎么给输出打分</h2>
+    <p>每个用例都需要一个<strong>打分器</strong>把输出变成分数。有四类,从最便宜最可靠排起:</p>
+
+    <table class="compare-table">
+      <thead><tr><th>打分器</th><th>何时用</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">启发式 / 精确</td><td class="col-b">有已知答案或模式:精确匹配、正则、含关键词、合法 JSON、分类准确率。便宜、确定——能用就用。</td></tr>
+        <tr><td class="col-a">代码断言</td><td class="col-b">正确性可由跑代码检验:生成的 SQL 能执行并返回对的行吗?代码过测试了吗?强且客观。</td></tr>
+        <tr><td class="col-a">LLM-as-judge</td><td class="col-b">标准模糊、偏语言:这段摘要忠实吗?这个回答有用、语气对吗?便宜地规模化类人判断。</td></tr>
+        <tr><td class="col-a">人工评审</td><td class="col-b">细微之处的金标准,也用来校准其它打分器;每次都跑太慢太贵,所以抽样。</td></tr>
+      </tbody>
+    </table>
+
+    <p>诀窍是把打分器和标准对上:别花 LLM-judge 去查一个正则就能验的东西,也别假装关键词匹配能抓住"这段解释清不清楚"。很多真实评测会组合打分器——代码查格式 + LLM-judge 评质量。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">一次评测运行 = 数据集 × 系统 × 打分器</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>scores = []
+<span class="kw">for</span> case <span class="kw">in</span> dataset:
+    out = system.<span class="fn">run</span>(case.input)            <span class="cm"># 被测的 app/agent</span>
+    s = {
+        <span class="str">"format"</span>:  <span class="fn">is_valid_json</span>(out),         <span class="cm"># 启发式</span>
+        <span class="str">"correct"</span>: <span class="fn">run_tests</span>(out, case.tests),  <span class="cm"># 代码</span>
+        <span class="str">"helpful"</span>: judge.<span class="fn">score</span>(case.input, out, rubric),  <span class="cm"># LLM-as-judge</span>
+    }
+    scores.append(s)
+report = <span class="fn">aggregate</span>(scores)               <span class="cm"># 每个标准的通过率</span>
+<span class="fn">assert</span> report.correct &gt;= baseline.correct  <span class="cm"># CI 门禁:不许回归</span></code></pre>
+    </div>
+
+    <h2>认真做 LLM-as-Judge</h2>
+    <p>对那些模糊标准——忠实度、有用性、语气、"有没有遵循指令"——一个强模型能以人工零头的成本和延迟给输出打分。这就是 <strong>LLM-as-judge</strong>,它让评测开放式生成变得可行。但天真的 judge 不可靠,所以把它当成一个你要部署的模型来对待:先设计,再验证。</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LLM-as-judge:查询、系统输出与评分细则进入一个 judge 模型,输出分数和理由">
+        <defs>
+          <marker id="ar2" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7a8aa0"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="24" y="40"  width="170" height="40" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="109" y="64" font-size="11" fill="#e2e8f0">查询 / 任务</text>
+          <rect x="24" y="108" width="170" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="109" y="132" font-size="11" fill="#e2e8f0">系统输出</text>
+          <rect x="24" y="176" width="170" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="109" y="200" font-size="11" fill="#e2e8f0">评分细则 / 参照</text>
+          <rect x="300" y="92"  width="150" height="72" rx="9" fill="#161b25" stroke="#a78bfa" stroke-width="1.5"/><text x="375" y="122" font-size="12" fill="#e2e8f0">Judge LLM</text><text x="375" y="140" font-size="9" fill="#7a8aa0">按细则打分</text>
+          <rect x="540" y="92"  width="156" height="72" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="618" y="118" font-size="11" fill="#e2e8f0">分数 + 理由</text><text x="618" y="136" font-size="9" fill="#7a8aa0">如 1–5 · 通过/不通过</text>
+          <line x1="194" y1="60"  x2="298" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="194" y1="128" x2="298" y2="128" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="194" y1="196" x2="298" y2="140" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="450" y1="128" x2="538" y2="128" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+        </g>
+      </svg>
+      <figcaption>LLM-as-judge —— 任务、系统输出和一份明确的评分细则进入 judge 模型,返回分数加理由;信任它之前先对齐人工标注做校准</figcaption>
+    </figure>
+
+    <h3>让 judge 可靠</h3>
+    <ul>
+      <li><strong>给它细则。</strong> 别问"这好吗"——给明确标准和量表("忠实度打 1–5:5 = 每条主张都被来源支撑……")。让它先给理由再给分,能提升一致性。</li>
+      <li><strong>能成对就成对。</strong> "A 和 B 哪个更好?"比绝对的 1–5 打分更可靠,而且这正是你对比两版时想要的。</li>
+      <li><strong>知道它的偏差。</strong> Judge 偏爱第一个选项(<em>位置偏差</em>——随机化顺序)、更长的答案(<em>冗长偏差</em>)、以及自己同族的输出(<em>自偏爱</em>)。要缓解,别无视。</li>
+      <li><strong>对齐人工校准。</strong> 让人标一批样本,再看 judge 是否一致(如测一致率/相关性)。一个你没验证过的 judge,只是流水线里又一个未经验证的模型。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>Judge 是你系统的一部分,所以它也要有自己的评测。"我们用 LLM 来打分"在你能说出"而且它和人工标注 X% 一致"之前,不算质量论断。校准,正是把可信 judge 和"自说自话"区分开的东西。</p>
+    </div>
+
+    <h2>评 Agent,不只是评答案</h2>
+    <p>Agent(见 <a href="/zh/ai-coding/how-ai-coding-agents-work/">Agent 如何工作</a>)把门槛抬高了:一个多步 Agent 可能走着糟糕的路径到达一个好的最终答案——或在中途以"只看最终答案就漏掉"的方式失败。所以要评<strong>轨迹</strong>,不只是结果:</p>
+    <ul>
+      <li><strong>任务成功</strong> —— 它最终达成目标了吗?(端到端指标)</li>
+      <li><strong>工具调用正确性</strong> —— 用对工具、传对参数了吗,某个失败时能恢复吗?</li>
+      <li><strong>轨迹质量</strong> —— 步骤顺序合理、没有无谓循环、不重复一个失败动作。</li>
+      <li><strong>效率</strong> —— 到达目标用了多少步、token、延迟、成本;40 步 $2 成功的 Agent 比 6 步 2 毛搞定的差。</li>
+    </ul>
+    <p>实操上,你记录完整轨迹(每个 prompt、工具调用、观测)并打分——用启发式查工具调用合法性和步/成本预算,用 LLM-judge 评"这计划合理吗"。这就是 <a href="/zh/ai-coding/harness-engineering/">harness 工程</a> 和评测密不可分的原因:你是对着轨迹评测来调 harness。</p>
+
+    <h2>离线门禁与在线评测</h2>
+    <p>评测在两个循环里跑,两个都要。</p>
+    <h3>离线 —— 把关发版</h3>
+    <p>在每个有意义的改动(改 prompt、换模型、调检索)上,于 CI 里跑评测套件。套件报告每个标准的通过率,并<strong>与当前基线对比</strong>;掉分就挡住合并,跟单测失败一样。这就是让你能无惧地改 prompt 的东西——集合会抓住那些悄悄的回归。</p>
+    <h3>在线 —— 线上永远不等于你的集合</h3>
+    <p>离线评测只覆盖你想到要放进去的,而真实流量总在漂,所以也要在线上评:用真实结果指标对新旧版做 <strong>A/B</strong>;在抽样的线上输出上跑便宜的<strong>护栏评测</strong>(在线 LLM-judge 标记不忠实或不安全的回答);采集<strong>用户反馈</strong>(点赞、编辑、重生成)作为持续但有噪声的质量信号。线上发现的失败,会变成明天的离线用例——闭合上图那个循环。</p>
+
+    <h2>坑与取舍</h2>
+    <ul>
+      <li><strong>过拟合评测集。</strong> 对着一个固定集合调久了,你提升的是分数不是产品。留保留集、从流量刷新、也看线上指标。</li>
+      <li><strong>未校准的 judge。</strong> 不对齐人工就信 LLM-judge,等于把 judge 的偏差烤进每个决定。先验证,换 judge 模型时再验证。</li>
+      <li><strong>污染或陈旧的数据。</strong> 从训练数据泄露的用例会虚高分数;不再像流量的用例会误导你。要 curate 和轮换。</li>
+      <li><strong>只优化一个数字。</strong> 单个平均会藏住取舍——质量上升的同时成本或延迟可能爆掉,或者均值变好但某个切片回归了。盯一个小看板(按标准、按切片),别只看一个数。</li>
+      <li><strong>评测的成本。</strong> LLM-judge 和大套件费钱费时;分层——每次提交跑快而便宜的检查,完整昂贵套件每晚或发版前跑。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">小结</div>
+      <p>评测把"好像更好"变成"确实更好,好这么多"。从线上建一个真实数据集,每个标准用最便宜又可信的方法打分(启发式 → 代码 → 校准过的 LLM-judge → 人工),评 Agent 看轨迹和成本而不只是最终答案,发版用离线套件把关,并保持在线评测在跑——因为评测集永远不会完全等于现实。能测量质量的团队,比围着它争论的团队迭代得更快。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>为什么 LLM 应用没法做单测?</strong> 它非确定、"正确"开放式,所以你统计地评——很多用例上的一个率,而不是单个输入/输出。<br>
+      <strong>评测里最重要的是什么?</strong> 数据集——从线上流量长出来的精选黄金集,带一份你从不调参的保留集。<br>
+      <strong>怎么给模糊输出打分?</strong> 带明确细则的 LLM-as-judge(尽量成对),对齐人工标注、并消位置/冗长偏差。<br>
+      <strong>怎么评一个 Agent?</strong> 除了最终成功,还评轨迹:工具调用正确性、步骤顺序合理、不空转,以及步/token/成本预算。<br>
+      <strong>离线 vs 在线评测?</strong> 离线套件在 CI 把关发版(抓回归);在线 A/B + 护栏评测 + 用户反馈抓离线集漏掉的,并把新用例回灌。<br>
+      <strong>最大风险?</strong> 过拟合评测集或信一个没校准的 judge——你优化的是指标而不是产品。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/ai-coding/harness-engineering/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">Harness 工程</div>
+      </a>
+      <a href="/zh/ai-coding/" class="article-nav-card next">
+        <div class="article-nav-label">返回 →</div>
+        <div class="article-nav-title">AI 编程</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

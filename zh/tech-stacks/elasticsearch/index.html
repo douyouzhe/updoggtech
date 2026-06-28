@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Elasticsearch——倒排索引、分词与分析器、BM25 相关性打分、分片与副本、分布式 scatter-gather 查询路径、近实时搜索,以及 query 与 filter 的区别。">
-<title>Elasticsearch — 搜索与分析引擎 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/elasticsearch/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/elasticsearch/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/elasticsearch/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/elasticsearch/">
+<meta name="description" content="倒排索引、分析器、BM25 相关性、分片与副本、scatter-gather、近实时,以及 query 与 filter。">
+<title>Elasticsearch — 搜索与分析引擎 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/elasticsearch/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/elasticsearch/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/elasticsearch/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/elasticsearch/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Elasticsearch — 搜索与分析引擎">
 <meta property="og:description" content="倒排索引、分析器、BM25 相关性、分片与副本、scatter-gather、近实时,以及 query 与 filter。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/elasticsearch/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/elasticsearch/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Elasticsearch — 搜索与分析引擎">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Elasticsearch — 搜索与分析引擎">
 <meta name="twitter:description" content="全文搜索怎么工作:倒排索引、分析器、相关性打分、分布式分片。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Elasticsearch — 搜索与分析引擎","description":"倒排索引、分析器、BM25 相关性、分片与副本、scatter-gather、近实时,以及 query 与 filter。","datePublished":"2023-09-14","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/elasticsearch/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Elasticsearch — 搜索与分析引擎","description":"倒排索引、分析器、BM25 相关性、分片与副本、scatter-gather、近实时,以及 query 与 filter。","datePublished":"2023-09-14","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/elasticsearch/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-14"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么不直接用 SQL LIKE?", "acceptedAnswer": {"@type": "Answer", "text": "LIKE 要扫每一行且无法排序;倒排索引(词项→文档)把搜索变成查表,BM25 按相关性排序。"}}, {"@type": "Question", "name": "分析器干什么?", "acceptedAnswer": {"@type": "Answer", "text": "在索引和查询两端对文本分词并归一化(小写、词干、停用词),所以 \"Running\" 能命中 \"ran\"。"}}, {"@type": "Question", "name": "query 对比 filter?", "acceptedAnswer": {"@type": "Answer", "text": "query 计算相关性分数(不可缓存);filter 是是/否匹配(可缓存)。精确约束用 filter,自由文本用 query。"}}, {"@type": "Question", "name": "分布式搜索怎么跑?", "acceptedAnswer": {"@type": "Answer", "text": "scatter-gather:协调节点并行查询每个分片,各返回本地 top-k,协调节点合并成全局排名。"}}, {"@type": "Question", "name": "它是实时的吗?", "acceptedAnswer": {"@type": "Answer", "text": "近实时——新文档在一次 refresh(约 1 秒)后可搜,不是即时;而且它是搜索索引,不是主存储。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Elasticsearch — 搜索与分析引擎","item":"https://sdeoffer.com/zh/tech-stacks/elasticsearch/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/elasticsearch/">EN</a>
-        <a href="/zh/tech-stacks/elasticsearch/" class="active">中</a>
+        <a href="/tech-stacks/elasticsearch/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/elasticsearch/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">elasticsearch</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Elasticsearch</h1>
     <div class="article-meta">
@@ -325,9 +343,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -335,7 +354,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

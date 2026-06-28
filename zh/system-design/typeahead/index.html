@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:搜索自动补全(typeahead)——trie 前缀树、在每个节点预计算 top-k、按热度(时间衰减)排序、离线数据管道构建 trie、内存服务与按前缀分片、缓存与客户端防抖、实时 vs 批更新、关键取舍。">
-<title>设计搜索自动补全 (Typeahead) — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/typeahead/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/typeahead/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/typeahead/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/typeahead/">
+<meta name="description" content="搜索自动补全（typeahead）系统设计：trie 前缀树、节点预计算 top-k、热度时间衰减排序、离线管道建 trie、按前缀分片、缓存防抖与取舍。">
+<title>设计搜索自动补全 (Typeahead) — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/typeahead/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/typeahead/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/typeahead/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/typeahead/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计搜索自动补全 (Typeahead)">
-<meta property="og:description" content="Typeahead 系统设计:trie、预计算 top-k、热度排序、离线构建管道、分片服务、防抖缓存。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/typeahead/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="搜索自动补全（typeahead）系统设计：trie 前缀树、节点预计算 top-k、热度时间衰减排序、离线管道建 trie、按前缀分片、缓存防抖与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/typeahead/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计搜索自动补全 (Typeahead) — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="设计搜索自动补全 (Typeahead)">
 <meta name="twitter:description" content="设计搜索自动补全:trie、预计算 top-k、时间衰减排序、内存分片、防抖。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计搜索自动补全 (Typeahead)", "description": "系统设计:搜索自动补全(typeahead)——trie 前缀树、在每个节点预计算 top-k、按热度(时间衰减)排序、离线数据管道构建 trie、内存服务与按前缀分片、缓存与客户端防抖、实时 vs 批更新、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/typeahead/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计搜索自动补全 (Typeahead)","description":"搜索自动补全（typeahead）系统设计：trie 前缀树、节点预计算 top-k、热度时间衰减排序、离线管道建 trie、按前缀分片、缓存防抖与取舍。","datePublished":"2023-04-08","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/typeahead/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-08"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么 trie?", "acceptedAnswer": {"@type": "Answer", "text": "前缀查找是 O(前缀长度),独立于语料大小,且共享前缀共享节点——对\"补全这个前缀\"理想。"}}, {"@type": "Question", "name": "为什么在每个节点预计算 top-k?", "acceptedAnswer": {"@type": "Answer", "text": "它把排序移出热路径:查询变成\"走到节点、返回它的缓存列表\",在巨大 QPS 下满足亚 50 ms 预算。"}}, {"@type": "Question", "name": "建议怎么排序并保持新鲜?", "acceptedAnswer": {"@type": "Answer", "text": "按时间衰减的查询热度,从日志离线重建;一个小流式层能捕获趋势词。"}}, {"@type": "Question", "name": "怎么扩展服务?", "acceptedAnswer": {"@type": "Answer", "text": "把 trie 保在内存、按前缀分片、复制每个分片、换入不可变快照——读保持无锁。"}}, {"@type": "Question", "name": "什么削减客户端负载?", "acceptedAnswer": {"@type": "Answer", "text": "防抖按键(~200 ms)并缓存已打前缀;边缘缓存热门短前缀。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计搜索自动补全 (Typeahead) — 系统设计","item":"https://sdeoffer.com/zh/system-design/typeahead/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/typeahead/">EN</a>
-        <a href="/zh/system-design/typeahead/" class="active">中</a>
+        <a href="/system-design/typeahead/" hreflang="en">EN</a>
+        <a href="/zh/system-design/typeahead/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">typeahead</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计搜索自动补全 (Typeahead)</h1>
     <div class="article-meta">
@@ -365,9 +383,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -375,7 +394,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -4,23 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="System design interview prep — e-commerce, video streaming, chat app, ride-share, URL shortener and more.">
-<title>System Design Interview Questions & Breakdowns — updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/">
+<title>System Design Interview Questions & Breakdowns | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="System Design Interview Questions & Breakdowns">
 <meta property="og:description" content="End-to-end system design breakdowns — e-commerce, video streaming, chat, ride-share, URL shortener, hotel booking.">
-<meta property="og:url" content="https://updoggtech.com/system-design/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/system-design/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="System Design Interview Questions & Breakdowns">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="System Design Interview Breakdowns">
 <meta name="twitter:description" content="End-to-end system design breakdowns for SDE interviews.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"CollectionPage","name":"System Design","url":"https://updoggtech.com/system-design/","description":"End-to-end system design interview breakdowns for SDE interviews."}
+{"@context":"https://schema.org","@type":"CollectionPage","name":"System Design","url":"https://sdeoffer.com/system-design/","description":"End-to-end system design interview breakdowns for SDE interviews.","inLanguage":"en","mainEntity":{"@type":"ItemList","itemListElement":[{"@type":"ListItem","position":1,"url":"https://sdeoffer.com/system-design/news-feed/","name":"Design a News Feed"},{"@type":"ListItem","position":2,"url":"https://sdeoffer.com/system-design/notification-system/","name":"Design a Notification System"},{"@type":"ListItem","position":3,"url":"https://sdeoffer.com/system-design/web-crawler/","name":"Design a Web Crawler"},{"@type":"ListItem","position":4,"url":"https://sdeoffer.com/system-design/rate-limiter/","name":"Design a Rate Limiter"},{"@type":"ListItem","position":5,"url":"https://sdeoffer.com/system-design/rag-system/","name":"Design a RAG System at Scale"},{"@type":"ListItem","position":6,"url":"https://sdeoffer.com/system-design/ai-chat-assistant/","name":"Design ChatGPT — an AI Chat Assistant"},{"@type":"ListItem","position":7,"url":"https://sdeoffer.com/system-design/ticketmaster/","name":"Design Ticketmaster"},{"@type":"ListItem","position":8,"url":"https://sdeoffer.com/system-design/payment-system/","name":"Design a Payment System"},{"@type":"ListItem","position":9,"url":"https://sdeoffer.com/system-design/leaderboard/","name":"Design a Leaderboard"},{"@type":"ListItem","position":10,"url":"https://sdeoffer.com/system-design/nearby/","name":"Design Nearby / Yelp (Proximity)"},{"@type":"ListItem","position":11,"url":"https://sdeoffer.com/system-design/typeahead/","name":"Design Search Autocomplete (Typeahead)"},{"@type":"ListItem","position":12,"url":"https://sdeoffer.com/system-design/pastebin/","name":"Design Pastebin"},{"@type":"ListItem","position":13,"url":"https://sdeoffer.com/system-design/key-value-store/","name":"Design a Distributed Key-Value Store"},{"@type":"ListItem","position":14,"url":"https://sdeoffer.com/system-design/google-drive/","name":"Design Google Drive / Dropbox"},{"@type":"ListItem","position":15,"url":"https://sdeoffer.com/system-design/hotel-booking/","name":"Design a Hotel Booking App"},{"@type":"ListItem","position":16,"url":"https://sdeoffer.com/system-design/url-shortener/","name":"Design a URL Shortener"},{"@type":"ListItem","position":17,"url":"https://sdeoffer.com/system-design/ride-share/","name":"Design a Ride-share App"},{"@type":"ListItem","position":18,"url":"https://sdeoffer.com/system-design/chat-app/","name":"Design a Chat App"},{"@type":"ListItem","position":19,"url":"https://sdeoffer.com/system-design/video-streaming/","name":"Design a Video Streaming Platform"},{"@type":"ListItem","position":20,"url":"https://sdeoffer.com/system-design/map-webapp/","name":"Design a Map Web App"},{"@type":"ListItem","position":21,"url":"https://sdeoffer.com/system-design/ecommerce-platform/","name":"Design an E-commerce Platform"}]}}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -134,14 +145,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="container">
     <div class="nav-inner">
-      <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+      <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
       <ul class="nav-links">
         <li><a href="/system-design/" class="active"><span class="dot"></span>System Design</a></li>
         <li><a href="/tech-stacks/"><span class="dot"></span>Tech Stacks</a></li>
@@ -149,193 +162,190 @@
         <li><a href="/ddia/"><span class="dot"></span>DDIA</a></li>
       </ul>
       <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/" class="active">EN</a><a href="/zh/system-design/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/" class="active" hreflang="en">EN</a><a href="/zh/system-design/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="container">
   <div class="page-header">
-    <div class="breadcrumb">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
       <a href="/">home</a>
-      <span>/</span>
+      <span aria-hidden="true">/</span>
       <span style="color:var(--text)">system-design</span>
-    </div>
+    </nav>
     <div class="page-label">// system design</div>
     <h1 class="page-title">System Design<br>Interview Prep</h1>
     <p class="page-desc">End-to-end breakdowns of real interview questions. From requirements to architecture to tradeoffs.</p>
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active">All (15)</button>
+    <button class="filter-btn active">All (21)</button>
     <button class="filter-btn" data-filter="distributed">Distributed Systems</button>
     <button class="filter-btn" data-filter="storage">Storage</button>
     <button class="filter-btn" data-filter="realtime">Real-time</button>
   </div>
 
   <div class="posts-list">
-    <a href="/system-design/ecommerce-platform/" class="post-row" data-cat="storage distributed">
+    <a href="/system-design/news-feed/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design an E-commerce Platform</span>
-          <span class="post-excerpt">Product catalog, cart, inventory, payment processing, and order management at scale.</span>
+          <span class="post-title">Design a News Feed</span>
+          <span class="post-excerpt">Fan-out-on-write vs read, the celebrity hot-key problem, hybrid fan-out, and timeline caching.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Mar 31, 2023</span>
+        <span class="post-date">Jun 28, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
-
-    <a href="/system-design/map-webapp/" class="post-row" data-cat="realtime distributed">
+    <a href="/system-design/notification-system/" class="post-row" data-cat="realtime">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Map Web App</span>
-          <span class="post-excerpt">Geo-indexing, tile rendering, routing algorithms, and location search at scale.</span>
+          <span class="post-title">Design a Notification System</span>
+          <span class="post-excerpt">Multi-channel push/SMS/email, fan-out, dedup, retries with a DLQ, and delivery guarantees.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">Jun 28, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
-
-    <a href="/system-design/video-streaming/" class="post-row" data-cat="storage distributed">
+    <a href="/system-design/web-crawler/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Video Streaming Platform</span>
-          <span class="post-excerpt">CDN strategy, encoding pipeline, chunked delivery, and millions of concurrent viewers.</span>
+          <span class="post-title">Design a Web Crawler</span>
+          <span class="post-excerpt">URL frontier with politeness queues, dedup via Bloom filters, robots.txt, and crawl traps.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Jun 28, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
-
-    <a href="/system-design/chat-app/" class="post-row" data-cat="realtime">
+    <a href="/system-design/rate-limiter/" class="post-row" data-cat="realtime">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Chat App</span>
-          <span class="post-excerpt">WebSockets, message fan-out, presence indicators, and real-time delivery.</span>
+          <span class="post-title">Design a Rate Limiter</span>
+          <span class="post-excerpt">Token bucket vs sliding window, distributed counters in Redis with atomic Lua, and 429s.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">Jun 28, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
-
-    <a href="/system-design/ride-share/" class="post-row" data-cat="realtime distributed">
+    <a href="/system-design/rag-system/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Ride-share App</span>
-          <span class="post-excerpt">Geo-indexing, driver matching, surge pricing, and trip state machine design.</span>
+          <span class="post-title">Design a RAG System at Scale</span>
+          <span class="post-excerpt">Chunking, the vector index (ANN), hybrid retrieval, reranking, and grounded answers with citations.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-date">Jun 16, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/url-shortener/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/ai-chat-assistant/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a URL Shortener</span>
-          <span class="post-excerpt">Hash collision handling, redirect latency, analytics tracking, and custom slugs.</span>
+          <span class="post-title">Design ChatGPT — an AI Chat Assistant</span>
+          <span class="post-excerpt">Streaming (SSE), the GPU inference layer, an LLM gateway, memory &amp; RAG, and cost tradeoffs.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Jun 16, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/hotel-booking/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/ticketmaster/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Hotel Booking App</span>
-          <span class="post-excerpt">Inventory locking, double-booking prevention, search ranking, and payment flows.</span>
+          <span class="post-title">Design Ticketmaster</span>
+          <span class="post-excerpt">Seat holds and locking to prevent oversell, the virtual waiting room, and consistency.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 01, 2023</span>
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 15, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/google-drive/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/payment-system/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">08</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design Google Drive / Dropbox</span>
-          <span class="post-excerpt">File chunking, content-addressed dedup, metadata vs block storage, sync, and conflict resolution.</span>
+          <span class="post-title">Design a Payment System</span>
+          <span class="post-excerpt">Idempotency, the double-entry ledger, exactly-once, reconciliation, and sagas.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 08, 2023</span>
+        <span class="post-date">Apr 14, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/key-value-store/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/leaderboard/" class="post-row" data-cat="realtime distributed">
       <div class="post-row-left">
         <span class="post-num">09</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Distributed Key-Value Store</span>
-          <span class="post-excerpt">Consistent hashing, quorums, replication, vector clocks, and gossip — Dynamo-style.</span>
-        </div>
-      </div>
-      <div class="post-row-right">
-        <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 09, 2023</span>
-        <span class="post-arrow">↗</span>
-      </div>
-    </a>
-
-    <a href="/system-design/pastebin/" class="post-row" data-cat="storage">
-      <div class="post-row-left">
-        <span class="post-num">10</span>
-        <div class="post-info">
-          <span class="post-tag">System Design</span>
-          <span class="post-title">Design Pastebin</span>
-          <span class="post-excerpt">Key generation, metadata vs blob storage, read-heavy caching, and expiration.</span>
+          <span class="post-title">Design a Leaderboard</span>
+          <span class="post-excerpt">Redis sorted sets for O(log n) rank, persistence, sharding, and approximate rank.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 10, 2023</span>
+        <span class="post-date">Apr 13, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/typeahead/" class="post-row" data-cat="distributed">
+<a href="/system-design/nearby/" class="post-row" data-cat="realtime distributed">
+      <div class="post-row-left">
+        <span class="post-num">10</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design Nearby / Yelp (Proximity)</span>
+          <span class="post-excerpt">Geospatial indexing with geohash and quadtrees, the boundary problem, and caching.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 12, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/typeahead/" class="post-row" data-cat="distributed">
       <div class="post-row-left">
         <span class="post-num">11</span>
         <div class="post-info">
@@ -351,83 +361,180 @@
       </div>
     </a>
 
-    <a href="/system-design/nearby/" class="post-row" data-cat="realtime distributed">
+<a href="/system-design/pastebin/" class="post-row" data-cat="storage">
       <div class="post-row-left">
         <span class="post-num">12</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design Nearby / Yelp (Proximity)</span>
-          <span class="post-excerpt">Geospatial indexing with geohash and quadtrees, the boundary problem, and caching.</span>
+          <span class="post-title">Design Pastebin</span>
+          <span class="post-excerpt">Key generation, metadata vs blob storage, read-heavy caching, and expiration.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 12, 2023</span>
+        <span class="post-date">Apr 10, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/leaderboard/" class="post-row" data-cat="realtime distributed">
+<a href="/system-design/key-value-store/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">13</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Leaderboard</span>
-          <span class="post-excerpt">Redis sorted sets for O(log n) rank, persistence, sharding, and approximate rank.</span>
+          <span class="post-title">Design a Distributed Key-Value Store</span>
+          <span class="post-excerpt">Consistent hashing, quorums, replication, vector clocks, and gossip — Dynamo-style.</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="difficulty diff-medium">Medium</span>
-        <span class="post-date">Apr 13, 2023</span>
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 09, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/payment-system/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/google-drive/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">14</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design a Payment System</span>
-          <span class="post-excerpt">Idempotency, the double-entry ledger, exactly-once, reconciliation, and sagas.</span>
+          <span class="post-title">Design Google Drive / Dropbox</span>
+          <span class="post-excerpt">File chunking, content-addressed dedup, metadata vs block storage, sync, and conflict resolution.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 14, 2023</span>
+        <span class="post-date">Apr 08, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/system-design/ticketmaster/" class="post-row" data-cat="storage distributed">
+<a href="/system-design/hotel-booking/" class="post-row" data-cat="storage distributed">
       <div class="post-row-left">
         <span class="post-num">15</span>
         <div class="post-info">
           <span class="post-tag">System Design</span>
-          <span class="post-title">Design Ticketmaster</span>
-          <span class="post-excerpt">Seat holds and locking to prevent oversell, the virtual waiting room, and consistency.</span>
+          <span class="post-title">Design a Hotel Booking App</span>
+          <span class="post-excerpt">Inventory locking, double-booking prevention, search ranking, and payment flows.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/url-shortener/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">16</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a URL Shortener</span>
+          <span class="post-excerpt">Hash collision handling, redirect latency, analytics tracking, and custom slugs.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/ride-share/" class="post-row" data-cat="realtime distributed">
+      <div class="post-row-left">
+        <span class="post-num">17</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Ride-share App</span>
+          <span class="post-excerpt">Geo-indexing, driver matching, surge pricing, and trip state machine design.</span>
         </div>
       </div>
       <div class="post-row-right">
         <span class="difficulty diff-hard">Hard</span>
-        <span class="post-date">Apr 15, 2023</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/chat-app/" class="post-row" data-cat="realtime">
+      <div class="post-row-left">
+        <span class="post-num">18</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Chat App</span>
+          <span class="post-excerpt">WebSockets, message fan-out, presence indicators, and real-time delivery.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-medium">Medium</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/video-streaming/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">19</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Video Streaming Platform</span>
+          <span class="post-excerpt">CDN strategy, encoding pipeline, chunked delivery, and millions of concurrent viewers.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/map-webapp/" class="post-row" data-cat="realtime distributed">
+      <div class="post-row-left">
+        <span class="post-num">20</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design a Map Web App</span>
+          <span class="post-excerpt">Geo-indexing, tile rendering, routing algorithms, and location search at scale.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Apr 01, 2023</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/system-design/ecommerce-platform/" class="post-row" data-cat="storage distributed">
+      <div class="post-row-left">
+        <span class="post-num">21</span>
+        <div class="post-info">
+          <span class="post-tag">System Design</span>
+          <span class="post-title">Design an E-commerce Platform</span>
+          <span class="post-excerpt">Product catalog, cart, inventory, payment processing, and order management at scale.</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="difficulty diff-hard">Hard</span>
+        <span class="post-date">Mar 31, 2023</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
   </div>
 </div>
 
+</main>
 <footer>
   <div class="container">
     <div class="footer-inner">
-      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
       <ul class="footer-links">
         <li><a href="/system-design/">System Design</a></li>
         <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
         <li><a href="/contact/">Contact</a></li>
       </ul>
-      <div class="footer-copy">© 2024 updoggtech</div>
+      <div class="footer-copy">© 2024 sdeoffer</div>
     </div>
   </div>
 </footer>

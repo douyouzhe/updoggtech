@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building Google Drive / Dropbox — file chunking, content-addressed deduplication, splitting metadata from block storage, the sync algorithm, change notifications, and conflict resolution.">
-<title>Design Google Drive / Dropbox — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/google-drive/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/google-drive/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/google-drive/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/google-drive/">
+<meta name="description" content="Google Drive design — chunk files, dedupe by content hash, split metadata from block storage, and sync with change feeds and conflict resolution.">
+<title>Design Google Drive / Dropbox — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/google-drive/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/google-drive/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/google-drive/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/google-drive/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design Google Drive / Dropbox — System Design">
-<meta property="og:description" content="File chunking, content-addressed deduplication, metadata vs block storage, the sync algorithm, change notifications, and conflict resolution.">
-<meta property="og:url" content="https://updoggtech.com/system-design/google-drive/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Google Drive design — chunk files, dedupe by content hash, split metadata from block storage, and sync with change feeds and conflict resolution.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/google-drive/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design Google Drive / Dropbox — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Design Google Drive / Dropbox — System Design">
 <meta name="twitter:description" content="How a file storage and sync service works: chunking, dedup, metadata, sync, and conflicts.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Google Drive / Dropbox","description":"File chunking, content-addressed deduplication, metadata vs block storage, the sync algorithm, change notifications, and conflict resolution.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/google-drive/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Google Drive / Dropbox","description":"Google Drive design — chunk files, dedupe by content hash, split metadata from block storage, and sync with change feeds and conflict resolution.","datePublished":"2023-04-08","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/google-drive/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-08","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why chunk files?", "acceptedAnswer": {"@type": "Answer", "text": "Partial sync (only changed chunks move), resumable + parallel transfer, and deduplication — all impossible if a file is one opaque blob."}}, {"@type": "Question", "name": "Why content-addressed storage?", "acceptedAnswer": {"@type": "Answer", "text": "A chunk's ID is the hash of its bytes, so identical chunks are stored once (dedup) and downloads are infinitely CDN-cacheable since chunks are immutable."}}, {"@type": "Question", "name": "Why split metadata from blocks?", "acceptedAnswer": {"@type": "Answer", "text": "Metadata is tiny, high-QPS, transactional, consistency-sensitive; blocks are huge, immutable, append-only. Different stores, different scaling, only metadata needs invalidation."}}, {"@type": "Question", "name": "How do you handle two offline edits?", "acceptedAnswer": {"@type": "Answer", "text": "Optimistic compare-and-set on base_version; the stale committer's file is saved as a \"conflicted copy\" — never silently overwrite."}}, {"@type": "Question", "name": "What's the risk of global dedup?", "acceptedAnswer": {"@type": "Answer", "text": "Existence/confirmation attacks: instant upload reveals someone else stores that exact content. Scope dedup per-namespace/user to mitigate."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design Google Drive / Dropbox — System Design","item":"https://sdeoffer.com/system-design/google-drive/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -160,13 +174,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -174,18 +191,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/google-drive/" class="active">EN</a><a href="/zh/system-design/google-drive/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/google-drive/" class="active" hreflang="en">EN</a><a href="/zh/system-design/google-drive/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">google-drive</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design Google Drive / Dropbox</h1>
     <div class="article-meta">
@@ -251,7 +269,7 @@
     <ul>
       <li><strong>Storage:</strong> 500M × 10&nbsp;GB = 5&nbsp;EB raw — before dedup and before replication. Dedup may cut this 30–50%; replication (3×) multiplies it back up. The blob store must scale to many exabytes.</li>
       <li><strong>Write throughput:</strong> if each DAU uploads ~10 files/day at 1&nbsp;MB average, that's ~1B file ops/day ≈ ~12K writes/sec average, with peaks several times higher.</li>
-      <li><strong>Read:write:</strong> downloads and syncs dominate; expect a read-heavy ratio. Most reads are cheap metadata polls plus chunk fetches served from CDN.</li>
+      <li><strong>Read:write:</strong> downloads and syncs dominate; expect a read-heavy ratio. Most reads are cheap metadata polls plus chunk fetches served from <a href="/tech-stacks/cdn/">CDN</a>.</li>
       <li><strong>Metadata QPS:</strong> clients poll for changes frequently; the metadata service sees far more QPS than the block service, but each request is tiny.</li>
     </ul>
     <p>The headline takeaway: <strong>blocks are big and cheap-to-scale; metadata is small but high-QPS and consistency-sensitive.</strong> That asymmetry is exactly why we split them.</p>
@@ -332,7 +350,7 @@ devices    (device_id, user_id, last_cursor)    <span class="cm"># where each de
 shares     (ns_id, user_id, role)               <span class="cm"># viewer / editor / owner</span></code></pre>
     </div>
 
-    <p>A file version is just an ordered list of chunk hashes — reconstructing the file means fetching those chunks and concatenating. The <strong>namespace</strong> is the unit of sharding and sharing: a user's private root is one namespace, and each shared folder is its own namespace that can be attached to multiple users. Sharding metadata by <code>ns_id</code> keeps a user's (or shared folder's) data co-located, so listing a directory or computing a delta is a single-shard operation. A relational store (with sharding) is a fine choice because of the transactional commit; a NoSQL store works too if you handle the multi-row update carefully.</p>
+    <p>A file version is just an ordered list of chunk hashes — reconstructing the file means fetching those chunks and concatenating. The <strong>namespace</strong> is the unit of sharding and sharing: a user's private root is one namespace, and each shared folder is its own namespace that can be attached to multiple users. <a href="/tech-stacks/sharding/">Sharding</a> metadata by <code>ns_id</code> keeps a user's (or shared folder's) data co-located, so listing a directory or computing a delta is a single-shard operation. A relational store (with sharding) is a fine choice because of the transactional commit; a NoSQL store works too if you handle the multi-row update carefully.</p>
 
     <h2>Step 7 — Core Architecture: Two Planes</h2>
     <p>Putting Steps 4–6 together, the system cleanly separates into two data planes that scale independently:</p>
@@ -412,7 +430,7 @@ both versions are preserved → no silent data loss; user decides.</code></pre>
     <p>Downloads are bulk reads of immutable chunks — a perfect fit for a <strong>CDN</strong>. Since a chunk is content-addressed and never changes, it's infinitely cacheable: the URL (keyed by chunk hash) can be cached at edge locations worldwide with no invalidation logic. The client gets (presigned, expiring) CDN URLs from the block service and pulls chunks from the nearest edge. Hot chunks (popular shared files, app installers) are served almost entirely from cache, sparing the origin blob store. This is why separating immutable blocks from mutable metadata pays off again: only the metadata ever needs invalidation.</p>
 
     <h2>Step 13 — Scaling, Durability, and Fault Tolerance</h2>
-    <p>Durability is the headline requirement, so the block store replicates each chunk across multiple availability zones (and often regions); colder data is moved to <strong>erasure-coded</strong> storage that achieves the same durability with far less overhead than 3× replication. Managed object stores (S3) already give ~11 nines, which is why most designs lean on one rather than rolling their own. For the metadata plane: shard by <code>ns_id</code> and replicate each shard (leader + followers) for availability; the per-namespace change log gives a clean ordering for the cursor-based sync. Application and notification tiers are stateless and horizontally scaled behind load balancers. Because chunks are immutable and verified by hash, background scrubbing can detect and repair silent corruption (bit rot) by re-replicating from a good copy.</p>
+    <p>Durability is the headline requirement, so the block store replicates each chunk across multiple availability zones (and often regions); colder data is moved to <strong>erasure-coded</strong> storage that achieves the same durability with far less overhead than 3× replication. Managed <a href="/tech-stacks/object-storage/">object stores</a> (S3) already give ~11 nines, which is why most designs lean on one rather than rolling their own. For the metadata plane: shard by <code>ns_id</code> and replicate each shard (leader + followers) for availability; the per-namespace change log gives a clean ordering for the cursor-based sync. Application and notification tiers are stateless and horizontally scaled behind load balancers. Because chunks are immutable and verified by hash, background scrubbing can detect and repair silent corruption (bit rot) by re-replicating from a good copy.</p>
 
     <h2>Step 14 — Key Tradeoffs</h2>
     <ul>
@@ -420,7 +438,7 @@ both versions are preserved → no silent data loss; user decides.</code></pre>
       <li><strong>Fixed vs content-defined chunking.</strong> Fixed is simple but insertions ruin dedup; rolling-hash boundaries fix that at higher CPU cost.</li>
       <li><strong>Dedup scope.</strong> Global maximizes savings but enables cross-user existence attacks; per-namespace/per-user is safer. A real privacy/cost trade.</li>
       <li><strong>Metadata consistency.</strong> Strong consistency makes sync correctness easy but costs latency and limits scale; the per-namespace sharding keeps strong consistency affordable within a namespace while the system as a whole scales out.</li>
-      <li><strong>Notification mechanism.</strong> WebSockets give sub-second sync but cost many idle connections; long-polling is a cheaper near-real-time compromise.</li>
+      <li><strong>Notification mechanism.</strong> <a href="/tech-stacks/websockets/">WebSockets</a> give sub-second sync but cost many idle connections; long-polling is a cheaper near-real-time compromise.</li>
     </ul>
 
     <div class="callout">
@@ -450,9 +468,10 @@ both versions are preserved → no silent data loss; user decides.</code></pre>
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -460,7 +479,7 @@ both versions are preserved → no silent data loss; user decides.</code></pre>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

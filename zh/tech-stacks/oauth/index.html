@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 OAuth 2.0 授权框架:关键角色、OAuth vs 认证(OIDC)的区别、四种授权类型(授权码/客户端凭证/设备授权/已弃用的隐式与密码)、刷新令牌、PKCE、JWT 访问令牌结构与校验、scope、state 与 CSRF 防护、常见安全坑与令牌防盗,以及真实用例。">
-<title>OAuth 2.0 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/oauth/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/oauth/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/oauth/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/oauth/">
+<meta name="description" content="OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。">
+<title>OAuth 2.0 — 授权码、PKCE 与授权类型 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/oauth/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/oauth/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/oauth/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/oauth/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="OAuth 2.0">
 <meta property="og:description" content="OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/oauth/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/oauth/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/oauth-1.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="576">
+<meta property="og:image:alt" content="OAuth 2.0">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/oauth-1.png">
 <meta name="twitter:title" content="OAuth 2.0">
 <meta name="twitter:description" content="OAuth 2.0 怎么工作:授权码+PKCE、客户端凭证、刷新令牌、JWT 校验、安全坑。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0","description":"OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/oauth/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0","description":"OAuth 2.0 授权框架:角色、OIDC、四种授权类型、PKCE、JWT 校验、scope、state/CSRF、令牌防盗。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/oauth/"},"image":"https://sdeoffer.com/assets/img/oauth-1.png","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "OAuth vs OpenID Connect——区别是什么?", "acceptedAnswer": {"@type": "Answer", "text": "OAuth 2.0 是授权(这个应用能访问你的日历吗?)。OIDC 在其上加认证——它签发一个带 name、email 等身份声明的 ID token(JWT)。\"用 Google 登录\"用 OIDC 叠 OAuth。ID token 回答\"这是谁?\";访问令牌回答\"这个客户端能做什么?\""}}, {"@type": "Question", "name": "隐式授权为什么被弃用?", "acceptedAnswer": {"@type": "Answer", "text": "令牌在 URL 片段返回,暴露给浏览器历史、referrer 头,以及页面上任何 JavaScript 包括第三方脚本。授权码 + PKCE 为 SPA 实现同样目标而无此暴露——PKCE 替代公开客户端对 secret 的需要。"}}, {"@type": "Question", "name": "PKCE 防御什么?", "acceptedAnswer": {"@type": "Answer", "text": "授权码截获攻击。code_challenge 证明令牌交换来自发起授权请求的同一方,即便没有客户端 secret。OAuth 2.1 对所有授权码流程强制它。"}}, {"@type": "Question", "name": "SPA 应在哪存令牌?", "acceptedAnswer": {"@type": "Answer", "text": "访问令牌只放内存(不放 localStorage——XSS 能读它)。刷新令牌放 HttpOnly、Secure、SameSite=Strict cookie(JavaScript 读不到,所以 XSS 偷不到)。刷新端点只从同源服务。"}}, {"@type": "Question", "name": "怎么校验一个 JWT 访问令牌?", "acceptedAnswer": {"@type": "Answer", "text": "用 JWKS 端点取来的授权服务器公钥验证 RS256 签名,然后检查 exp(未过期)、iss(预期签发者)、aud(此服务标识符)、scope(此端点所需权限)。绝不信任 header 的 alg 字段——在服务端钉死它。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"OAuth 2.0","item":"https://sdeoffer.com/zh/tech-stacks/oauth/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/oauth/">EN</a>
-        <a href="/zh/tech-stacks/oauth/" class="active">中</a>
+        <a href="/tech-stacks/oauth/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/oauth/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">oauth</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">OAuth 2.0</h1>
     <div class="article-meta">
@@ -204,7 +222,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-1.png" alt="OAuth 2.0 第三方登录示例" loading="lazy">
+        <img src="/assets/img/oauth-1.png" alt="OAuth 2.0 第三方登录示例" width="1024" height="576" fetchpriority="high">
         <figcaption>OAuth 2.0 第三方登录示例</figcaption>
       </figure>
 
@@ -240,7 +258,7 @@
     </table>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 授权流程概览" loading="lazy">
+        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 授权流程概览" loading="lazy" width="573" height="265">
         <figcaption>OAuth 2.0 授权流程概览</figcaption>
       </figure>
 
@@ -299,12 +317,12 @@ grant_type=<span class="str">authorization_code</span>
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 授权码授权流程图" loading="lazy">
+        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 授权码授权流程图" loading="lazy" width="737" height="475">
         <figcaption>OAuth 2.0 授权码授权流程图</figcaption>
       </figure>
 
     <h3>2. 客户端凭证(Client Credentials)——机器对机器授权</h3>
-    <p>当无人类用户参与时使用——一个后端服务直接以自身身份认证以调用另一个服务的 API。客户端把它的 <code>client_id</code> 和 <code>client_secret</code> 直接发到 token 端点并收到一个访问令牌。无重定向、无用户同意屏、无授权码。常见于:微服务间调用、cron 作业、访问 API 的 CI/CD 流水线、调用车队管理 API 的 IoT 设备后端。</p>
+    <p>当无人类用户参与时使用——一个后端服务直接以自身身份认证以调用另一个服务的 API。客户端把它的 <code>client_id</code> 和 <code>client_secret</code> 直接发到 token 端点并收到一个访问令牌。无重定向、无用户同意屏、无授权码。常见于:微服务间调用、cron 作业、访问 API 的 <a href="/zh/tech-stacks/ci-cd/">CI/CD</a> 流水线、调用车队管理 API 的 IoT 设备后端。</p>
     <p>关键安全考量:<code>client_secret</code> 必须存在密钥管理器(AWS Secrets Manager、HashiCorp Vault、GCP Secret Manager)——绝不在源码或纳入版本控制的环境变量里。定期轮换它。机器对机器流程里泄露的客户端 secret 给攻击者无限制的服务级访问,而没有用户会注意到异常行为。</p>
 
     <div class="code-block">
@@ -335,7 +353,7 @@ grant_type=<span class="str">client_credentials</span>
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 客户端凭证授权流程图" loading="lazy">
+        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 客户端凭证授权流程图" loading="lazy" width="573" height="376">
         <figcaption>OAuth 2.0 客户端凭证授权流程图</figcaption>
       </figure>
 
@@ -381,12 +399,12 @@ grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
     <p><strong>资源所有者密码凭证授权(ROPC)</strong>让客户端直接收集用户的用户名和密码并转发给授权服务器。这彻底违背了 OAuth 的初衷——用户必须把原始凭证托付给客户端。它仅适合在脱离直接凭证处理的遗留迁移期间用于高度可信的第一方客户端。OAuth 2.1 草案也移除了这个 grant。</p>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 隐式授权流程图" loading="lazy">
+        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 隐式授权流程图" loading="lazy" width="738" height="431">
         <figcaption>OAuth 2.0 隐式授权流程图(已弃用——由授权码 + PKCE 替代)</figcaption>
       </figure>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 资源所有者密码凭证流程图" loading="lazy">
+        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 资源所有者密码凭证流程图" loading="lazy" width="746" height="413">
         <figcaption>OAuth 2.0 资源所有者密码凭证流程(新系统避免)</figcaption>
       </figure>
 
@@ -576,7 +594,7 @@ app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class
       <li><strong>第三方应用集成</strong>——"连接你的 Google 日历"——应用获得对日历数据的读访问而从不看到你的 Google 密码。用户可随时在 Google 账号设置里吊销访问而无需改密码。</li>
       <li><strong>单点登录(SSO)</strong>——用一个身份提供者(Okta、Auth0、Google Workspace)认证一次并访问多个内部应用。IdP 签发短命访问令牌和 ID token;每个应用本地校验它们而无需每个请求都回调 IdP。</li>
       <li><strong>给第三方开发者的 API 授权</strong>——给 API 消费者签发带 scope 的令牌。一个只读集成伙伴得到 <code>scope=read:products</code>;一个物流伙伴得到 <code>scope=read:orders write:shipments</code>。泄露的伙伴令牌只危及他们的 scope,而非整个 API。</li>
-      <li><strong>微服务对微服务</strong>——订单服务用客户端凭证获取一个限于 <code>internal:inventory.read</code> 的令牌,再调用库存服务。每个服务校验令牌的 <code>aud</code> 和 <code>scope</code> 声明,所以被攻陷的订单服务无法调用支付服务。</li>
+      <li><strong><a href="/zh/tech-stacks/api-gateway/">微服务对微服务</a></strong>——订单服务用客户端凭证获取一个限于 <code>internal:inventory.read</code> 的令牌,再调用库存服务。每个服务校验令牌的 <code>aud</code> 和 <code>scope</code> 声明,所以被攻陷的订单服务无法调用支付服务。</li>
       <li><strong>CLI 工具与开发者工作流</strong>——设备授权 grant 让 CLI 工具(<code>kubectl</code>、<code>gh</code>、Terraform Cloud)让用户通过浏览器授权,同时 CLI 轮询令牌。终端里从不输入密码。</li>
     </ul>
 
@@ -607,9 +625,10 @@ app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -617,7 +636,7 @@ app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解消息队列:队列解决的核心问题、队列语义 vs 提交日志语义、三种投递保证、有序与分区、推/拉消费模型、消费者组与竞争消费者、背压与流控、死信队列与毒丸消息、RabbitMQ vs SQS vs Kafka 全面对比,以及事务发件箱与 Saga 等可靠性模式。">
-<title>消息队列 (Message Queue) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/message-queue/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/message-queue/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/message-queue/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/message-queue/">
+<meta name="description" content="队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。">
+<title>消息队列 — 投递语义、死信队列与 Kafka 对比 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/message-queue/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/message-queue/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="消息队列 (Message Queue)">
 <meta property="og:description" content="队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/message-queue/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/message-queue/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/message-queue-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="451">
+<meta property="og:image:alt" content="消息队列 (Message Queue)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/message-queue-1.jpg">
 <meta name="twitter:title" content="消息队列 (Message Queue)">
 <meta name="twitter:description" content="消息队列怎么用:投递语义、有序、背压、死信队列、RabbitMQ vs SQS vs Kafka。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"消息队列 (Message Queue)","description":"队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/message-queue/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"消息队列 (Message Queue)","description":"队列 vs 提交日志、三种投递保证、有序与分区、推/拉模型、背压、死信队列、RabbitMQ vs SQS vs Kafka。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/message-queue/"},"image":"https://sdeoffer.com/assets/img/message-queue-1.jpg","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "exactly-once 为什么这么难?", "acceptedAnswer": {"@type": "Answer", "text": "它需要跨两个系统原子地协调 broker(无重复投递)和消费者(幂等处理)。Kafka Transactions 在 Kafka 生态内让它可实现;跨任意系统(Kafka → 第三方 API),务实答案是 at-least-once + 幂等消费者设计。"}}, {"@type": "Question", "name": "什么是死信队列?", "acceptedAnswer": {"@type": "Answer", "text": "一个次级队列,消息在超过最大投递尝试次数后被自动路由进去。它让主队列继续流动,同时保留失败消息以供检查、根因分析和修复后重放。"}}, {"@type": "Question", "name": "传统 MQ vs Kafka?", "acceptedAnswer": {"@type": "Answer", "text": "MQ(RabbitMQ、SQS)消费后删除消息——每条消息一个消费者;用于任务队列。Kafka 把消息作为不可变日志保留;多个独立消费者组能各按自己节奏读所有事件并从任意 offset 重放——用于事件流、CDC 和数据管道。"}}, {"@type": "Question", "name": "怎么在 Kafka 里保证有序?", "acceptedAnswer": {"@type": "Answer", "text": "按实体键(user_id、order_id)分区;同键的所有消息进同一分区,并在某时刻被组里恰好一个消费者按严格顺序消费。"}}, {"@type": "Question", "name": "怎么原子地写数据库并发布消息?", "acceptedAnswer": {"@type": "Answer", "text": "事务发件箱模式——在同一数据库事务里把业务记录和消息都写进一张 outbox 表;中继进程从 outbox 异步发布,失败时重试。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"消息队列 (Message Queue)","item":"https://sdeoffer.com/zh/tech-stacks/message-queue/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/message-queue/">EN</a>
-        <a href="/zh/tech-stacks/message-queue/" class="active">中</a>
+        <a href="/tech-stacks/message-queue/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/message-queue/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">message-queue</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">消息队列 (Message Queue)</h1>
     <div class="article-meta">
@@ -184,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p><strong>消息队列(message queue)</strong>是一个持久缓冲区,把消息的生产者与其消费者解耦。生产者把消息发到队列就继续做自己的事;一个或多个消费者按自己的节奏异步处理它。这种异步交接使消息队列成为韧性、松耦合分布式系统的基本构件。但消息队列不是单一、铁板一块的概念——它跨越一个谱系,从简单任务队列(RabbitMQ、SQS)到追加写的分布式提交日志(Kafka、Pulsar),各自在消息保留、消费者模型、有序性和投递保证上有根本不同的语义。</p>
+    <p><strong>消息队列(message queue)</strong>是一个持久缓冲区,把消息的生产者与其消费者解耦。生产者把消息发到队列就继续做自己的事;一个或多个消费者按自己的节奏异步处理它。这种异步交接使消息队列成为韧性、松耦合分布式系统的基本构件。但消息队列不是单一、铁板一块的概念——它跨越一个谱系,从简单任务队列(RabbitMQ、SQS)到追加写的分布式提交日志(<a href="/zh/tech-stacks/kafka/">Kafka</a>、Pulsar),各自在消息保留、消费者模型、有序性和投递保证上有根本不同的语义。</p>
 
     <p>选错消息系统——或误解其投递保证——是数据丢失、重复处理和难以复现的生产 bug 的常见来源。本指南覆盖完整画面:队列为何存在、三种投递保证及各自适用场景、队列 vs 提交日志的架构分野、有序与幂等、消费者组模型、背压与死信队列,以及 RabbitMQ、SQS、Kafka 的详细三方对比,帮你为系统选对工具。</p>
 
@@ -207,7 +225,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/message-queue-1.jpg" alt="消息队列把生产者与消费者解耦" loading="lazy">
+        <img src="/assets/img/message-queue-1.jpg" alt="消息队列把生产者与消费者解耦" width="1024" height="451" fetchpriority="high">
         <figcaption>消息队列把生产者与消费者解耦</figcaption>
       </figure>
 
@@ -243,7 +261,7 @@
       <li>消息<strong>消费后被保留</strong>——日志是已发生事件的记录系统。</li>
       <li><strong>消费者组</strong>——每组独立读完整流;加一个新消费者组不影响现有的。</li>
       <li><strong>分区内</strong>强有序——一个主题分成 N 个分区;同分区键的所有消息进同一分区并在那里严格有序。</li>
-      <li>最适合<strong>事件流</strong>:审计日志、变更数据捕获(CDC)feed、实时分析、数据管道摄取、事件溯源——任何多个系统需对同样事件反应,或重放和重处理是需求的场景。</li>
+      <li>最适合<strong><a href="/zh/ddia/chapter-11/">事件流</a></strong>:审计日志、变更数据捕获(CDC)feed、实时分析、数据管道摄取、事件溯源——任何多个系统需对同样事件反应,或重放和重处理是需求的场景。</li>
     </ul>
 
     <div class="code-block">
@@ -556,7 +574,7 @@ ch.<span class="fn">start_consuming</span>()</code></pre>
     <h2>可靠性模式</h2>
 
     <h3>事务发件箱模式(Transactional Outbox)</h3>
-    <p>一个经典分布式系统问题:你想原子地更新数据库并发布消息。若你先写数据库再发布到队列,服务可能在两操作之间崩溃——数据库写成功但消息从未发布。<strong>事务发件箱模式</strong>通过在与业务数据更新同一个数据库事务里把消息写入一张 <code>outbox</code> 表来解决。一个单独的中继进程(或 CDC 连接器)从 outbox 表读并发布到队列,成功时删除 outbox 行。</p>
+    <p>一个经典<a href="/zh/ddia/chapter-8/">分布式系统问题</a>:你想原子地更新数据库并发布消息。若你先写数据库再发布到队列,服务可能在两操作之间崩溃——数据库写成功但消息从未发布。<strong>事务发件箱模式</strong>通过在与业务数据更新同一个数据库事务里把消息写入一张 <code>outbox</code> 表来解决。一个单独的中继进程(或 CDC 连接器)从 outbox 表读并发布到队列,成功时删除 outbox 行。</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -624,9 +642,10 @@ ch.<span class="fn">start_consuming</span>()</code></pre>
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -634,7 +653,7 @@ ch.<span class="fn">start_consuming</span>()</code></pre>
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

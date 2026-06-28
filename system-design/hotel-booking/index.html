@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
-<title>Design a Hotel Booking System | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/hotel-booking/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/hotel-booking/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/hotel-booking/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/hotel-booking/">
+<meta name="description" content="Hotel booking at scale — track room availability, stop oversell with Redis TTL holds, persist bookings as ACID records, and search rooms via Elasticsearch.">
+<title>Design a Hotel Booking System | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/hotel-booking/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/hotel-booking/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/hotel-booking/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/hotel-booking/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design a Hotel Booking System">
-<meta property="og:description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
-<meta property="og:url" content="https://updoggtech.com/system-design/hotel-booking/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/hotel-booking-1.jpg">
+<meta property="og:description" content="Hotel booking at scale — track room availability, stop oversell with Redis TTL holds, persist bookings as ACID records, and search rooms via Elasticsearch.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/hotel-booking/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/hotel-booking-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="525">
+<meta property="og:image:alt" content="Design a Hotel Booking System">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/hotel-booking-1.jpg">
 <meta name="twitter:title" content="Design a Hotel Booking System">
 <meta name="twitter:description" content="A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Hotel Booking System","description":"A system design deep dive into building a hotel booking app — room availability tracking, oversell prevention with Redis TTL, ACID booking records, and Elasticsearch-powered search.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/hotel-booking/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Hotel Booking System","description":"Hotel booking at scale — track room availability, stop oversell with Redis TTL holds, persist bookings as ACID records, and search rooms via Elasticsearch.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/hotel-booking/"},"image":"https://sdeoffer.com/assets/img/hotel-booking-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do you prevent double-booking under concurrent requests?", "acceptedAnswer": {"@type": "Answer", "text": "A CHECK (available_count >= 0) constraint on the room_availability table makes any transaction that would decrement below zero fail at the DB level. Optimistic locking with a version column ensures two concurrent bookings for the same room+date can't both succeed — one will retry with fresh data."}}, {"@type": "Question", "name": "Why not use Cassandra for bookings like e-commerce uses it for order history?", "acceptedAnswer": {"@type": "Answer", "text": "Hotel booking volume is low enough for SQL to retain full history; ACID transactions cleanly prevent double-bookings; Cassandra's eventual consistency model would require complex application-level conflict resolution."}}, {"@type": "Question", "name": "What happens if a user abandons checkout after selecting a room?", "acceptedAnswer": {"@type": "Answer", "text": "The Redis TTL (~10 min) expires automatically, triggering a background job (or keyspace notification handler) that re-increments available_count for each stay date — no manual cleanup or cron job needed."}}, {"@type": "Question", "name": "How do you make the booking API idempotent?", "acceptedAnswer": {"@type": "Answer", "text": "Require a client-generated Idempotency-Key header; store it in the bookings table as a UNIQUE column. A retried request with the same key returns the existing booking rather than creating a duplicate — preventing double-charges on network retries."}}, {"@type": "Question", "name": "How do you handle the payment processor timing out during booking confirmation?", "acceptedAnswer": {"@type": "Answer", "text": "Store the PaymentIntent ID in the booking record before making the capture call. Retry capture with exponential backoff using the same PaymentIntent ID (Stripe deduplicates). A nightly reconciliation job catches any booking in RESERVED state whose PaymentIntent has been captured — promotes them to BOOKED."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a Hotel Booking System","item":"https://sdeoffer.com/system-design/hotel-booking/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/hotel-booking/" class="active">EN</a><a href="/zh/system-design/hotel-booking/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/hotel-booking/" class="active" hreflang="en">EN</a><a href="/zh/system-design/hotel-booking/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">hotel-booking</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design a Hotel Booking App</h1>
     <div class="article-meta">
@@ -219,7 +236,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-1.jpg" alt="High-level hotel booking app architecture" loading="lazy">
+      <img src="/assets/img/hotel-booking-1.jpg" alt="High-level hotel booking app architecture" width="1024" height="525" fetchpriority="high">
       <figcaption>High-level hotel booking app architecture</figcaption>
     </figure>
 
@@ -323,7 +340,7 @@
     <h2>Step 4 — Hotel and Room Listing Service</h2>
     <p>The hotel and room catalog is stored in a <strong>SQL database</strong>. The rationale is deliberately simple: the number of hotels in the world is finite and grows predictably. A relational database is the right fit — the data is structured, growth is foreseeable, and the query patterns (look up hotel by ID, list rooms by hotel) are well-suited to SQL indexes.</p>
 
-    <p>Hotel images and videos are stored in <strong>AWS S3</strong> (or equivalent object storage). The SQL database holds references (URLs) to these media assets. A <strong>CDN</strong> sits in front of S3 to serve media to a global user base with low latency — fetching a hotel image from a geographically proximate CDN edge node is orders of magnitude faster than hitting the origin bucket in us-east-1.</p>
+    <p>Hotel images and videos are stored in <strong>AWS S3</strong> (or equivalent <a href="/tech-stacks/object-storage/">object storage</a>). The SQL database holds references (URLs) to these media assets. A <strong>CDN</strong> sits in front of S3 to serve media to a global user base with low latency — fetching a hotel image from a geographically proximate <a href="/tech-stacks/cdn/">CDN</a> edge node is orders of magnitude faster than hitting the origin bucket in us-east-1.</p>
 
     <p>When hotels or rooms are created or updated, the changes are published to <strong>Kafka</strong> as events. A consumer reads these events and updates the <strong>Elasticsearch search index</strong> asynchronously, keeping search results eventually consistent with the source of truth. Fully-booked rooms are removed from results as their <code>available_count</code> drops to zero — this removal flows through the same CDC pipeline, not through a direct Elasticsearch write on the booking path.</p>
 
@@ -391,7 +408,7 @@
     <p>Key schema decisions: the <code>CHECK (available_count &gt;= 0)</code> constraint is the database-level guard against overselling. The <code>version</code> column enables optimistic concurrency control. The <code>idempotency_key UNIQUE</code> constraint prevents duplicate bookings at the DB level. The <code>price_cents</code> column on <code>room_availability</code> captures the per-night rate at booking time — the price can change after booking but the guest's confirmed rate is locked in the booking record's <code>total_cents</code>.</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-2.jpg" alt="Hotel and room database schema" loading="lazy">
+      <img src="/assets/img/hotel-booking-2.jpg" alt="Hotel and room database schema" loading="lazy" width="1024" height="810">
       <figcaption>Hotel and room database schema</figcaption>
     </figure>
 
@@ -515,7 +532,7 @@ Redis TTL expires (10 min)
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-3.jpg" alt="Booking schema and status lifecycle" loading="lazy">
+      <img src="/assets/img/hotel-booking-3.jpg" alt="Booking schema and status lifecycle" loading="lazy" width="1024" height="1778">
       <figcaption>Booking schema and status lifecycle</figcaption>
     </figure>
 
@@ -556,7 +573,7 @@ All CANCELLED_* states trigger:
   → notify guest and hotel admin</code></pre>
     </div>
 
-    <p>The state machine is persisted in SQL as the <code>status</code> column on the <code>bookings</code> table, guarded by application-level transition checks. Each transition also emits a Kafka event, allowing downstream services (notifications, analytics, revenue reporting) to react without being directly coupled to the booking service.</p>
+    <p>The state machine is persisted in SQL as the <code>status</code> column on the <code>bookings</code> table, guarded by application-level transition checks. Each transition also emits a <a href="/tech-stacks/kafka/">Kafka</a> event, allowing downstream services (notifications, analytics, revenue reporting) to react without being directly coupled to the booking service.</p>
 
     <h2>Step 10 — Payment Processing and Idempotency</h2>
     <p>Payment processing for hotel bookings follows the same principles as e-commerce but with a critical timing difference: hotel payments are often <strong>authorized at booking time but captured at check-in</strong> (or at check-out for post-pay hotels). This authorization-capture split gives the hotel a guarantee of funds while giving the guest flexibility — but it adds complexity to the payment state machine.</p>
@@ -648,7 +665,7 @@ All CANCELLED_* states trigger:
 
     <h3>Search scaling</h3>
     <ul>
-      <li>Elasticsearch is horizontally scalable — add shards for larger index, add replicas for higher read throughput.</li>
+      <li><a href="/tech-stacks/elasticsearch/">Elasticsearch</a> is horizontally scalable — add shards for larger index, add replicas for higher read throughput.</li>
       <li>Cache popular search queries in Redis (city + date range) with a 60–120 s TTL. Most search traffic is highly repetitive (same popular cities, same popular dates).</li>
       <li>The availability filter (SQL lookup after Elasticsearch) is the bottleneck under heavy search load. Mitigate with read replicas and the pre-computed availability cache in Redis.</li>
     </ul>
@@ -718,16 +735,17 @@ All CANCELLED_* states trigger:
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

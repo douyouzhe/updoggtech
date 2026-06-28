@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解数据库分片(Sharding):水平 vs 垂直分区、扩展阶梯、三种分片策略(哈希/范围/目录)、一致性哈希与虚拟节点、分片键设计、热点与重分片、跨分片查询与事务、分片 vs 复制,以及 Vitess/Cassandra/DynamoDB 等真实架构。">
-<title>分片 (Sharding) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/sharding/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/sharding/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/sharding/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/sharding/">
+<meta name="description" content="水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。">
+<title>分片 — 一致性哈希、分片键与数据分区 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/sharding/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="分片 (Sharding)">
 <meta property="og:description" content="水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/sharding/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/sharding/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/sharding-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="261">
+<meta property="og:image:alt" content="分片 (Sharding)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/sharding-1.jpg">
 <meta name="twitter:title" content="分片 (Sharding)">
 <meta name="twitter:description" content="数据库分片怎么做:哈希/范围/目录策略、一致性哈希、分片键、跨分片查询与事务。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"分片 (Sharding)","description":"水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/sharding/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"分片 (Sharding)","description":"水平/垂直分区、三种分片策略、一致性哈希、分片键设计、热点与重分片、跨分片查询/事务、分片 vs 复制。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/sharding/"},"image":"https://sdeoffer.com/assets/img/sharding-1.jpg","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "哈希 vs 范围分片——何时选哪个?", "acceptedAnswer": {"@type": "Answer", "text": "跨多 key 的写均匀分布用哈希(user_id、device_id);需要高效时间窗或连续键扫描且能容忍热点风险(或通过哈希前缀路由写来分散它们)时用范围。"}}, {"@type": "Question", "name": "一致性哈希为什么比取模分片好?", "acceptedAnswer": {"@type": "Answer", "text": "取模哈希加节点重映射 ~(N-1)/N 的所有 key(几乎一切);一致性哈希只把 ~k/n 个 key 移到新节点,最小化数据迁移并允许在线重分片而最小中断。"}}, {"@type": "Question", "name": "什么是坏分片键?", "acceptedAnswer": {"@type": "Answer", "text": "低基数(布尔、枚举)、哈希分片下的单调递增值(时间戳、自增),或与查询模式不对齐的键——都造成热点或迫使昂贵的 scatter-gather 扇出。"}}, {"@type": "Question", "name": "怎么处理跨分片事务?", "acceptedAnswer": {"@type": "Answer", "text": "设计上优先把相关事务数据共置在同一分片。无法避免时,用 Saga 模式(带补偿动作的最终一致)而非 2PC(造成阻塞和协调者瓶颈)。"}}, {"@type": "Question", "name": "分片和复制的区别是什么?", "acceptedAnswer": {"@type": "Answer", "text": "分片把不同行分散到节点以实现写可扩展;复制把相同行拷到多节点以实现读可扩展和 HA。生产系统两者都需要——每个分片本身被复制。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"分片 (Sharding)","item":"https://sdeoffer.com/zh/tech-stacks/sharding/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/sharding/">EN</a>
-        <a href="/zh/tech-stacks/sharding/" class="active">中</a>
+        <a href="/tech-stacks/sharding/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/sharding/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">sharding</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">分片 (Sharding)</h1>
     <div class="article-meta">
@@ -207,7 +225,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/sharding-1.jpg" alt="跨多个节点的水平数据库分片" loading="lazy">
+        <img src="/assets/img/sharding-1.jpg" alt="跨多个节点的水平数据库分片" width="1024" height="261" fetchpriority="high">
         <figcaption>跨多个节点的水平数据库分片</figcaption>
       </figure>
 
@@ -215,8 +233,8 @@
     <p>分片是一项昂贵的运维承诺。在动手之前,按顺序耗尽扩展阶梯上的选项——每一步增加的复杂度都比分片小:</p>
     <ol>
       <li><strong>垂直扩展</strong>——给主库更多 CPU、RAM 和更快存储。直截了当,但受限于商用最大实例类型。一台现代云实例可载 192 vCPU 和 3 TB RAM,处理每秒数十万查询——大多数负载从不需要超过这个。</li>
-      <li><strong>读副本</strong>——把读流量路由到副本;把写集中在主库。对读多的负载(90:1 或更高读写比)通常带来 5–10 倍有效读容量。主库仍在写上成为瓶颈。</li>
-      <li><strong>缓存</strong>——一个吸收 95% 读流量的 Redis 缓存意味着你的数据库只见 5% 的完整负载。有效容量增益巨大,且无需数据架构变更。</li>
+      <li><strong><a href="/zh/ddia/chapter-5/">读副本</a></strong>——把读流量路由到副本;把写集中在主库。对读多的负载(90:1 或更高读写比)通常带来 5–10 倍有效读容量。主库仍在写上成为瓶颈。</li>
+      <li><strong><a href="/zh/tech-stacks/caching/">缓存</a></strong>——一个吸收 95% 读流量的 <a href="/zh/tech-stacks/redis/">Redis</a> 缓存意味着你的数据库只见 5% 的完整负载。有效容量增益巨大,且无需数据架构变更。</li>
       <li><strong>功能拆分(垂直分区)</strong>——把不同业务域拆成独立数据库,各跑在自己的服务器上。订单库、目录库、用户库各自独立扩展,而无任何单表行级拆分。</li>
       <li><strong>分片(水平分区)</strong>——当单张表即使做了上述步骤后对一台服务器仍太大或太热,把它的行切到多个分片。</li>
     </ol>
@@ -357,7 +375,7 @@
     </div>
 
     <h3>虚拟节点:为什么是 150?</h3>
-    <p>物理节点数少(比如 3 个)时,哈希函数把它们均匀放在环上的概率低——你可能落得一个节点拥有 60% 的 key 空间、另一个拥有 15%。虚拟节点通过给每个物理节点分配环上<em>多个</em>位置解决这个(150 是 Cassandra 默认)。每个物理节点 150 个虚拟节点,大数定律生效,负载平衡到理想值的几个百分点内。取舍是内存——环表按虚拟节点数增长,但即便 100 个物理节点各 1000 个虚拟节点,环表也只有 10 万条目,小到可忽略。</p>
+    <p>物理节点数少(比如 3 个)时,哈希函数把它们均匀放在环上的概率低——你可能落得一个节点拥有 60% 的 key 空间、另一个拥有 15%。虚拟节点通过给每个物理节点分配环上<em>多个</em>位置解决这个(150 是 <a href="/zh/tech-stacks/nosql/">Cassandra</a> 默认)。每个物理节点 150 个虚拟节点,大数定律生效,负载平衡到理想值的几个百分点内。取舍是内存——环表按虚拟节点数增长,但即便 100 个物理节点各 1000 个虚拟节点,环表也只有 10 万条目,小到可忽略。</p>
 
     <p>虚拟节点也简化异构集群:一个有两倍内存和 CPU 容量的节点可被分配 300 个虚拟节点而非 150,使它拥有 ~两倍 key 空间并承担两倍流量——而路由逻辑无需任何特殊处理。</p>
 
@@ -526,9 +544,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -536,7 +555,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

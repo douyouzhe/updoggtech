@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:打车应用(Uber/Lyft)——GPS 摄取管道(至多一次)、地理空间索引(Geohash/S2/QuadTree)、内存索引 + Cassandra、二分图匹配、行程状态机、ETA 与路由、动态定价、地图服务、数据模型、异步支付与幂等、多区域扩展与容错、关键取舍。">
-<title>设计打车应用 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/ride-share/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ride-share/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ride-share/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ride-share/">
+<meta name="description" content="打车应用（Uber/Lyft）系统设计：GPS 摄取、地理空间索引(Geohash/S2)、内存索引+Cassandra、二分图匹配、行程状态机、ETA、动态定价与取舍。">
+<title>设计打车应用 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/ride-share/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ride-share/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ride-share/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ride-share/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计打车应用">
-<meta property="og:description" content="打车系统设计:GPS 管道、Geohash 索引、二分图匹配、行程状态机、动态定价、异步支付。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/ride-share/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="打车应用（Uber/Lyft）系统设计：GPS 摄取、地理空间索引(Geohash/S2)、内存索引+Cassandra、二分图匹配、行程状态机、ETA、动态定价与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/ride-share/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/ride-share-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="587">
+<meta property="og:image:alt" content="设计打车应用 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/ride-share-1.jpg">
 <meta name="twitter:title" content="设计打车应用">
 <meta name="twitter:description" content="设计打车应用:GPS 至多一次、geohash 索引、二分图匹配、状态机、surge、异步支付。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计打车应用", "description": "系统设计:打车应用(Uber/Lyft)——GPS 摄取管道(至多一次)、地理空间索引(Geohash/S2/QuadTree)、内存索引 + Cassandra、二分图匹配、行程状态机、ETA 与路由、动态定价、地图服务、数据模型、异步支付与幂等、多区域扩展与容错、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/ride-share/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计打车应用","description":"打车应用（Uber/Lyft）系统设计：GPS 摄取、地理空间索引(Geohash/S2)、内存索引+Cassandra、二分图匹配、行程状态机、ETA、动态定价与取舍。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/ride-share/"},"image":"https://sdeoffer.com/assets/img/ride-share-1.jpg","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么二分图匹配而非贪心最近司机?", "acceptedAnswer": {"@type": "Answer", "text": "贪心独立地把每个乘客分给最近司机,这局部最优但全局次优——它能让附近乘客得到远得多的司机。批量请求并求解二分分配最小化所有乘客的平均接驾时间。"}}, {"@type": "Question", "name": "为什么 GPS 用至多一次而支付用至少一次?", "acceptedAnswer": {"@type": "Answer", "text": "丢一个 GPS 包影响可忽略(下一个 5 s 内到);丢一个支付事件有真实金融后果。投递保证应匹配丢失消息的业务成本。"}}, {"@type": "Question", "name": "为什么按城市和产品类型分区司机位置数据?", "acceptedAnswer": {"@type": "Answer", "text": "UberX 和 UberPool 从独立司机池抽取;跨城供应无关。分区按市场隔离负载并使每段内的匹配查询快。"}}, {"@type": "Question", "name": "怎么防止司机被双重匹配?", "acceptedAnswer": {"@type": "Answer", "text": "匹配服务在发邀约前原子把司机状态从 AVAILABLE 翻到 IN_TRIP。任何并发匹配尝试读到更新的状态并跳过那个司机。"}}, {"@type": "Question", "name": "surge 乘数怎么算?", "acceptedAnswer": {"@type": "Answer", "text": "每 60–120 s,按 geohash cell 计数 pending_requests 和 available_drivers;算它们的比率;映射到一个乘数表;写到 Redis 带短 TTL。定价读是 Redis 命中——绝不直接查空间索引。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计打车应用 — 系统设计","item":"https://sdeoffer.com/zh/system-design/ride-share/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/ride-share/">EN</a>
-        <a href="/zh/system-design/ride-share/" class="active">中</a>
+        <a href="/system-design/ride-share/" hreflang="en">EN</a>
+        <a href="/zh/system-design/ride-share/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ride-share</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计打车应用</h1>
     <div class="article-meta">
@@ -224,7 +242,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-1.jpg" alt="打车应用高层架构" loading="lazy">
+      <img src="/assets/img/ride-share-1.jpg" alt="打车应用高层架构" width="1024" height="587" fetchpriority="high">
       <figcaption>打车应用高层架构</figcaption>
     </figure>
 
@@ -325,13 +343,13 @@
     <p><code>POST /driver/location</code> 端点以极高频率调用并用<strong>至多一次</strong>投递——服务器接受就继续;无确认重试。行程生命周期端点幂等——对一个已完成行程调 <code>/complete</code> 两次在状态机级别是 no-op。</p>
 
     <h2>第 4 步 — 司机和乘客注册</h2>
-    <p>用户服务处理市场两侧的认证和资料管理。司机入驻涉及一个额外的<strong>背景检查器</strong>,在司机被激活前验证事故历史、驾照有效性、SSN 和车辆状态。频繁访问的用户资料缓存在 Redis 以减少高流量查找路径上的数据库负载。</p>
+    <p>用户服务处理市场两侧的认证和资料管理。司机入驻涉及一个额外的<strong>背景检查器</strong>,在司机被激活前验证事故历史、驾照有效性、SSN 和车辆状态。频繁访问的用户资料缓存在 <a href="/zh/tech-stacks/redis/">Redis</a> 以减少高流量查找路径上的数据库负载。</p>
     <p>司机资料携带超出乘客资料所需的额外状态:车辆细节(品牌、型号、车牌、颜色)、当前可用状态(<code>OFFLINE</code> / <code>AVAILABLE</code> / <code>IN_TRIP</code>),和产品类型资格(UberX、Comfort、Black、Pool)。这个资格存在 SQL 并缓存;匹配服务读它在跑分配算法前过滤司机池。</p>
 
     <h2>第 5 步 — GPS 摄取管道</h2>
     <p>每个活跃司机大约每 <strong>5 秒</strong>传输一个 GPS 包,含他们的 <code>user_id</code>、当前位置和一个时间戳。每天 1500 万次行程、假设峰值 ~1M 并发活跃司机,这产生 ~200,000 写/秒——一个高量、突发的写流,同步 HTTP 端点无法吸收而不成瓶颈。</p>
 
-    <p>一个<strong>消息队列</strong>(Kafka 或专建的低延迟替代)把 GPS 生产者与位置处理消费者解耦,吸收 QPS 变化。司机写到队列而不等确认;消费者——位置更新 worker——排干队列并异步更新内存空间索引和 Cassandra。</p>
+    <p>一个<a href="/zh/tech-stacks/message-queue/"><strong>消息队列</strong></a>(Kafka 或专建的低延迟替代)把 GPS 生产者与位置处理消费者解耦,吸收 QPS 变化。司机写到队列而不等确认;消费者——位置更新 worker——排干队列并异步更新内存空间索引和 Cassandra。</p>
 
     <p>投递保证是<strong>至多一次</strong>。单个丢失的 GPS 包可接受,因为下一个 5 秒后到达——保证投递的成本(重试循环、去重、更高延迟)为可忽略的好处增加复杂度。与支付的对比有教益:支付事件用至少一次,因为丢失支付消息有真实金融后果。</p>
 
@@ -415,7 +433,7 @@
     <p>持久层选 Cassandra,因为它以最终一致处理<strong>高写吞吐</strong>——正是 GPS 历史的画像。分区键是 <code>(driver_id, date_hour_bucket)</code>,使一个司机一个时间窗里的所有位置记录共置一个节点,使"重建司机在行程 X 期间的路线"成为单分区读。</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-2.jpg" alt="接驾时间优化与司机匹配" loading="lazy">
+      <img src="/assets/img/ride-share-2.jpg" alt="接驾时间优化与司机匹配" loading="lazy" width="1024" height="524">
       <figcaption>接驾时间优化与司机匹配</figcaption>
     </figure>
 
@@ -463,7 +481,7 @@ rider_B → 司机 D1       (4 分钟)
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/ride-share-3.jpg" alt="时序 GPS 数据存储 schema" loading="lazy">
+      <img src="/assets/img/ride-share-3.jpg" alt="时序 GPS 数据存储 schema" loading="lazy" width="1024" height="352">
       <figcaption>时序 GPS 数据存储 schema</figcaption>
     </figure>
 
@@ -627,7 +645,7 @@ COMPLETED               ← 费用算出,触发支付
       <li><strong>直接第三方集成</strong>(PayPal、Block/Square)——更简单,但绑定一个提供商。</li>
       <li><strong>经处理器伙伴的无品牌支付网关</strong>——Uber 用 Braintree 的初始方法;支持多提供商灵活性和区域支付处理器支持而不暴露支付品牌。</li>
     </ul>
-    <p>支付扣款和司机付款计算<strong>异步</strong>处理以让它们远离行程完成关键路径。当一个行程到 <code>COMPLETED</code>,行程服务发布一个 <code>TripCompleted</code> 事件到 Kafka。支付服务消费这个事件、计算最终费用(实际距离 × 实际时长 × surge 乘数)、经处理器 API 扣乘客的已保存支付方式,并触发司机付款(通常每日批量结算而非每行程以减少转账费)。</p>
+    <p>支付扣款和司机付款计算<strong>异步</strong>处理以让它们远离行程完成关键路径。当一个行程到 <code>COMPLETED</code>,行程服务发布一个 <code>TripCompleted</code> 事件到 <a href="/zh/tech-stacks/kafka/">Kafka</a>。支付服务消费这个事件、计算最终费用(实际距离 × 实际时长 × surge 乘数)、经处理器 API 扣乘客的已保存支付方式,并触发司机付款(通常每日批量结算而非每行程以减少转账费)。</p>
 
     <h3>支付幂等</h3>
     <p>支付服务在每次扣款调用时给支付处理器传一个唯一<strong>幂等键</strong>(如 <code>trip_id + "charge"</code>)。若网络在扣款成功后、响应到达前掉线,用同键的重试在处理器是 no-op——乘客不被双重扣款。来自处理器的一个 webhook 确认成功或失败,这更新行程记录的支付状态。一个每晚对账作业抓住行程记录和处理器结算间的任何差异。</p>
@@ -641,7 +659,7 @@ COMPLETED               ← 费用算出,触发支付
     <p>一个全球打车平台必须挺过区域宕机、处理数百万并发连接,并在分布式服务机群间智能路由流量。</p>
 
     <h3>分片位置索引</h3>
-    <p>内存空间索引按城市和产品类型分片——旧金山的 UberX 与伦敦的 Comfort 是完全独立的数据集。城市内,一致性哈希(Ringpop)把 geohash 前缀分布在 worker 节点上。一个司机在 geohash cell 间移动触发一次位置更新,哈希环自动把它路由到正确分片。当一个节点被加或移除,只有环上受影响弧上的键被重映射——相比朴素取模分区最小化数据移动。</p>
+    <p>内存空间索引按城市和产品类型分片——旧金山的 UberX 与伦敦的 Comfort 是完全独立的数据集。城市内,<a href="/zh/tech-stacks/sharding/">一致性哈希</a>(Ringpop)把 geohash 前缀分布在 worker 节点上。一个司机在 geohash cell 间移动触发一次位置更新,哈希环自动把它路由到正确分片。当一个节点被加或移除,只有环上受影响弧上的键被重映射——相比朴素取模分区最小化数据移动。</p>
 
     <h3>多区域部署</h3>
     <p>每个主要都会区运行自己的匹配、GPS 摄取和空间索引集群——芝加哥的乘客从不需要伦敦的数据。跨区域通信限于用户资料读(激进缓存)和全局分析管道。这种地理隔离保持延迟低、故障爆炸半径小,并满足监管数据驻留要求。</p>
@@ -706,9 +724,10 @@ COMPLETED               ← 费用算出,触发支付
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -716,7 +735,7 @@ COMPLETED               ← 费用算出,触发支付
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 10 章:批处理——Unix 哲学与管道、MapReduce(map/shuffle/reduce)与分布式文件系统、reduce 侧/map 侧 join 与倾斜、schema-on-read 数据湖、不可变输入带来的容错,以及超越 MapReduce 的数据流引擎(Spark/Flink/Tez、血缘重算)。">
-<title>DDIA 第10章 — 批处理 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-10/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-10/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-10/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-10/">
+<meta name="description" content="批处理系统揭秘——DDIA 第 10 章讲 Unix 哲学、MapReduce、join 与倾斜、不可变输入容错,以及 Spark/Flink 数据流引擎。">
+<title>DDIA 第10章 — 批处理 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-10/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-10/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-10/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-10/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="批处理 (Batch Processing)">
-<meta property="og:description" content="DDIA 第 10 章:Unix 哲学、MapReduce、join 与倾斜、不可变输入容错、Spark/Flink 数据流。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-10/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="批处理系统揭秘——DDIA 第 10 章讲 Unix 哲学、MapReduce、join 与倾斜、不可变输入容错,以及 Spark/Flink 数据流引擎。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-10/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第10章 — 批处理">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="批处理 (Batch Processing)">
 <meta name="twitter:description" content="DDIA 第 10 章:批处理、MapReduce、map/reduce 侧 join、数据流引擎 Spark/Flink。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 10 章 — 批处理", "description": "DDIA 第 10 章:批处理——Unix 哲学与管道、MapReduce(map/shuffle/reduce)与分布式文件系统、reduce 侧/map 侧 join 与倾斜、schema-on-read 数据湖、不可变输入带来的容错,以及超越 MapReduce 的数据流引擎(Spark/Flink/Tez、血缘重算)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-10/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 10 章 — 批处理","description":"批处理系统揭秘——DDIA 第 10 章讲 Unix 哲学、MapReduce、join 与倾斜、不可变输入容错,以及 Spark/Flink 数据流引擎。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-10/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "MapReduce 的三个阶段是什么?", "acceptedAnswer": {"@type": "Answer", "text": "Map(emit 键值对)、shuffle(框架按 key 排序和分组)、reduce(处理每个 key 的值)。shuffle 是昂贵、必要的中间。"}}, {"@type": "Question", "name": "Reduce 侧 vs map 侧 join?", "acceptedAnswer": {"@type": "Answer", "text": "Reduce 侧(sort-merge)通用但 shuffle 一切;map 侧(广播或分区哈希)在一个输入小或两者共分区时跳过 shuffle。"}}, {"@type": "Question", "name": "为什么批处理容错容易?", "acceptedAnswer": {"@type": "Answer", "text": "输入不可变、作业确定且无副作用,所以失败任务只是重跑、产生同样结果。"}}, {"@type": "Question", "name": "为什么 Spark/Flink 比 MapReduce 快?", "acceptedAnswer": {"@type": "Answer", "text": "它们把工作流建模为一个算子图,在内存流水线数据而非把每个中间步骤物化到磁盘。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第10章 — 批处理","item":"https://sdeoffer.com/zh/ddia/chapter-10/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-10/">EN</a>
-        <a href="/zh/ddia/chapter-10/" class="active">中</a>
+        <a href="/ddia/chapter-10/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-10/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-10</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 10 章</span>
     <h1 class="article-title">批处理 (Batch Processing)</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
   </div>
 
   <div class="article-body">
-    <p>第 10 章开启第三部分"派生数据(Derived Data)",关于把数据从一处取出并转换到另一处的系统——索引、缓存、聚合、模型。它从<strong>批处理(batch processing)</strong>开始:取一个大的、<em>有界</em>输入,处理它,产生一个输出,不期待低延迟。Kleppmann 从底层构建想法——从朴实的 Unix 命令行工具开始,它们的设计哲学结果证明是 MapReduce 和驱动大规模分析的现代数据流引擎的概念祖先。</p>
+    <p>第 10 章开启第三部分"派生数据(Derived Data)",关于把数据从一处取出并转换到另一处的系统——索引、<a href="/zh/tech-stacks/caching/">缓存</a>、聚合、模型。它从<strong>批处理(batch processing)</strong>开始:取一个大的、<em>有界</em>输入,处理它,产生一个输出,不期待低延迟。Kleppmann 从底层构建想法——从朴实的 Unix 命令行工具开始,它们的设计哲学结果证明是 MapReduce 和驱动大规模分析的现代数据流引擎的概念祖先。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -269,7 +287,7 @@
     <p>批作业通常产生<em>批量</em>输出:构建搜索索引(Google 最初如何用 MapReduce)、训练推荐/ML 模型,或构造要加载进服务系统的只读键值存储。关键设计原则是<strong>输入不可变且作业无副作用</strong>——作业只读它的输入并写一个全新输出,从不原地修改输入。这几乎免费给出容错:若一个任务失败(机器崩溃),框架只是在另一台机器上<strong>重跑它</strong>,因为对同一不可变输入的确定计算产生同样结果。它也使实验安全——一个有 bug 的作业能被重跑而没损坏任何东西。</p>
 
     <h2>超越 MapReduce:数据流引擎</h2>
-    <p>MapReduce 最大的低效:它在每个 map-reduce 步骤之间<strong>把中间状态物化到磁盘</strong>(分布式文件系统)。对许多步骤的工作流,这意味反复写和重读(并重复制)数 GB,且每个步骤在前一个完全结束前无法开始。<strong>数据流引擎</strong>——Spark、Tez、Flink——通过把整个工作流建模为一个连接算子的单一作业来修复这个:</p>
+    <p>MapReduce 最大的低效:它在每个 map-reduce 步骤之间<strong>把中间状态物化到磁盘</strong>(分布式文件系统)。对许多步骤的工作流,这意味反复写和重读(并重复制)数 GB,且每个步骤在前一个完全结束前无法开始。<strong>数据流引擎</strong>——<a href="/zh/tech-stacks/spark-joins/">Spark</a>、Tez、Flink——通过把整个工作流建模为一个连接算子的单一作业来修复这个:</p>
     <ul>
       <li>它们避免不必要的物化,在算子之间<strong>流水线(pipelining)</strong>数据并尽可能保在内存。</li>
       <li>它们把整个图一起调度,使算子能重叠、引擎能跨步骤边界优化。</li>
@@ -293,7 +311,7 @@
 
     <div class="callout">
       <div class="callout-label">总结</div>
-      <p>批处理的持久教训关于<em>设计纪律</em>,而非仅吞吐:不可变输入和无副作用、确定的作业使容错、重试和实验平凡。MapReduce 通过借用 Unix 哲学在规模上证明了这个模型;数据流引擎通过不在每步之间碰磁盘改进它。同样的"从不可变输入派生数据"想法,以连续形式,在流处理里重现。</p>
+      <p>批处理的持久教训关于<em>设计纪律</em>,而非仅吞吐:不可变输入和无副作用、确定的作业使容错、重试和实验平凡。MapReduce 通过借用 Unix 哲学在规模上证明了这个模型;数据流引擎通过不在每步之间碰磁盘改进它。同样的"从不可变输入派生数据"想法,以连续形式,在<a href="/zh/ddia/chapter-11/">流处理</a>里重现。</p>
     </div>
 
     <div class="callout">
@@ -318,9 +336,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -328,7 +347,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

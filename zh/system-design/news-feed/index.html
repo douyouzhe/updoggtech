@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="News Feed（Twitter/Facebook 时间线）系统设计：写时扇出 vs 读时扇出、名人热 key 问题、混合扇出、Redis 时间线缓存、Feed 排序与分页取舍。">
+<title>设计 News Feed (Twitter 时间线) — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/news-feed/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/news-feed/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/news-feed/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/news-feed/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="设计 News Feed (Twitter 时间线) — 系统设计">
+<meta property="og:description" content="News Feed（Twitter/Facebook 时间线）系统设计：写时扇出 vs 读时扇出、名人热 key 问题、混合扇出、Redis 时间线缓存、Feed 排序与分页取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/news-feed/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计 News Feed (Twitter 时间线) — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="设计 News Feed (Twitter 时间线) — 系统设计">
+<meta name="twitter:description" content="News Feed 系统设计深度解析：写时扇出 vs 读时扇出、名人热 key 问题、混合扇出、Redis 时间线缓存与 Feed 排序。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计 News Feed (Twitter / Facebook 时间线)","description":"News Feed（Twitter/Facebook 时间线）系统设计：写时扇出 vs 读时扇出、名人热 key 问题、混合扇出、Redis 时间线缓存、Feed 排序与分页取舍。","datePublished":"2026-06-28","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/news-feed/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-28"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "写时扇出还是读时扇出,选哪个?", "acceptedAnswer": {"@type": "Answer", "text": "都不单用。写时扇出(push)在发帖时为每个粉丝预计算时间线——读快,但高粉丝量账号的写放大会爆炸。读时扇出(pull)在读取时合并关注对象的帖子——写便宜,但关注上千人的用户读取很慢。生产系统用混合:普通用户 push、名人 pull,在读取时合并。"}}, {"@type": "Question", "name": "怎么处理名人/热 key 问题?", "acceptedAnswer": {"@type": "Answer", "text": "一个 1 亿粉丝账号的帖子在纯 push 下会触发 1 亿次时间线写入——一个让扇出延迟数分钟的写风暴。把高粉丝量账号标记为名人并完全跳过其扇出。读取时,取用户已 push 的时间线,再合并直接从其关注的名人那里 pull 的最新帖子。名人自己的帖子放在所有读者共享的热缓存里。"}}, {"@type": "Question", "name": "混合扇出到底是什么?", "acceptedAnswer": {"@type": "Answer", "text": "按粉丝数对作者分类。低于阈值(比如约 1 万–10 万粉丝)的帖子 push 进每个粉丝的预计算时间线缓存;高于阈值的不扇出,在请求时读时 pull 并合并进 Feed。这既约束了写放大,又让常见的读路径保持一次缓存查找。"}}, {"@type": "Question", "name": "为什么时间线缓存存帖子 ID 而不是完整帖子?", "acceptedAnswer": {"@type": "Answer", "text": "完整帖子很大、可变(编辑、点赞数、删除),且在数百万粉丝的时间线里重复。只存帖子 ID 指针(加一个排序分数)让每条时间线条目约 20 字节、约束内存,并允许读取时从共享帖子存储补水(hydrate)最新内容和计数——这样编辑或删除无需重写每条时间线。"}}, {"@type": "Question", "name": "新帖不断到达时,怎么对一直在变的 Feed 做分页?", "acceptedAnswer": {"@type": "Answer", "text": "用基于游标(cursor)的分页,键控在一个稳定、单调的值(帖子 ID 或快照时间戳)上,绝不用 SQL OFFSET。游标编码最后一条已返回项的位置;到达其上方的新帖不会移动页面边界,因此用户滚动时既不会看到重复也不会跳过。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计 News Feed (Twitter / Facebook 时间线)","item":"https://sdeoffer.com/zh/system-design/news-feed/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">跳到主内容</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/news-feed/" hreflang="en">EN</a>
+        <a href="/zh/system-design/news-feed/" class="active" hreflang="zh" lang="zh">中</a>
+      </div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">news-feed</span>
+    </nav>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计 News Feed (Twitter / Facebook 时间线)</h1>
+    <div class="article-meta">
+      <span>2026年6月28日</span>
+      <span class="separator">·</span>
+      <span>34 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>News Feed——即用户关注的每个账号的帖子组成的排序或倒序时间流——是经典的"扇出(fan-out)"系统设计问题,而且难度被严重低估。界面很平凡(滚动一列帖子),但数据形态很残酷:一个作者的一条帖子必须到达其每一个粉丝的主时间线,而一次 Feed 加载又必须合并数百到数千个关注对象的最新帖子,再排序、分页,在 200&nbsp;ms 内渲染出来。难点不在于存帖子,而在于扇出的<strong>写放大</strong>及其病态最坏情况——一个有 1&nbsp;亿粉丝的账号发了一条帖子。扇出策略选错,你要么压垮写路径(push 到 1 亿条时间线),要么压垮读路径(每次刷新都 pull 并合并上千个作者)。本文走一遍经典设计:写时扇出 vs 读时扇出、名人热 key 问题、生产系统实际运行的混合模型、Redis 时间线缓存、Feed 排序,以及稳定分页。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>是两条时间线,不是一条</strong>——<em>用户时间线</em>(单个作者自己的帖子)和<em>主时间线</em>(从你关注的所有人聚合而来)的扇出成本完全不同。主时间线才是难的那条。</li>
+        <li><strong>写时扇出(push)</strong>——发帖时为每个粉丝预计算时间线。读是一次缓存读;写按粉丝数放大。</li>
+        <li><strong>读时扇出(pull)</strong>——读取时合并关注对象的最新帖子来组装 Feed。写是 O(1);对关注上千人的用户读很贵。</li>
+        <li><strong>名人热 key</strong>——对 1 亿粉丝账号纯 push 是写风暴;对关注 5,000 个账号的用户纯 pull 是读风暴。两个极端都会崩。</li>
+        <li><strong>混合扇出取胜</strong>——普通作者 push、名人 pull,读取时合并。行业标准(Twitter、Instagram)。</li>
+        <li><strong>缓存帖子 ID 指针,而非帖子本身</strong>——每条时间线条目约 20 字节(帖子 ID + 分数);内容在读取时补水(hydrate),让编辑/删除无需重写数百万条时间线。</li>
+        <li><strong>游标分页</strong>——快照/游标键控在帖子 ID 上,绝不用 SQL OFFSET,这样新帖在游标上方流入时 Feed 仍稳定。</li>
+        <li><strong>通过队列做异步扇出</strong>——发帖写入立即返回;Kafka 支撑的 worker 在热路径之外做沉重的时间线写入。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把用户时间线和主时间线分开。用混合扇出:把普通作者的帖子 push 进每个粉丝的 Redis 时间线(一份封顶的帖子 ID 指针列表),但对名人跳过扇出、在读取时 pull 其最新帖子并合并进 Feed。对合并后的候选集排序,从共享存储补水帖子内容,用稳定游标分页。通过 Kafka 异步驱动扇出,让发帖写入永不阻塞在粉丝数上。</p>
+    </div>
+
+    <h2>Step 1 — 厘清需求</h2>
+    <p>News Feed 这道题很宽。在画任何东西之前先把范围明确——最重要的澄清是你在建哪条 Feed,因为用户时间线和主时间线的成本画像截然相反。</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>发布帖子(文本,可选媒体引用)给你的粉丝。</li>
+      <li>关注/取关其他账号(社交图)。</li>
+      <li>查看你的<strong>主时间线</strong>——聚合你关注的所有账号最近帖子的 Feed。</li>
+      <li>查看<strong>用户时间线</strong>——某一个账号发布的帖子,按时间倒序。</li>
+      <li>排序:同时支持时间倒序和排序版("热门帖")排序。</li>
+      <li>互动:点赞、回复、转发——每条帖子展示近似计数。</li>
+      <li>分页/无限滚动——随用户下滑分页加载 Feed。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>读重</strong>——Feed 加载远多于发帖;目标渲染一页主时间线 p99 &lt;200&nbsp;ms。</li>
+      <li><strong>高可用</strong>——Feed 必须总能渲染出东西;一个陈旧但存在的 Feed 胜过一个报错。倾向 AP 而非 CP。</li>
+      <li><strong>可接受最终一致</strong>——新帖几秒后才出现在粉丝 Feed 里没问题;但帖子绝不能丢。</li>
+      <li><strong>可扩展</strong>——数亿 DAU,幂律粉丝图(绝大多数账号很小,少数有 1 亿+ 粉丝)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>开场就点出用户时间线和主时间线的区别。用户时间线是简单的按作者查询(按作者分片、按时间排序)。主时间线才是聚合问题——扇出、排序、热 key——面试 90% 的内容都在这里。早早命名这个拆分,表明你理解难点真正在哪。</p>
+    </div>
+
+    <h2>Step 2 — 容量估算</h2>
+    <p>粗略数字为扇出讨论锚定基线。假设一个大型社交平台:<strong>2 亿 DAU</strong>,平均用户关注约 200 个账号、约有 200 个粉丝(均值;分布严重幂律)。</p>
+
+    <h3>流量</h3>
+    <ul>
+      <li>发帖:假设约 0.2 帖/DAU/天 → 2 亿 × 0.2 = <strong>每天 4,000 万帖 ≈ 460 帖/秒</strong> 平均;峰值约 3–5× → <strong>约 2,000 帖/秒</strong>。</li>
+      <li>Feed 读:假设每个 DAU 刷新约 10×/天 → 2 亿 × 10 = <strong>每天 20 亿次 Feed 读 ≈ 23,000 读/秒</strong> 平均;峰值约 5× → <strong>约 100,000 读/秒</strong>。</li>
+      <li>帖子层面的读写比 ≈ <strong>50:1</strong>——明显读重,这让我们偏向预计算读(写时扇出)。</li>
+    </ul>
+
+    <h3>扇出写放大(症结)</h3>
+    <ul>
+      <li>在纯写时扇出下,每条帖子都插入每个粉丝的时间线:4,000 万帖 × 约 200 个平均粉丝 = <strong>每天 80 亿次时间线插入 ≈ 93,000 扇出写/秒</strong> 平均。</li>
+      <li>峰值远比均值暗示的糟糕,因为均值掩盖了尾部:单条名人帖(1 亿粉丝)就是 <strong>1 亿次插入</strong>——比一整天来自单条写的平均扇出还多。</li>
+      <li>这就是纯 push 无法独立成立的原因:写放大在粉丝数上无上界,而粉丝分布有非常肥的尾巴。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>帖子记录:约 300 字节(post_id 8&nbsp;B、author_id 8&nbsp;B、文本 ≤280 字符、时间戳、计数)。4,000 万/天 × 300&nbsp;B ≈ <strong>12&nbsp;GB/天 ≈ 4.4&nbsp;TB/年</strong> 的帖子文本——分片存储轻松容纳;媒体放在 CDN 后的对象存储里。</li>
+      <li>时间线缓存:只存帖子 ID 指针——约 20&nbsp;B/条(8&nbsp;B 帖子 ID + 8&nbsp;B 分数 + 开销),每用户封顶约 800 条。2 亿用户 × 800 × 20&nbsp;B ≈ <strong>约 3.2&nbsp;TB</strong>,分散在 Redis 机群(分片)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">注意</div>
+      <p>帖子文本存储又小又无聊(每年几 TB)。真正昂贵、定义设计的数字是 93,000+ 扇出写/秒 <em>及其尾部</em>。下面每一个架构决策——混合扇出、热 key 处理、封顶时间线、异步 worker——都是为了驯服这一个数字。</p>
+    </div>
+
+    <h2>Step 3 — API 设计</h2>
+    <p>一个小的 REST 面。对扇出最关键的两个端点是发帖和读主时间线。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 发布帖子</span>
+<span class="kw">POST</span> <span class="str">/api/posts</span>
+     Authorization: Bearer &lt;token&gt;
+     { <span class="str">"text"</span>: <span class="str">"shipping the feed redesign 🚀"</span>,
+       <span class="str">"media_ids"</span>: [<span class="str">"m_91af"</span>] }      <span class="cm">// 可选</span>
+     → <span class="num">201</span> { <span class="str">"post_id"</span>: <span class="str">"189f3c2a01"</span>, <span class="str">"created_at"</span>: <span class="str">"2026-06-28T10:00:00Z"</span> }
+
+<span class="cm"># 读主时间线(难的那条)——游标分页</span>
+<span class="kw">GET</span> <span class="str">/api/feed?limit=20&amp;cursor=189f3c2a01</span>
+     Authorization: Bearer &lt;token&gt;
+     → { <span class="str">"items"</span>: [ {post}, {post}, ... ],
+         <span class="str">"next_cursor"</span>: <span class="str">"189f2b88f0"</span> }   <span class="cm">// 取完返回 null</span>
+
+<span class="cm"># 读单个用户的时间线(按作者,简单)</span>
+<span class="kw">GET</span> <span class="str">/api/users/{id}/posts?limit=20&amp;cursor=...</span>
+
+<span class="cm"># 社交图</span>
+<span class="kw">POST</span>   <span class="str">/api/follow</span>    { <span class="str">"followee_id"</span>: <span class="str">"u_42"</span> }   → <span class="num">204</span>
+<span class="kw">DELETE</span> <span class="str">/api/follow</span>    { <span class="str">"followee_id"</span>: <span class="str">"u_42"</span> }   → <span class="num">204</span>
+
+<span class="cm"># 互动(计数异步更新)</span>
+<span class="kw">POST</span>   <span class="str">/api/posts/{id}/like</span>   → <span class="num">204</span></code></pre>
+    </div>
+
+    <p><code>GET /api/feed</code> 响应带的是一个不透明的 <code>next_cursor</code> 而非页码——客户端把它传回来取下一页。游标编码最后一条已返回项的位置(通常是这一页里最小的帖子 ID),这让分页在新帖不断从顶部到达时仍然稳定。我们返回的是<strong>补水后</strong>的帖子对象(文本、作者、当前点赞/回复计数),在读取时从共享帖子存储组装,而不是帖子被扇出时缓存了什么就返回什么。</p>
+
+    <h2>Step 4 — 数据模型</h2>
+    <p>三个核心存储:帖子存储、社交图、每用户时间线缓存。它们的访问模式很不一样,分片方式也不同。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- POSTS:内容的真相来源。按 post_id(Snowflake)分片。</span>
+<span class="kw">CREATE TABLE</span> posts (
+  post_id     <span class="ty">BIGINT</span>      <span class="kw">PRIMARY KEY</span>,   <span class="cm">-- Snowflake:可按时间排序</span>
+  author_id   <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  text        <span class="ty">VARCHAR</span>(<span class="num">280</span>),
+  media_ids   <span class="ty">JSON</span>,
+  created_at  <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  like_count  <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>,    <span class="cm">-- 近似,异步</span>
+  reply_count <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  is_deleted  <span class="ty">BOOLEAN</span>     <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>
+);
+
+<span class="cm">-- FOLLOWS:社交图。按 follower_id 分片以支持"我关注了谁",</span>
+<span class="cm">-- 再用 followee_id 上的二级索引/镜像表支持"谁关注了 X"。</span>
+<span class="kw">CREATE TABLE</span> follows (
+  follower_id <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  followee_id <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  created_at  <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  <span class="kw">PRIMARY KEY</span> (follower_id, followee_id)
+);
+<span class="kw">CREATE INDEX</span> idx_followee <span class="kw">ON</span> follows(followee_id);  <span class="cm">-- 扇出目标列表</span>
+
+<span class="cm">-- AUTHOR STATS:驱动混合扇出的决策。</span>
+<span class="kw">CREATE TABLE</span> author_stats (
+  author_id      <span class="ty">BIGINT</span>   <span class="kw">PRIMARY KEY</span>,
+  follower_count <span class="ty">BIGINT</span>   <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  is_celebrity   <span class="ty">BOOLEAN</span>  <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>   <span class="cm">-- follower_count &gt; 阈值</span>
+);
+
+<span class="cm">-- 时间线缓存(Redis,非 SQL):每用户封顶的帖子 ID 指针列表。</span>
+<span class="cm">-- Key:  timeline:{user_id}   Value: ZSET { post_id : score }</span>
+<span class="cm">-- 通过 ZADD + ZREMRANGEBYRANK 封顶到最新约 800 条。</span></code></pre>
+    </div>
+
+    <p>关键决策:<code>post_id</code> 是一个 Snowflake ID,所以它全局唯一且可按时间排序——给时间线排序就是给整数排序,这个 ID 还兼作分页游标。<code>follows</code> 表需要两条访问路径:"我关注了谁"(读路径,按 <code>follower_id</code> 分片)和"谁关注了 X"(扇出目标列表,按 <code>followee_id</code> 建索引);在规模上这会变成同一条边的两份物理独立、各自分片的表示。时间线缓存放在 <a href="/zh/tech-stacks/redis/">Redis</a> 里,是一个帖子 ID 指针的有序集合——绝不存完整帖子体。</p>
+
+    <h2>Step 5 — 写时扇出 vs 读时扇出</h2>
+    <p>这是整个设计的核心决策。当用户 A 发帖时,A 的粉丝最终怎么在主时间线里看到它?两个纯策略位于两个极端。</p>
+
+    <h3>写时扇出(push 模型)</h3>
+    <p>发帖时,查出 A 的所有粉丝,把新帖子 ID <strong>push</strong> 进每个粉丝的预计算时间线缓存。读主时间线于是是一次缓存读:<code>ZREVRANGE timeline:{me} 0 19</code>。读在关注账号数上是 O(1)——它已经为你物化好了。</p>
+
+    <h3>读时扇出(pull 模型)</h3>
+    <p>发帖时,除了把帖子存进作者自己的时间线外什么都不做。当一个粉丝加载主 Feed 时,<strong>pull</strong> 其关注的每个账号的最近帖子,即时归并排序。写是 O(1);读是 O(关注数),对关注上千账号的用户会很残酷——每次 Feed 加载都把读扇出到很多作者和分片。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>维度</th><th>写时扇出(push)</th><th>读时扇出(pull)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>读成本</td><td class="col-a">O(1)——对已就绪时间线一次缓存读</td><td class="col-b">O(关注数)——每次加载合并多个作者</td></tr>
+        <tr><td>写成本</td><td class="col-b">O(粉丝数)——插入每个粉丝</td><td class="col-a">O(1)——只存一次</td></tr>
+        <tr><td>存储</td><td class="col-b">高——帖子 ID 在所有时间线里重复</td><td class="col-a">低——每帖一份</td></tr>
+        <tr><td>最坏情况</td><td class="col-b">名人发帖 = 写风暴</td><td class="col-b">用户关注 5k 账号 = 读风暴</td></tr>
+        <tr><td>新鲜度</td><td class="col-b">滞后于扇出延迟(数秒)</td><td class="col-a">读取时永远最新</td></tr>
+        <tr><td>最适合</td><td class="col-a">普通作者、读重 Feed</td><td class="col-a">名人、不活跃用户</td></tr>
+      </tbody>
+    </table>
+
+    <p>因为负载约 50:1 读重,默认直觉是 push——预计算那个贵的东西(读),在写时付出代价。这套路一直很美,直到你撞上一个有数千万粉丝的账号,那里写成本变得灾难性。在真实粉丝分布下没有哪个纯模型能幸存;生产答案是把两者结合。</p>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>别选边站。先说出读写比,解释为什么读重 Feed 默认 push,再立刻抛出打破纯 push、催生混合方案的名人反例。带着面试官从"push"→"但名人"→"所以混合"走一遍,正是他们在听的推理弧线。</p>
+    </div>
+
+    <h2>Step 6 — 名人/热 key 问题</h2>
+    <p>粉丝图是幂律的:绝大多数账号只有几百粉丝,但少数有 5,000 万–5 亿。纯写时扇出在这些账号上以两种不同方式崩溃:</p>
+    <ul>
+      <li><strong>写风暴</strong>——一条名人帖触发数千万次时间线插入。即便异步分散在 worker 池里,这也会淹没队列,延迟<em>所有其他人</em>排在它后面的扇出,可能要几分钟才排空——于是这条帖在某些粉丝的 Feed 里出现得远晚于其他人。</li>
+      <li><strong>帖子上的热 key</strong>——名人的帖子在几秒内被数百万人读取。单条帖子记录(及其点赞/回复计数器)变成一个热 key,猛击帖子存储的某一个分片。</li>
+    </ul>
+
+    <p>还有一个惊群交互:几个名人在同一时间窗内发帖能让整个扇出层饱和。修复办法是<strong>完全停止扇出名人帖</strong>、改在读侧处理,并给热帖记录单独的缓存待遇。</p>
+
+    <div class="callout">
+      <div class="callout-label">扩展性注意</div>
+      <p>热 key 问题与任何热门对象在<a href="/zh/tech-stacks/caching/">缓存</a>里出现的形状一样:单个 key 收到不成比例的流量并压垮其分片。缓解手段也类似——把热 key 跨多个缓存节点复制、在共享缓存前加一层进程内 LRU(1–5&nbsp;s TTL)吸收尖峰,并提供近似计数器,让点赞/回复的写回不在同一行上串行化。</p>
+    </div>
+
+    <h2>Step 7 — 混合扇出</h2>
+    <p>生产答案——被 Twitter、Instagram 以及基本上所有大型 Feed 采用——是<strong>混合扇出</strong>:按粉丝数<em>逐作者</em>选择 push 还是 pull。</p>
+
+    <ul>
+      <li><strong>普通作者(低于阈值)</strong>——push。他们的帖子在写时扇出进每个粉丝的时间线缓存。大多数作者、因而大多数帖子,走这条路。</li>
+      <li><strong>名人(高于阈值)</strong>——<em>不</em>扇出。他们的帖子只存进自己的用户时间线。少数高于阈值的账号贡献零扇出写。</li>
+      <li><strong>读取时合并</strong>——当用户加载主 Feed 时,系统读取其已 push 的时间线缓存(覆盖其关注的所有普通作者),<em>同时</em> pull 其关注的名人的最近帖子,然后把两个集合合并并排序。</li>
+    </ul>
+
+    <p>阈值(常在约 1 万–10 万粉丝附近,经验调优)在写放大与读合并成本之间权衡。任何单个用户关注的名人数都很小——你可能关注几百个普通账号和十几个名人——所以读取时 pull 有界:十几次便宜的"作者 X 的最近帖子"查找,每次本身都对缓存友好,因为那个名人的最近帖被数百万人读取、一直很热。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 写路径——逐作者决定 push 还是跳过</span>
+<span class="kw">def</span> <span class="fn">on_new_post</span>(post):
+    store_post(post)                          <span class="cm"># 真相来源</span>
+    add_to_user_timeline(post.author_id, post.post_id)
+    <span class="kw">if</span> is_celebrity(post.author_id):          <span class="cm"># follower_count &gt; 阈值</span>
+        <span class="kw">return</span>                                <span class="cm"># 跳过扇出——读取时 pull</span>
+    <span class="cm"># 普通作者:把异步扇出入队到粉丝</span>
+    publish(<span class="str">"fanout"</span>, { <span class="str">"post_id"</span>: post.post_id, <span class="str">"author_id"</span>: post.author_id })
+
+<span class="cm"># 读路径——合并已 push 时间线 + pull 的名人帖</span>
+<span class="kw">def</span> <span class="fn">home_feed</span>(me, cursor, limit):
+    pushed   = zrevrange(<span class="str">f"timeline:{me}"</span>, cursor, limit)       <span class="cm"># O(1) 缓存读</span>
+    celebs   = get_followed_celebrities(me)                  <span class="cm"># 小集合</span>
+    pulled   = [recent_posts(c, cursor, limit) <span class="kw">for</span> c <span class="kw">in</span> celebs] <span class="cm"># 缓存热</span>
+    merged   = merge_by_score(pushed, flatten(pulled))
+    <span class="kw">return</span> hydrate(rank(merged)[:limit])                     <span class="cm"># 取内容 + 计数</span></code></pre>
+    </div>
+
+    <p>一个微妙点:阈值不纯粹关于粉丝数,而是关于扇出的<em>成本</em>。一个很少发帖的账号即使粉丝众多也便宜 push;一个不停发帖的账号即使粉丝较少也昂贵。成熟系统会把发帖速率纳入考量,有些甚至按活跃粉丝数逐个决定 push-vs-pull(只扇出给最近在线过的粉丝),这能大幅缩小拥有大量沉睡粉丝的账号的扇出集。</p>
+
+    <h2>Step 8 — 时间线缓存 (Redis)</h2>
+    <p>已 push 的主时间线放在 <a href="/zh/tech-stacks/redis/">Redis</a> 里,是一个每用户的<strong>有序集合(sorted set)</strong>,以帖子 ID 指针为成员、以分数排序。正是这个结构让读路径成为一次 O(log&nbsp;n) 范围查询。</p>
+
+    <ul>
+      <li><strong>指针,而非帖子</strong>——存 <code>{ post_id : score }</code>,约 20 字节/条。绝不存完整帖子体:它们大、会变(点赞、编辑、删除),且会在数百万条时间线里重复。内容在读取时从共享帖子存储补水。</li>
+      <li><strong>封顶长度</strong>——每用户只保留最新约 800 条(<code>ZADD</code> 后跟 <code>ZREMRANGEBYRANK timeline:{u} 0 -801</code>)。没人会回滚 800 条帖子;更深的历史回退到较慢的读时扇出路径。封顶正是约束估算里那 3.2&nbsp;TB 机群数字的手段。</li>
+      <li><strong>分数 = 排序信号或时间戳</strong>——对时间倒序 Feed,分数就是 Snowflake 帖子 ID 本身(可按时间排序)。对排序版 Feed,分数是预计算的 rank,或缓存保持时间序、排序在读取之后发生。</li>
+      <li><strong>冷/不活跃用户</strong>——不为几周没登录的用户维护时间线。跳过对他们的扇出,在下次登录时惰性重建其时间线(纯 pull)。光这一点就能去掉很大一部分浪费的扇出写。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Redis</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 扇出 worker 把一个帖子指针插入某粉丝的时间线</span>
+ZADD   timeline:u_42  189f3c2a01  189f3c2a01     <span class="cm"># 分数 = post_id(可按时间排序)</span>
+ZREMRANGEBYRANK timeline:u_42  0  -801           <span class="cm"># 封顶到最新 800</span>
+
+<span class="cm"># 读路径:最新 20 条,按游标(一个 post_id)分页</span>
+ZREVRANGEBYSCORE timeline:u_42  (189f2b88f0  -inf  LIMIT 0 20</code></pre>
+    </div>
+
+    <p>因为时间线按用户 ID 分片在 Redis 机群上,扇出写均匀散布在各分片——除了热帖记录本身,这正是名人被 pull(其帖子是一个被数百万人读取的热 key)而非 push(其扇出会写到数百万条冷时间线)的原因。</p>
+
+    <h2>Step 9 — Feed 排序</h2>
+    <p>时间倒序 Feed 是简单默认,但大多数大型 Feed 是<strong>排序版</strong>——按预测相关性排序,而非只按新鲜度。排序作为一个两阶段管道叠加在扇出机制之上:</p>
+
+    <ol>
+      <li><strong>候选生成</strong>——混合扇出得到的合并集(已 push 时间线 + pull 的名人帖)就是候选池,通常是几百条最近帖子。扇出的职责是便宜地产出候选;它不是最终顺序。</li>
+      <li><strong>打分/排序</strong>——每个候选由一个模型打分,综合多种信号:<em>亲密度</em>(你与作者互动多少)、<em>新鲜度</em>(时间衰减)、<em>互动</em>(点赞/回复速率)、<em>内容类型</em>,以及预测的 P(点赞)、P(回复)、P(停留)。按分数前 N 的成为这一页。</li>
+    </ol>
+
+    <p>一个简单、面试可用的打分函数无需祭出 ML 基础设施就能抓住要点:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">score</span>(post, viewer):
+    affinity   = edge_weight(viewer, post.author_id)   <span class="cm"># 过往互动</span>
+    recency    = <span class="fn">exp</span>(-AGE_DECAY * hours_since(post.created_at))
+    engagement = <span class="fn">log1p</span>(post.like_count + <span class="num">2</span> * post.reply_count)
+    <span class="kw">return</span> W1 * affinity + W2 * recency + W3 * engagement</code></pre>
+    </div>
+
+    <p>排序引入新鲜度与相关性的张力:纯排序 Feed 会埋没刚发的帖子(目前互动低)而显得陈旧,所以生产系统会混入一个新鲜度下限或为新内容预留位置。排序模型由独立的在线推理层提供;预计算特征(亲密度边、作者统计)被缓存,使给几百个候选打分仍在延迟预算内。</p>
+
+    <div class="callout">
+      <div class="callout-label">注意</div>
+      <p>把排序放在候选生成<em>之后</em>,而非扇出内部。如果你把最终 rank 烤进已 push 时间线的分数里,当模型或观看者上下文变化时你就无法重排,而每个点赞都得重写数百万条时间线分数。扇出产出候选;排序在(或接近)读取时给它们定序。</p>
+    </div>
+
+    <h2>Step 10 — 分页</h2>
+    <p>对一个不断从顶部收到新帖的 Feed 做无限滚动,是经典的正确性陷阱。朴素做法——<code>LIMIT 20 OFFSET 40</code>——在这里是坏的:如果用户读第 1 页时来了三条新帖,offset 会偏移,第 2 页会重复用户已看过的项(或漏掉一些)。</p>
+
+    <p>修复办法是<strong>基于游标的分页</strong>,键控在一个稳定、单调的值——Snowflake <code>post_id</code> 上。游标是当前页最后一项的 ID;下一页请求 ID 严格小于游标的项:</p>
+
+    <ul>
+      <li><strong>稳定边界</strong>——到达游标上方的新帖不会移动它下方的页面。无论顶部来了什么,用户都在一个一致、越来越旧的序列里向下分页。</li>
+      <li><strong>Redis 上便宜</strong>——<code>ZREVRANGEBYSCORE timeline:{u} (cursor -inf LIMIT 0 20</code> 是 O(log&nbsp;n + 页大小) 的范围扫描,而非 offset 步进。</li>
+      <li><strong>"显示新帖"按钮</strong>——用户会话锚点上方的新帖通过一个单独的"N 条新帖"控件呈现,按需把它们插到前面,而非悄悄重排当前滚动位置。</li>
+      <li><strong>排序版 Feed 的快照语义</strong>——当顺序不是单个单调字段时,游标编码一个会话快照(服务端物化的页序列,或一个 (score, post_id) 元组),这样滚动中途重排不会重复或丢项。</li>
+    </ul>
+
+    <h2>Step 11 — 核心架构与读/写路径</h2>
+    <p>串起来:一条异步、队列驱动的写路径,和一条合并并补水的读路径。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 写路径(发布帖子)</span>
+POST /api/posts { text, media_ids? }
+  → Post 服务:写帖子到帖子存储(按 post_id 分片)
+  → 把 post_id 追加到作者自己的用户时间线
+  → 查 author_stats.is_celebrity
+       名人  → 停止(不扇出;读取时 pull)
+       普通  → 把 { post_id, author_id } 发布到 Kafka "fanout" topic
+  → 立即返回 201   (扇出在热路径之外发生)
+
+扇出 worker(消费 Kafka "fanout")
+  → 加载作者的 follower_ids  (跳过不活跃粉丝)
+  → 对每个粉丝:ZADD timeline:{follower} score post_id
+                ZREMRANGEBYRANK timeline:{follower} 0 -801
+
+<span class="cm">-- 读路径(加载主时间线)</span>
+GET /api/feed?cursor&amp;limit
+  → 读已 push 时间线:ZREVRANGEBYSCORE timeline:{me} (cursor -inf
+  → pull 名人帖:    对每个关注的名人 recent_posts(c)
+  → 合并 + 排序候选集
+  → 补水:从帖子存储批量取帖子内容 + 实时点赞/回复计数
+          (mget,带缓存前置)
+  → 过滤:丢弃已删除/已拉黑/已屏蔽
+  → 返回 { items, next_cursor }</code></pre>
+    </div>
+
+    <p>发帖写入在毫秒内返回,因为它永不等待扇出——扇出通过 <a href="/zh/tech-stacks/kafka/">Kafka</a> 解耦,Kafka 缓冲突发(一阵无名人的普通帖尖峰)并让 worker 层独立伸缩。这与让任何热写路径保持快的异步管道推理一致:同步只做最少的事,把放大入队,让消费者用自己的背压去吸收。读取时补水意味着一秒前刚到的点赞会反映在计数里,即便时间线指针是几小时前写的。</p>
+
+    <h2>Step 12 — 扩展与分片</h2>
+    <p>各层独立伸缩,因为存储按不同的键分片。</p>
+
+    <h3>分片各存储</h3>
+    <ul>
+      <li><strong>帖子存储</strong>——<a href="/zh/tech-stacks/sharding/">按 <code>post_id</code> 分片</a>(Snowflake)。读是按 ID 的点查;补水批量 ID 并跨分片散播-收集。可按时间排序的 ID 让单个作者的帖子在时间上大致共置。</li>
+      <li><strong>时间线缓存</strong>——按 <code>user_id</code> 分片 Redis。扇出写和 Feed 读都对用户哈希,所以单个用户的时间线是一个分片、一次往返。</li>
+      <li><strong>社交图</strong>——<code>follows</code> 按 <code>follower_id</code> 分片以支持读路径"我关注了谁",并维护一份独立的按 followee 建索引的表示供扇出"谁关注了 X"查找。两个查询访问键相反,所以分片键也相反。</li>
+    </ul>
+
+    <h3>扩展扇出</h3>
+    <p>扇出 worker 是无状态的 Kafka 消费者——加 partition 和消费者就能扩吞吐。按 <code>author_id</code> 给扇出 topic 分区,让单个热作者的工作保持有序,并对大(但低于名人)的作者限流/分片其工作,让一个中腰部网红不阻塞队头。名人切线就是让非常肥的尾巴完全离开这一层的泄压阀。</p>
+
+    <h3>扩展读</h3>
+    <p>Feed 服务在负载均衡器后无状态;水平扩展。时间线缓存读吸收了绝大部分读负载。热帖记录(名人帖、病毒帖)额外获得一层进程内 LRU 加跨分片复制,这样单条病毒帖不会让一个 Redis 节点饱和。</p>
+
+    <h2>Step 13 — 容错与边界情况</h2>
+    <p>Feed 被允许最终一致,这给了很多余地——但边界情况正是正确性 bug 藏身之处。</p>
+    <ul>
+      <li><strong>已删除帖子</strong>——不要去追数百万条时间线条目来移除一条已删除帖。留下指针;读取时补水会跳过被标记 <code>is_deleted</code> 的帖子(墓碑过滤)。陈旧指针会随封顶时间线自然老化掉。</li>
+      <li><strong>取关</strong>——同样思路:不要把被取关作者的帖子从时间线缓存里擦掉。在读取时对当前关注集过滤掉它们,或干脆让它们老化掉。下次重建时正确;无昂贵的即时清理。</li>
+      <li><strong>拉黑/屏蔽</strong>——作为对候选集的读取时过滤应用,绝不烤进扇出(拉黑可能在帖子已被扇出后才加上)。</li>
+      <li><strong>新用户冷启动</strong>——全新账号谁都没关注,其已 push 时间线为空。通过从初始关注 pull 最近帖来回填,并混入一个"推荐"/发现 Feed,直到个性化 Feed 有了信号。</li>
+      <li><strong>乱序扇出</strong>——异步 worker 可能晚插入一条帖;因为时间线按可时间排序的帖子 ID 打分,晚到的插入仍落在正确的时间序位置而非顶部。</li>
+      <li><strong>Redis 故障</strong>——丢失的时间线分片是可恢复的:时间线是<em>缓存</em>,不是真相来源。通过从帖子存储和社交图 pull(读时扇出回退)按需重建用户的时间线。Redis 带副本运行以缩小爆炸半径。</li>
+      <li><strong>扇出滞后</strong>——扇出积压期间,普通作者的帖子可能晚几秒到几分钟才到达粉丝。按最终一致需求可接受;在滞后变得可见之前监控队列深度并自动扩容 worker。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">一致性注意</div>
+      <p>贯穿这些边界情况的统一原则:时间线缓存可丢弃、是近似的;帖子存储和社交图才是真相来源。任何必须正确的东西(删除、拉黑、取关、实时计数)都在读取时补水/过滤里强制执行,而非通过改动数百万条缓存指针。这让写保持便宜,也让缓存随时可安全重建。</p>
+    </div>
+
+    <h2>Step 14 — 关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>扇出策略</td><td class="col-a">混合(普通 push、名人 pull)</td><td>两条代码路径 + 一次读取时合并,换来有界写放大</td></tr>
+        <tr><td>时间线存储</td><td class="col-a">Redis 里帖子 ID 指针,封顶约 800</td><td>深历史需较慢的 pull 回退;内容单独补水</td></tr>
+        <tr><td>扇出执行</td><td class="col-a">通过 Kafka worker 异步</td><td>帖子带几秒滞后才出现在 Feed(最终一致)</td></tr>
+        <tr><td>排序</td><td class="col-b">排序版(模型)而非纯时间序</td><td>更多基础设施 + 一个新鲜度下限避免埋没新帖</td></tr>
+        <tr><td>分页</td><td class="col-a">基于 Snowflake post_id 的游标</td><td>无随机翻页;为向前无限滚动而设计</td></tr>
+        <tr><td>删除/取关</td><td class="col-a">读取时过滤(墓碑)</td><td>陈旧指针在缓存里逗留到老化掉</td></tr>
+        <tr><td>计数</td><td class="col-b">近似,异步</td><td>点赞/回复计数可滞后数秒;避免热行争用</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>News Feed 设计是一门驯服写放大的学问。push 预计算读、在读重的常见情况里取胜;pull 为名人这条肥尾保住写路径;混合扇出不过是承认粉丝分布逼着你两者都做。其余的一切——只存指针的封顶时间线、Kafka 异步扇出、读取时补水与过滤、游标分页、候选生成之后再排序——都是为了把一个数字(扇出写/秒及其尾部)控制住,同时让 Feed 仍然渲染得新鲜、正确且快。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>写时扇出还是读时扇出,选哪个?</strong> 都不单用。push 为每个粉丝预计算时间线以读快,但按粉丝数放大写;pull 写便宜,但对关注上千人的用户读慢。生产用混合:普通用户 push、名人 pull,读取时合并。<br>
+      <strong>怎么处理名人/热 key 问题?</strong> 1 亿粉丝帖在纯 push 下是让扇出滞后数分钟的写风暴。把高粉丝量账号标记为名人、跳过其扇出,在读取时 pull 其最近帖。名人自己的帖子放在所有读者共享的热缓存里。<br>
+      <strong>混合扇出到底是什么?</strong> 按粉丝数分类作者:低于阈值就 push 进每个粉丝的时间线缓存;高于阈值就不扇出——在请求时读时 pull 并合并。这既约束写放大,又让常见读路径保持一次缓存查找。<br>
+      <strong>为什么时间线缓存存帖子 ID 而非完整帖子?</strong> 帖子大、可变,且在数百万条时间线里重复。存约 20 字节的帖子 ID 指针约束内存,并让你在读取时补水当前内容/计数,这样编辑或删除无需重写每条时间线。<br>
+      <strong>对一直在变的 Feed 怎么分页?</strong> 用键控在单调帖子 ID 上的游标分页,绝不用 SQL OFFSET。游标标记最后一条已返回项,所以到达其上方的帖子不会移动页面边界——滚动时既不重复也不跳过。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/system-design/typeahead/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计搜索自动补全 (Typeahead)</div>
+      </a>
+      <a href="/zh/system-design/notification-system/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计通知系统</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

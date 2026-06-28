@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.6 of DDIA: partitioning (sharding) — key-range vs hash partitioning, hot spots and skew, partitioning secondary indexes by document vs term, rebalancing, and request routing.">
-<title>DDIA Ch.6 — Partitioning | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-6/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-6/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-6/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-6/">
+<meta name="description" content="Partitioning and sharding: key-range vs hash partitioning, hot spots and skew, secondary indexes by document vs term, rebalancing, and request routing.">
+<title>DDIA Ch.6 — Partitioning | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-6/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-6/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-6/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-6/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.6 — Partitioning">
-<meta property="og:description" content="Key-range vs hash partitioning, hot spots, secondary indexes by document vs term, rebalancing, and request routing.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-6/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Partitioning and sharding: key-range vs hash partitioning, hot spots and skew, secondary indexes by document vs term, rebalancing, and request routing.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-6/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.6 — Partitioning">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.6 — Partitioning">
 <meta name="twitter:description" content="How databases split data across nodes: partitioning schemes, rebalancing, and routing.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.6 — Partitioning","description":"Key-range vs hash partitioning, hot spots, secondary indexes by document vs term, rebalancing, and request routing.","datePublished":"2023-04-05","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-6/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.6 — Partitioning","description":"Partitioning and sharding: key-range vs hash partitioning, hot spots and skew, secondary indexes by document vs term, rebalancing, and request routing.","datePublished":"2023-04-05","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-6/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-05","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Key-range vs hash partitioning?", "acceptedAnswer": {"@type": "Answer", "text": "Range keeps keys sorted (cheap scans) but risks hot spots on sequential keys; hash spreads load evenly but kills range queries. Cassandra's compound key gets both."}}, {"@type": "Question", "name": "Local vs global secondary index?", "acceptedAnswer": {"@type": "Answer", "text": "Local (by document) = cheap writes, scatter/gather reads; global (by term) = cheap reads, expensive multi-partition writes (usually async)."}}, {"@type": "Question", "name": "Why not hash mod N?", "acceptedAnswer": {"@type": "Answer", "text": "Changing N remaps almost every key. Use a fixed large partition count or dynamic split/merge so only whole partitions move."}}, {"@type": "Question", "name": "How are requests routed?", "acceptedAnswer": {"@type": "Answer", "text": "Via a routing tier, partition-aware clients, or any-node forwarding — usually backed by a coordination service (ZooKeeper) or gossip to track assignments."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.6 — Partitioning","item":"https://sdeoffer.com/ddia/chapter-6/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-6/" class="active">EN</a><a href="/zh/ddia/chapter-6/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-6/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-6/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-6</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.6</span>
     <h1 class="article-title">Partitioning</h1>
     <div class="article-meta">
@@ -199,7 +217,7 @@
   </div>
 
   <div class="article-body">
-    <p>Replication (Chapter 5) keeps copies of the same data on several nodes. But if a dataset is too big or a query load too heavy for any single node, you need to break the data into pieces called <strong>partitions</strong> (also known as shards). Chapter 6 is about how to split data sensibly so that each piece can live on a different node, letting you scale storage and throughput roughly linearly with the number of machines. Partitioning is almost always combined with replication: each partition is itself replicated across several nodes for fault tolerance.</p>
+    <p>Replication (Chapter 5) keeps copies of the same data on several nodes. But if a dataset is too big or a query load too heavy for any single node, you need to break the data into pieces called <strong>partitions</strong> (also known as <a href="/tech-stacks/sharding/">shards</a>). Chapter 6 is about how to split data sensibly so that each piece can live on a different node, letting you scale storage and throughput roughly linearly with the number of machines. Partitioning is almost always combined with replication: each partition is itself replicated across several nodes for fault tolerance.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -228,7 +246,7 @@
     <p>Assign a continuous <strong>range of keys</strong> (from some minimum to some maximum) to each partition, like the volumes of a paper encyclopedia (A–B, C–D, …). If you know the boundaries, you know which partition holds a key. The boundaries need not be evenly spaced — they're chosen to balance the data. The big advantage is that <strong>keys stay sorted within each partition</strong>, so range scans are efficient. The big risk is hot spots from a skewed access pattern: if the key is a timestamp, then every write for the current day goes to the same partition, overloading it while historical partitions are idle. Used by HBase and Bigtable. A common mitigation is to prefix the key with something else (e.g. a sensor name) so writes spread out.</p>
 
     <h3>Partitioning by Hash of Key</h3>
-    <p>Apply a hash function to each key and assign hash ranges to partitions. A good hash function turns skewed input into a uniform distribution, so data and load spread evenly. The cost: you <strong>lose the ability to do efficient range queries</strong>, because adjacent keys are now scattered across all partitions — a range scan must query every partition. Used by Cassandra and MongoDB (with hash-based sharding). Cassandra offers a compromise with <strong>compound primary keys</strong>: the first column is hashed to choose the partition, and the remaining columns are used to sort data <em>within</em> that partition — so you get even distribution across partitions but efficient range scans within one.</p>
+    <p>Apply a hash function to each key and assign hash ranges to partitions. A good hash function turns skewed input into a uniform distribution, so data and load spread evenly. The cost: you <strong>lose the ability to do efficient range queries</strong>, because adjacent keys are now scattered across all partitions — a range scan must query every partition. Used by <a href="/tech-stacks/nosql/">Cassandra and MongoDB</a> (with hash-based sharding). Cassandra offers a compromise with <strong>compound primary keys</strong>: the first column is hashed to choose the partition, and the remaining columns are used to sort data <em>within</em> that partition — so you get even distribution across partitions but efficient range scans within one.</p>
 
     <h3>Hot Spots Even with Hashing</h3>
     <p>Hashing reduces but doesn't eliminate hot spots. A single heavily-accessed key — a celebrity's user ID receiving millions of interactions — still hashes to a single partition, and no hash function helps because it's one key. Today most systems can't compensate automatically; it's left to the application. A typical trick is to add a random two-digit suffix to the hot key, splitting its writes across, say, 100 keys on different partitions — at the cost of having to read and combine all 100 on reads.</p>
@@ -239,7 +257,7 @@
     </div>
 
     <h2>Partitioning and Secondary Indexes</h2>
-    <p>Everything so far assumed a key-value model where you look up records by primary key. Real systems also have <strong>secondary indexes</strong> (find all records where color = red). Secondary indexes don't map neatly onto partitions, and there are two ways to handle them.</p>
+    <p>Everything so far assumed a key-value model where you look up records by primary key. Real systems also have <strong><a href="/tech-stacks/database-indexing/">secondary indexes</a></strong> (find all records where color = red). Secondary indexes don't map neatly onto partitions, and there are two ways to handle them.</p>
 
     <h3>By Document (Local Index)</h3>
     <p>Each partition maintains its own secondary index covering only the documents <em>in that partition</em> — a <strong>local index</strong>. Writes are simple: you only touch the one partition holding the document. But reads are expensive: since the matching documents could be in any partition, a query on the secondary index must be sent to <em>all</em> partitions and the results combined. This <strong>scatter/gather</strong> approach makes read latency hostage to the slowest partition and is prone to tail-latency amplification. Most databases (MongoDB, Cassandra, Elasticsearch, Riak) use document-partitioned indexes.</p>
@@ -332,9 +350,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -342,7 +361,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

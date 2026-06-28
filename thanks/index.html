@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,follow">
+<meta name="description" content="Thanks — your mock interview / consultation request has been received.">
+<title>Thanks — sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/thanks/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; display: flex; flex-direction: column; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.2; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; width: 100%; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+
+  /* THANKS */
+  .thanks-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 72px 0; }
+  .thanks-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 16px; padding: 56px 40px; text-align: center; max-width: 540px; width: 100%; }
+  .thanks-check {
+    width: 64px; height: 64px; margin: 0 auto 24px;
+    border-radius: 50%; border: 2px solid var(--accent);
+    background: rgba(74,222,128,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; color: var(--accent); line-height: 1;
+  }
+  .thanks-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 14px; }
+  .thanks-title { font-size: clamp(28px, 5vw, 38px); font-weight: 800; letter-spacing: -1px; line-height: 1.15; margin-bottom: 16px; }
+  .thanks-desc { font-family: var(--mono); font-size: 14px; color: var(--muted); line-height: 1.8; margin-bottom: 32px; }
+  .thanks-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary { font-family: var(--mono); font-size: 14px; font-weight: 700; color: #0a1a0a; background: var(--accent); padding: 12px 24px; border-radius: 8px; text-decoration: none; transition: opacity 0.2s, transform 0.2s; }
+  .btn-primary:hover { opacity: 0.88; transform: translateY(-2px); }
+  .btn-secondary { font-family: var(--mono); font-size: 14px; color: var(--text); background: var(--bg3); border: 1px solid var(--border); padding: 12px 24px; border-radius: 8px; text-decoration: none; transition: border-color 0.2s, transform 0.2s; }
+  .btn-secondary:hover { border-color: var(--accent2); transform: translateY(-2px); }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+    .thanks-card { padding: 44px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="nav-inner">
+      <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+      <ul class="nav-links">
+        <li><a href="/system-design/">System Design</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+        <li><a href="/ddia/">DDIA</a></li>
+      </ul>
+      <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/thanks/" class="active">EN</a><a href="/zh/thanks/">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="thanks-wrap">
+    <div class="thanks-card">
+      <div class="thanks-check">✓</div>
+      <div class="thanks-label">// request received</div>
+      <h1 class="thanks-title">Thanks — got it!</h1>
+      <p class="thanks-desc">
+        Your request is in. I'll get back to you within 24 hours<br>
+        to lock in a time. Talk soon. →
+      </p>
+      <div class="thanks-actions">
+        <a href="/" class="btn-primary">← Back to home</a>
+        <a href="/system-design/" class="btn-secondary">Browse content →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span>
+        <div style="font-size:11px;margin-top:4px;color:#3a4560">Proudly powered by sdeoffer.com</div>
+      </div>
+      <ul class="footer-links">
+        <li><a href="/system-design/">System Design</a></li>
+        <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+        <li><a href="/ddia/">DDIA</a></li>
+        <li><a href="/contact/">Contact</a></li>
+      </ul>
+      <div class="footer-copy">© 2026 sdeoffer</div>
+    </div>
+  </div>
+</footer>
+
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

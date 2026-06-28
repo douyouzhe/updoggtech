@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 11 章:流处理——事件流传输(队列 vs 基于日志的代理 Kafka)、数据库与流(CDC、事件溯源)、在流上计算(事件时间 vs 处理时间、窗口、stream/table join、checkpointing 与 exactly-once)。">
-<title>DDIA 第11章 — 流处理 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-11/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-11/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-11/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-11/">
+<meta name="description" content="流处理实战——DDIA 第 11 章讲事件流、Kafka 日志代理、CDC、事件溯源、窗口、流/表 join 与 exactly-once。">
+<title>DDIA 第11章 — 流处理 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-11/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-11/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-11/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-11/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="流处理 (Stream Processing)">
-<meta property="og:description" content="DDIA 第 11 章:事件流、Kafka 日志代理、CDC、事件溯源、窗口、流 join、exactly-once。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-11/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="流处理实战——DDIA 第 11 章讲事件流、Kafka 日志代理、CDC、事件溯源、窗口、流/表 join 与 exactly-once。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-11/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第11章 — 流处理">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="流处理 (Stream Processing)">
 <meta name="twitter:description" content="DDIA 第 11 章:流处理、日志代理、CDC、事件溯源、事件时间、窗口、exactly-once。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 11 章 — 流处理", "description": "DDIA 第 11 章:流处理——事件流传输(队列 vs 基于日志的代理 Kafka)、数据库与流(CDC、事件溯源)、在流上计算(事件时间 vs 处理时间、窗口、stream/table join、checkpointing 与 exactly-once)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-11/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 11 章 — 流处理","description":"流处理实战——DDIA 第 11 章讲事件流、Kafka 日志代理、CDC、事件溯源、窗口、流/表 join 与 exactly-once。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-11/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "基于日志的代理 vs 传统队列?", "acceptedAnswer": {"@type": "Answer", "text": "队列在 ack 后删除消息并负载均衡;日志(Kafka)保留一个仅追加、有序、可重放的记录,消费者按 offset 读。"}}, {"@type": "Question", "name": "CDC vs 事件溯源?", "acceptedAnswer": {"@type": "Answer", "text": "两者都把变更日志当主;CDC 从 DB 日志捕获低级行变更,事件溯源记录应用级事件作为真相来源、通过重放派生状态。"}}, {"@type": "Question", "name": "事件时间 vs 处理时间?", "acceptedAnswer": {"@type": "Answer", "text": "事件时间 = 它发生时;处理时间 = 它被处理时。它们因延迟分歧,所以窗口聚合必须处理迟到的\"掉队\"事件和\"窗口完整了吗?\"问题。"}}, {"@type": "Question", "name": "流怎么达到 exactly-once?", "acceptedAnswer": {"@type": "Answer", "text": "checkpointing/microbatching 加幂等和输出-加-offset 的原子提交,使重试不重复计数。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第11章 — 流处理","item":"https://sdeoffer.com/zh/ddia/chapter-11/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-11/">EN</a>
-        <a href="/zh/ddia/chapter-11/" class="active">中</a>
+        <a href="/ddia/chapter-11/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-11/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-11</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 11 章</span>
     <h1 class="article-title">流处理 (Stream Processing)</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
   </div>
 
   <div class="article-body">
-    <p>第 10 章假设输入是一个已知、有限的数据集。但现实中数据<strong>持续到达、永不结束</strong>:用户点击、传感器读数、支付、日志行。等积累一天的量再处理引入一天的延迟。<strong>流处理(stream processing)</strong>把批处理的不可变事件想法应用到<em>无界</em>、增量到达的数据,在每个事件发生后不久就处理它。本章覆盖事件流如何传输(消息代理和日志)、数据库和流如何关联(CDC 和事件溯源),以及如何真正在流上计算(时间、窗口、join 和容错)。</p>
+    <p>第 10 章假设输入是一个已知、有限的数据集。但现实中数据<strong>持续到达、永不结束</strong>:用户点击、传感器读数、支付、日志行。等积累一天的量再处理引入一天的延迟。<strong>流处理(stream processing)</strong>把<a href="/zh/ddia/chapter-10/">批处理</a>的不可变事件想法应用到<em>无界</em>、增量到达的数据,在每个事件发生后不久就处理它。本章覆盖事件流如何传输(消息代理和日志)、数据库和流如何关联(CDC 和事件溯源),以及如何真正在流上计算(时间、窗口、join 和容错)。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -226,7 +244,7 @@
     <p>流处理里,"记录"的等价物是<strong>事件(event)</strong>:一个小的、自包含、<em>不可变</em>的对象,记录发生的某事,通常带时间戳。事件由一个<strong>生产者(publisher)</strong>生成一次,潜在地被多个<strong>消费者(subscriber)</strong>处理;相关事件被分组进一个<strong>topic</strong> 或流。你可以轮询数据存储找新事件,但频繁轮询昂贵,所以更好的是消费者在新事件出现时被<em>通知</em>——这正是消息系统提供的。</p>
 
     <h3>消息代理:队列 vs 日志</h3>
-    <p>你能把事件直接从生产者发给消费者(如 UDP 多播,或 ZeroMQ 这样的无代理库),但大多数系统用一个<strong>消息代理</strong>作为缓冲事件的持久中介。有两种根本不同的代理设计:</p>
+    <p>你能把事件直接从生产者发给消费者(如 UDP 多播,或 ZeroMQ 这样的无代理库),但大多数系统用一个<strong><a href="/zh/tech-stacks/message-queue/">消息代理</a></strong>作为缓冲事件的持久中介。有两种根本不同的代理设计:</p>
 
     <table class="compare-table">
       <thead>
@@ -241,10 +259,10 @@
       </tbody>
     </table>
 
-    <p><strong>传统消息队列</strong>把每条消息分给一个消费者并在确认后删除它;多个消费者分享负载,但顺序在重投间不保留。它们适合任务队列,每条消息触发某(可能慢的)工作。<strong>基于日志的代理</strong>如 Kafka 把消息存在磁盘上一个分区的仅追加日志里;消费者只是记录它的 <strong>offset</strong>(日志中的位置),消息即便被读后也保留。这让你能<strong>重放</strong>旧事件、给高吞吐和分区内有序,并使代理行为很像数据库的复制日志——本章其余部分利用的一个连接。</p>
+    <p><strong>传统消息队列</strong>把每条消息分给一个消费者并在确认后删除它;多个消费者分享负载,但顺序在重投间不保留。它们适合任务队列,每条消息触发某(可能慢的)工作。<strong>基于日志的代理</strong>如 <a href="/zh/tech-stacks/kafka/">Kafka</a> 把消息存在磁盘上一个分区的仅追加日志里;消费者只是记录它的 <strong>offset</strong>(日志中的位置),消息即便被读后也保留。这让你能<strong>重放</strong>旧事件、给高吞吐和分区内有序,并使代理行为很像数据库的复制日志——本章其余部分利用的一个连接。</p>
 
     <h2>数据库与流</h2>
-    <p>本章的深层洞见:<strong>复制日志是一个事件流</strong>,而那种等价让我们保持许多系统同步。应用常需要把同一数据写到几个地方(一个数据库、一个搜索索引、一个缓存、一个仓库)。从应用做<strong>双写(dual writes)</strong>易错——并发写竞争且部分失败让系统不一致。流提供更干净的方式。</p>
+    <p>本章的深层洞见:<strong>复制日志是一个事件流</strong>,而那种等价让我们保持许多系统同步。应用常需要把同一数据写到几个地方(一个数据库、一个<a href="/zh/tech-stacks/elasticsearch/">搜索索引</a>、一个缓存、一个仓库)。从应用做<strong>双写(dual writes)</strong>易错——并发写竞争且部分失败让系统不一致。流提供更干净的方式。</p>
 
     <h3>变更数据捕获(CDC)</h3>
     <p><strong>变更数据捕获</strong>观察对数据库的所有写——通常通过 tail 它的复制日志——并把它们作为变更事件流提供。下游系统(搜索索引、缓存、数据仓库)消费那个流并按序应用同样的变更。原始数据库实际是 <strong>leader</strong>、派生系统是 <strong>follower</strong>,所以它们最终(最终地)一致。Debezium 等工具对常见数据库实现 CDC。因为消费者可能需要 bootstrap,流能与一个初始快照结合,而<strong>日志压实</strong>(Kafka 每 key 只保留最新事件)让消费者仅从日志重建完整状态。</p>
@@ -321,9 +339,10 @@ offset 1003  {<span class="str">"op"</span>:<span class="str">"delete"</span>, <
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -331,7 +350,7 @@ offset 1003  {<span class="str">"op"</span>:<span class="str">"delete"</span>, <
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

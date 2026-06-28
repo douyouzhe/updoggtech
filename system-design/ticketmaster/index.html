@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into Ticketmaster — preventing double-booking with seat holds and locking, hold expiration, the virtual waiting room for onsale spikes, strong consistency for inventory, and payment integration.">
-<title>Design Ticketmaster — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/ticketmaster/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/ticketmaster/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/ticketmaster/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/ticketmaster/">
+<meta name="description" content="Ticketmaster system design — prevent double-booking with seat holds and locks, expire holds, absorb onsale spikes via a waiting room, and keep inventory strict.">
+<title>Design Ticketmaster — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/ticketmaster/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ticketmaster/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ticketmaster/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ticketmaster/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design Ticketmaster — System Design">
-<meta property="og:description" content="Preventing double-booking with seat holds and locking, hold expiration, virtual waiting rooms, strong consistency, and payments.">
-<meta property="og:url" content="https://updoggtech.com/system-design/ticketmaster/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Ticketmaster system design — prevent double-booking with seat holds and locks, expire holds, absorb onsale spikes via a waiting room, and keep inventory strict.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/ticketmaster/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design Ticketmaster — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Design Ticketmaster">
 <meta name="twitter:description" content="How ticket booking works: seat holds, locking to prevent oversell, waiting rooms, and consistency.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Ticketmaster","description":"Preventing double-booking with seat holds and locking, hold expiration, virtual waiting rooms, strong consistency, and payments.","datePublished":"2023-04-15","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/ticketmaster/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design Ticketmaster","description":"Ticketmaster system design — prevent double-booking with seat holds and locks, expire holds, absorb onsale spikes via a waiting room, and keep inventory strict.","datePublished":"2023-04-15","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/ticketmaster/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-15","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do you prevent double-booking?", "acceptedAnswer": {"@type": "Answer", "text": "Claim the seat with an atomic conditional update (SET held WHERE status='available') or row lock, so only one of many concurrent requests wins."}}, {"@type": "Question", "name": "Why temporary holds?", "acceptedAnswer": {"@type": "Answer", "text": "Checkout takes time; a hold reserves the seat for a few minutes (state available→held→booked) and expires back to available if unpaid, so seats neither double-sell nor leak."}}, {"@type": "Question", "name": "How do you handle an onsale spike of millions?", "acceptedAnswer": {"@type": "Answer", "text": "A virtual waiting room queues users and admits them in batches, decoupling arrival rate from the booking backend's safe processing rate."}}, {"@type": "Question", "name": "Where's the consistency boundary?", "acceptedAnswer": {"@type": "Answer", "text": "Browsing/seat-maps are cached and AP; the booking path is strongly consistent (CP) — the atomic claim is the single source of truth."}}, {"@type": "Question", "name": "How does payment fit in?", "acceptedAnswer": {"@type": "Answer", "text": "Hold → pay (idempotently) → confirm, as a saga; on failure or timeout the hold is released, with expiry as the backstop."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design Ticketmaster — System Design","item":"https://sdeoffer.com/system-design/ticketmaster/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -160,13 +174,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -174,18 +191,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/ticketmaster/" class="active">EN</a><a href="/zh/system-design/ticketmaster/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/ticketmaster/" class="active" hreflang="en">EN</a><a href="/zh/system-design/ticketmaster/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ticketmaster</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design Ticketmaster</h1>
     <div class="article-meta">
@@ -395,9 +413,10 @@ bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -405,7 +424,7 @@ bookings (booking_id, user_id, event_id, seat_ids[], payment_id, ts)</code></pre
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

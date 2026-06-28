@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Docker 与容器——它们解决的依赖问题、namespaces 与 cgroups 如何隔离进程、容器对比虚拟机、镜像分层、Dockerfile、registry,以及容器为什么胜出。">
-<title>Docker 与容器 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/docker/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/docker/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/docker/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/docker/">
+<meta name="description" content="容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。">
+<title>Docker 与容器 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/docker/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/docker/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/docker/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/docker/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Docker 与容器">
 <meta property="og:description" content="容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/docker/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/docker/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Docker 与容器">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Docker 与容器">
 <meta name="twitter:description" content="容器怎么工作:namespaces、cgroups、镜像分层、Dockerfile,以及为何胜过 VM。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Docker 与容器","description":"容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。","datePublished":"2023-09-22","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/docker/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Docker 与容器","description":"容器如何用 namespaces 和 cgroups 隔离、容器对比虚拟机、镜像分层、Dockerfile、registry。","datePublished":"2023-09-22","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/docker/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-22"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "容器对比 VM?", "acceptedAnswer": {"@type": "Answer", "text": "容器是共享主机内核的隔离进程(namespaces + cgroups);VM 在 hypervisor 上跑完整客机 OS。容器 MB 级、毫秒启动;VM GB 级、隔离更强。"}}, {"@type": "Question", "name": "到底是什么在隔离容器?", "acceptedAnswer": {"@type": "Answer", "text": "Linux namespaces(文件系统、网络、PID 视图)加 cgroups(CPU/内存上限)——没有客机内核。"}}, {"@type": "Question", "name": "镜像分层有什么用?", "acceptedAnswer": {"@type": "Answer", "text": "每条 Dockerfile 步骤是一个可缓存、内容寻址、跨镜像共享的层——构建快、存储小;把最不常变的步骤放前面。"}}, {"@type": "Question", "name": "容器状态放哪?", "acceptedAnswer": {"@type": "Answer", "text": "不放在临时的可写层里——放 volume 或外部存储,因为容器不可变、可替换。"}}, {"@type": "Question", "name": "容器为何在微服务上胜出?", "acceptedAnswer": {"@type": "Answer", "text": "可移植、毫秒启动、高密度、不可变带版本部署,还是编排的完美单元。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Docker 与容器","item":"https://sdeoffer.com/zh/tech-stacks/docker/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/docker/">EN</a>
-        <a href="/zh/tech-stacks/docker/" class="active">中</a>
+        <a href="/tech-stacks/docker/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/docker/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">docker</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Docker 与容器</h1>
     <div class="article-meta">
@@ -329,9 +347,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -339,7 +358,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

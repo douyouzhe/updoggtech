@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="News feed system design (Twitter/Facebook timeline) — fan-out-on-write vs fan-out-on-read, celebrity hot-key problem, hybrid fan-out, and Redis timeline cache.">
+<title>Design a News Feed (Twitter) — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/news-feed/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/news-feed/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/news-feed/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/news-feed/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Design a News Feed (Twitter Timeline) — System Design">
+<meta property="og:description" content="News feed system design (Twitter/Facebook timeline) — fan-out-on-write vs fan-out-on-read, celebrity hot-key problem, hybrid fan-out, and Redis timeline cache.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/news-feed/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design a News Feed (Twitter Timeline) — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Design a News Feed (Twitter Timeline) — System Design">
+<meta name="twitter:description" content="A system design deep dive into building a news feed — fan-out-on-write vs. fan-out-on-read, the celebrity hot-key problem, hybrid fan-out, Redis timeline cache, and feed ranking.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a News Feed (Twitter / Facebook Timeline)","description":"News feed system design (Twitter/Facebook timeline) — fan-out-on-write vs fan-out-on-read, celebrity hot-key problem, hybrid fan-out, and Redis timeline cache.","datePublished":"2026-06-28","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/news-feed/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-28","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Fan-out-on-write or fan-out-on-read — which do you choose?", "acceptedAnswer": {"@type": "Answer", "text": "Neither alone. Fan-out-on-write (push) precomputes every follower's timeline at post time — fast reads, but write amplification explodes for high-follower accounts. Fan-out-on-read (pull) merges followees' posts at read time — cheap writes, but slow reads for users who follow thousands. Production systems use a hybrid: push for normal users, pull for celebrities, merged at read time."}}, {"@type": "Question", "name": "How do you handle the celebrity / hot-key problem?", "acceptedAnswer": {"@type": "Answer", "text": "A post from an account with 100M followers under pure push would trigger 100M timeline writes — a write storm that lags fan-out by minutes. Mark high-follower accounts as celebrities and skip their fan-out entirely. At read time, fetch the user's pushed timeline and merge in recent posts pulled directly from the celebrities they follow. The celebrity's own posts live in a hot cache shared by all readers."}}, {"@type": "Question", "name": "What exactly is hybrid fan-out?", "acceptedAnswer": {"@type": "Answer", "text": "Classify authors by follower count. Below a threshold (say ~10k–100k followers) posts are pushed into each follower's precomputed timeline cache. Above the threshold, posts are not fanned out; they are read-pulled and merged into the feed at request time. This bounds write amplification while keeping the common read path a single cache lookup."}}, {"@type": "Question", "name": "Why store post IDs in the timeline cache instead of full posts?", "acceptedAnswer": {"@type": "Answer", "text": "Full posts are large, mutable (edit, like count, delete), and duplicated across millions of followers' timelines. Storing only post-ID pointers (plus a ranking score) keeps each timeline entry ~20 bytes, caps memory, and lets you hydrate the latest post content and counts at read time from a shared post store — so an edit or delete is reflected without rewriting every timeline."}}, {"@type": "Question", "name": "How do you paginate a feed that keeps changing as new posts arrive?", "acceptedAnswer": {"@type": "Answer", "text": "Use cursor-based pagination keyed on a stable, monotonic value (post ID or a snapshot timestamp), never SQL OFFSET. The cursor encodes the position of the last item served; new posts that arrive above it do not shift the page boundaries, so the user never sees duplicates or skips while scrolling."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a News Feed (Twitter / Facebook Timeline)","item":"https://sdeoffer.com/system-design/news-feed/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/system-design/news-feed/" class="active" hreflang="en">EN</a><a href="/zh/system-design/news-feed/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">news-feed</span>
+    </nav>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a News Feed (Twitter / Facebook Timeline)</h1>
+    <div class="article-meta">
+      <span>Jun 28, 2026</span>
+      <span class="separator">·</span>
+      <span>34 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A news feed — the ranked or reverse-chronological stream of posts from every account a user follows — is the canonical "fan-out" system design problem, and it is deceptively hard. The interface is trivial (scroll a list of posts), but the data shape is brutal: a single post by one author must reach the home timeline of every follower, and a single feed-load must merge fresh posts from hundreds or thousands of followees, ranked, paginated, and rendered in under 200&nbsp;ms. The hard part is not storing posts; it is the <strong>write amplification</strong> of fan-out and its pathological worst case — an account with 100&nbsp;million followers posting once. Get the fan-out strategy wrong and you either melt the write path (push to 100M timelines) or the read path (pull and merge thousands of authors on every refresh). This article works through the canonical design: fan-out-on-write vs. fan-out-on-read, the celebrity hot-key problem, the hybrid model production systems actually run, the Redis timeline cache, feed ranking, and stable pagination.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>Two timelines, not one</strong> — the <em>user timeline</em> (one author's own posts) and the <em>home timeline</em> (aggregated from everyone you follow) have completely different fan-out costs. The home timeline is the hard one.</li>
+        <li><strong>Fan-out-on-write (push)</strong> — precompute each follower's timeline at post time. Reads are a single cache read; writes amplify by follower count.</li>
+        <li><strong>Fan-out-on-read (pull)</strong> — assemble the feed at read time by merging followees' recent posts. Writes are O(1); reads are expensive for users who follow thousands.</li>
+        <li><strong>Celebrity hot-key</strong> — pure push on a 100M-follower account is a write storm; pure pull on a user who follows 5,000 accounts is a read storm. Both extremes break.</li>
+        <li><strong>Hybrid fan-out wins</strong> — push for normal authors, pull for celebrities, merge at read time. Industry standard (Twitter, Instagram).</li>
+        <li><strong>Cache post-ID pointers, not posts</strong> — each timeline entry is ~20 bytes (post ID + score); hydrate content and counts at read time so edits/deletes don't rewrite millions of timelines.</li>
+        <li><strong>Cursor pagination</strong> — snapshot/cursor keyed on post ID, never SQL OFFSET, so the feed is stable while new posts stream in above the cursor.</li>
+        <li><strong>Async fan-out via a queue</strong> — the post write returns immediately; Kafka-backed workers do the heavy timeline inserts off the hot path.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Separate the user timeline from the home timeline. Use hybrid fan-out: push posts from normal authors into each follower's Redis timeline (a capped list of post-ID pointers), but skip fan-out for celebrities and pull their recent posts at read time, merging them into the feed. Rank the merged candidate set, hydrate post content from a shared store, and paginate with a stable cursor. Drive fan-out asynchronously through Kafka so the post write never blocks on follower count.</p>
+    </div>
+
+    <h2>Step 1 — Clarify Requirements</h2>
+    <p>The news feed prompt is broad. Scope it explicitly before drawing anything — the single most important clarification is which feed you are building, because the user timeline and the home timeline have opposite cost profiles.</p>
+
+    <h3>Functional requirements</h3>
+    <ul>
+      <li>Publish a post (text, optionally media references) to your followers.</li>
+      <li>Follow / unfollow other accounts (the social graph).</li>
+      <li>View your <strong>home timeline</strong> — a feed aggregating recent posts from all accounts you follow.</li>
+      <li>View a <strong>user timeline</strong> — the posts authored by one specific account, in reverse-chronological order.</li>
+      <li>Ranking: support both reverse-chronological and a ranked ("top posts") ordering.</li>
+      <li>Engagement: like, reply, repost — with approximate counts shown on each post.</li>
+      <li>Pagination / infinite scroll — load the feed in pages as the user scrolls.</li>
+    </ul>
+
+    <h3>Non-functional requirements</h3>
+    <ul>
+      <li><strong>Read-heavy</strong> — feed loads vastly outnumber posts; target &lt;200&nbsp;ms p99 to render a page of the home timeline.</li>
+      <li><strong>High availability</strong> — the feed must always render something; a stale-but-present feed beats an error. Lean AP over CP.</li>
+      <li><strong>Eventual consistency is acceptable</strong> — a new post appearing in followers' feeds a few seconds late is fine; a post must never be lost.</li>
+      <li><strong>Scalability</strong> — hundreds of millions of DAU, a power-law follower graph (most accounts tiny, a few with 100M+ followers).</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Lead with the distinction between the user timeline and the home timeline. The user timeline is a simple per-author query (shard by author, sort by time). The home timeline is the aggregation problem — fan-out, ranking, hot keys — and is where 90% of the interview lives. Naming this split early signals you understand where the difficulty actually is.</p>
+    </div>
+
+    <h2>Step 2 — Capacity Estimation</h2>
+    <p>Back-of-the-envelope numbers anchor the fan-out discussion. Assume a large social platform: <strong>200M DAU</strong>, average user follows ~200 accounts and has ~200 followers (the average; the distribution is heavily power-law).</p>
+
+    <h3>Traffic</h3>
+    <ul>
+      <li>Posts: assume ~0.2 posts/DAU/day → 200M × 0.2 = <strong>40M posts/day ≈ 460 posts/sec</strong> average; peak ~3–5× → <strong>~2,000 posts/sec</strong>.</li>
+      <li>Feed reads: assume each DAU refreshes ~10×/day → 200M × 10 = <strong>2B feed reads/day ≈ 23,000 reads/sec</strong> average; peak ~5× → <strong>~100,000 reads/sec</strong>.</li>
+      <li>Post-level read:write ratio ≈ <strong>50:1</strong> — squarely read-heavy, which biases us toward precomputing the read (fan-out-on-write).</li>
+    </ul>
+
+    <h3>Fan-out write amplification (the crux)</h3>
+    <ul>
+      <li>Under pure fan-out-on-write, each post inserts into every follower's timeline: 40M posts × ~200 avg followers = <strong>8B timeline inserts/day ≈ 93,000 fan-out writes/sec</strong> average.</li>
+      <li>Peaks are far worse than the average implies, because the average hides the tail: a single celebrity post (100M followers) is <strong>100M inserts</strong> — more than a full day's average fan-out from one write.</li>
+      <li>This is why pure push cannot stand alone: the write amplification is unbounded in the number of followers, and the follower distribution has a very fat tail.</li>
+    </ul>
+
+    <h3>Storage</h3>
+    <ul>
+      <li>Post record: ~300 bytes (post_id 8&nbsp;B, author_id 8&nbsp;B, text ≤280 chars, timestamps, counts). 40M/day × 300&nbsp;B ≈ <strong>12&nbsp;GB/day ≈ 4.4&nbsp;TB/year</strong> of post text — fits a sharded store easily; media lives in object storage behind a CDN.</li>
+      <li>Timeline cache: store post-ID pointers only — ~20&nbsp;B/entry (8&nbsp;B post ID + 8&nbsp;B score + overhead), capped at ~800 entries/user. 200M users × 800 × 20&nbsp;B ≈ <strong>~3.2&nbsp;TB</strong> across the Redis fleet (sharded).</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>The post-text storage is small and boring (a few TB/year). The expensive, design-defining number is the 93,000+ fan-out writes/sec <em>and its tail</em>. Every architectural decision below — hybrid fan-out, hot-key handling, capped timelines, async workers — exists to tame that one number.</p>
+    </div>
+
+    <h2>Step 3 — API Design</h2>
+    <p>A small REST surface. The two endpoints that matter for scale are creating a post and reading the home timeline.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Publish a post</span>
+<span class="kw">POST</span> <span class="str">/api/posts</span>
+     Authorization: Bearer &lt;token&gt;
+     { <span class="str">"text"</span>: <span class="str">"shipping the feed redesign 🚀"</span>,
+       <span class="str">"media_ids"</span>: [<span class="str">"m_91af"</span>] }      <span class="cm">// optional</span>
+     → <span class="num">201</span> { <span class="str">"post_id"</span>: <span class="str">"189f3c2a01"</span>, <span class="str">"created_at"</span>: <span class="str">"2026-06-28T10:00:00Z"</span> }
+
+<span class="cm"># Read the home timeline (the hard one) — cursor paginated</span>
+<span class="kw">GET</span> <span class="str">/api/feed?limit=20&amp;cursor=189f3c2a01</span>
+     Authorization: Bearer &lt;token&gt;
+     → { <span class="str">"items"</span>: [ {post}, {post}, ... ],
+         <span class="str">"next_cursor"</span>: <span class="str">"189f2b88f0"</span> }   <span class="cm">// null when exhausted</span>
+
+<span class="cm"># Read a single user's timeline (per-author, simple)</span>
+<span class="kw">GET</span> <span class="str">/api/users/{id}/posts?limit=20&amp;cursor=...</span>
+
+<span class="cm"># Social graph</span>
+<span class="kw">POST</span>   <span class="str">/api/follow</span>    { <span class="str">"followee_id"</span>: <span class="str">"u_42"</span> }   → <span class="num">204</span>
+<span class="kw">DELETE</span> <span class="str">/api/follow</span>    { <span class="str">"followee_id"</span>: <span class="str">"u_42"</span> }   → <span class="num">204</span>
+
+<span class="cm"># Engagement (counts updated asynchronously)</span>
+<span class="kw">POST</span>   <span class="str">/api/posts/{id}/like</span>   → <span class="num">204</span></code></pre>
+    </div>
+
+    <p>The <code>GET /api/feed</code> response carries an opaque <code>next_cursor</code> rather than a page number — the client passes it back to fetch the next page. The cursor encodes the position of the last item served (typically the lowest post ID on the page), which makes pagination stable even as new posts arrive at the top. We return <strong>hydrated</strong> post objects (text, author, current like/reply counts) assembled at read time from the shared post store, not whatever was cached when the post was fanned out.</p>
+
+    <h2>Step 4 — Data Model</h2>
+    <p>Three core stores: the post store, the social graph, and the per-user timeline cache. They have very different access patterns and are sharded differently.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- POSTS: source of truth for content. Sharded by post_id (Snowflake).</span>
+<span class="kw">CREATE TABLE</span> posts (
+  post_id     <span class="ty">BIGINT</span>      <span class="kw">PRIMARY KEY</span>,   <span class="cm">-- Snowflake: time-sortable</span>
+  author_id   <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  text        <span class="ty">VARCHAR</span>(<span class="num">280</span>),
+  media_ids   <span class="ty">JSON</span>,
+  created_at  <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  like_count  <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>,    <span class="cm">-- approximate, async</span>
+  reply_count <span class="ty">BIGINT</span>      <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  is_deleted  <span class="ty">BOOLEAN</span>     <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>
+);
+
+<span class="cm">-- FOLLOWS: the social graph. Sharded by follower_id for "who do I follow",</span>
+<span class="cm">-- with a secondary index / mirror table on followee_id for "who follows X".</span>
+<span class="kw">CREATE TABLE</span> follows (
+  follower_id <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  followee_id <span class="ty">BIGINT</span>      <span class="kw">NOT NULL</span>,
+  created_at  <span class="ty">TIMESTAMP</span>   <span class="kw">NOT NULL</span>,
+  <span class="kw">PRIMARY KEY</span> (follower_id, followee_id)
+);
+<span class="kw">CREATE INDEX</span> idx_followee <span class="kw">ON</span> follows(followee_id);  <span class="cm">-- fan-out target list</span>
+
+<span class="cm">-- AUTHOR STATS: drives the hybrid fan-out decision.</span>
+<span class="kw">CREATE TABLE</span> author_stats (
+  author_id      <span class="ty">BIGINT</span>   <span class="kw">PRIMARY KEY</span>,
+  follower_count <span class="ty">BIGINT</span>   <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  is_celebrity   <span class="ty">BOOLEAN</span>  <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>   <span class="cm">-- follower_count &gt; threshold</span>
+);
+
+<span class="cm">-- TIMELINE CACHE (Redis, not SQL): per-user capped list of post-ID pointers.</span>
+<span class="cm">-- Key:  timeline:{user_id}   Value: ZSET { post_id : score }</span>
+<span class="cm">-- Capped to ~800 newest entries via ZADD + ZREMRANGEBYRANK.</span></code></pre>
+    </div>
+
+    <p>Key decisions: <code>post_id</code> is a Snowflake ID so it is globally unique and time-sortable — sorting a timeline is just sorting integers, and the ID doubles as the pagination cursor. The <code>follows</code> table needs two access paths: "who do I follow" (read path, sharded by <code>follower_id</code>) and "who follows X" (fan-out target list, indexed by <code>followee_id</code>); at scale this becomes two physically separate, independently sharded representations of the same edge. The timeline cache lives in <a href="/tech-stacks/redis/">Redis</a> as a sorted set of post-ID pointers — never full post bodies.</p>
+
+    <h2>Step 5 — Fan-out-on-Write vs. Fan-out-on-Read</h2>
+    <p>This is the central decision of the whole design. When user A posts, how do A's followers eventually see it in their home timelines? Two pure strategies sit at opposite ends.</p>
+
+    <h3>Fan-out-on-write (push model)</h3>
+    <p>At post time, look up all of A's followers and <strong>push</strong> the new post ID into each follower's precomputed timeline cache. Reading a home timeline is then a single cache read: <code>ZREVRANGE timeline:{me} 0 19</code>. The read is O(1) in the number of accounts you follow — it has already been materialized for you.</p>
+
+    <h3>Fan-out-on-read (pull model)</h3>
+    <p>At post time, do nothing but store the post in the author's own timeline. When a follower loads their home feed, <strong>pull</strong> the recent posts of every account they follow and merge-sort them on the fly. The write is O(1); the read is O(number of followees), and gets brutal for users who follow thousands of accounts — each feed load fans out reads across many authors and shards.</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>Dimension</th><th>Fan-out-on-write (push)</th><th>Fan-out-on-read (pull)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Read cost</td><td class="col-a">O(1) — single cache read of a ready timeline</td><td class="col-b">O(followees) — merge many authors per load</td></tr>
+        <tr><td>Write cost</td><td class="col-b">O(followers) — insert into every follower</td><td class="col-a">O(1) — store once</td></tr>
+        <tr><td>Storage</td><td class="col-b">High — post ID duplicated across all timelines</td><td class="col-a">Low — one copy per post</td></tr>
+        <tr><td>Worst case</td><td class="col-b">Celebrity post = write storm</td><td class="col-b">User following 5k accounts = read storm</td></tr>
+        <tr><td>Freshness</td><td class="col-b">Lags by fan-out delay (seconds)</td><td class="col-a">Always current at read time</td></tr>
+        <tr><td>Best for</td><td class="col-a">Normal authors, read-heavy feeds</td><td class="col-a">Celebrities, inactive users</td></tr>
+      </tbody>
+    </table>
+
+    <p>Because the workload is ~50:1 read-heavy, the default instinct is push — precompute the expensive thing (the read) and pay at write time. That works beautifully until you hit an account with tens of millions of followers, where the write cost becomes catastrophic. Neither pure model survives the real follower distribution; the production answer is to combine them.</p>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>Don't pick a side. State the read:write ratio, explain why push is the default for a read-heavy feed, then immediately introduce the celebrity counter-example that breaks pure push and motivates the hybrid. Walking the interviewer from "push" → "but celebrities" → "so, hybrid" is exactly the reasoning arc they're listening for.</p>
+    </div>
+
+    <h2>Step 6 — The Celebrity / Hot-Key Problem</h2>
+    <p>The follower graph is power-law: the overwhelming majority of accounts have a few hundred followers, but a handful have 50M–500M. Pure fan-out-on-write breaks on these accounts in two distinct ways:</p>
+    <ul>
+      <li><strong>Write storm</strong> — one celebrity post triggers tens of millions of timeline inserts. Even fanned out asynchronously across worker pools, this floods the queue, delays fan-out for <em>everyone else</em> behind it, and can take minutes to drain — so the post lands in some followers' feeds long after others.</li>
+      <li><strong>Hot key on the post</strong> — the celebrity's post is read by millions of people within seconds. The single post record (and its like/reply counters) becomes a hot key, hammering one shard of the post store.</li>
+    </ul>
+
+    <p>There is also a thundering-herd interaction: several celebrities posting in the same window can saturate the entire fan-out tier. The fix is to <strong>stop fanning out celebrity posts entirely</strong> and handle them on the read side, plus give the hot post record its own caching treatment.</p>
+
+    <div class="callout">
+      <div class="callout-label">scalability note</div>
+      <p>The hot-key problem is the same shape that appears in a <a href="/tech-stacks/caching/">cache</a> for any viral object: a single key receives a disproportionate share of traffic and overwhelms its shard. The mitigations rhyme — replicate the hot key across multiple cache nodes, add an in-process LRU layer in front of the shared cache (1–5&nbsp;s TTL) to absorb the spike, and serve approximate counters so the write-back of likes/replies doesn't serialize on one row.</p>
+    </div>
+
+    <h2>Step 7 — Hybrid Fan-out</h2>
+    <p>The production answer — used by Twitter, Instagram, and essentially every large feed — is <strong>hybrid fan-out</strong>: choose push or pull <em>per author</em> based on follower count.</p>
+
+    <ul>
+      <li><strong>Normal authors (below the threshold)</strong> — push. Their posts are fanned out into each follower's timeline cache at write time. Most authors, and therefore most posts, take this path.</li>
+      <li><strong>Celebrities (above the threshold)</strong> — do <em>not</em> fan out. Their posts are stored only in their own user timeline. The few accounts above the threshold contribute zero fan-out writes.</li>
+      <li><strong>Read-time merge</strong> — when a user loads their home feed, the system reads their pushed timeline cache (covering all the normal authors they follow) <em>and</em> pulls the recent posts of the celebrities they follow, then merges and ranks the two sets.</li>
+    </ul>
+
+    <p>The threshold (often somewhere around 10k–100k followers, tuned empirically) trades write amplification against read-merge cost. The number of celebrities any single user follows is small — you might follow a few hundred normal accounts and a dozen celebrities — so the read-time pull is bounded: a dozen cheap "recent posts by author X" lookups, each itself cache-friendly because that celebrity's recent posts are read by millions and stay hot.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># WRITE PATH — decide push vs. skip per author</span>
+<span class="kw">def</span> <span class="fn">on_new_post</span>(post):
+    store_post(post)                          <span class="cm"># source of truth</span>
+    add_to_user_timeline(post.author_id, post.post_id)
+    <span class="kw">if</span> is_celebrity(post.author_id):          <span class="cm"># follower_count &gt; threshold</span>
+        <span class="kw">return</span>                                <span class="cm"># skip fan-out — pulled at read time</span>
+    <span class="cm"># normal author: enqueue async fan-out to followers</span>
+    publish(<span class="str">"fanout"</span>, { <span class="str">"post_id"</span>: post.post_id, <span class="str">"author_id"</span>: post.author_id })
+
+<span class="cm"># READ PATH — merge pushed timeline + pulled celebrity posts</span>
+<span class="kw">def</span> <span class="fn">home_feed</span>(me, cursor, limit):
+    pushed   = zrevrange(<span class="str">f"timeline:{me}"</span>, cursor, limit)       <span class="cm"># O(1) cache read</span>
+    celebs   = get_followed_celebrities(me)                  <span class="cm"># small set</span>
+    pulled   = [recent_posts(c, cursor, limit) <span class="kw">for</span> c <span class="kw">in</span> celebs] <span class="cm"># cache-hot</span>
+    merged   = merge_by_score(pushed, flatten(pulled))
+    <span class="kw">return</span> hydrate(rank(merged)[:limit])                     <span class="cm"># fetch content + counts</span></code></pre>
+    </div>
+
+    <p>One subtlety: the threshold is not purely about follower count but about the <em>cost</em> of fan-out. An account that posts rarely is cheap to push even with many followers; an account that posts constantly is expensive even with fewer. Mature systems factor in posting velocity, and some even decide push-vs-pull per active-follower count (only fan out to followers who have been online recently), which dramatically shrinks the fan-out set for accounts with many dormant followers.</p>
+
+    <h2>Step 8 — Timeline Cache (Redis)</h2>
+    <p>The pushed home timeline lives in <a href="/tech-stacks/redis/">Redis</a> as a per-user <strong>sorted set</strong> of post-ID pointers, scored for ordering. This is the structure that makes the read path a single O(log&nbsp;n) range query.</p>
+
+    <ul>
+      <li><strong>Pointers, not posts</strong> — store <code>{ post_id : score }</code>, ~20 bytes/entry. Never store full post bodies: they're large, they change (likes, edits, deletes), and they'd be duplicated across millions of timelines. Content is hydrated at read time from the shared post store.</li>
+      <li><strong>Capped length</strong> — keep only the newest ~800 entries per user (<code>ZADD</code> then <code>ZREMRANGEBYRANK timeline:{u} 0 -801</code>). Nobody scrolls back 800 posts; deeper history falls back to a slower fan-out-on-read path. Capping is what bounds the 3.2&nbsp;TB fleet number from the estimation.</li>
+      <li><strong>Score = ranking signal or timestamp</strong> — for chronological feeds the score is the Snowflake post ID itself (time-sortable). For ranked feeds the score is a precomputed rank, or the cache stays chronological and ranking happens after the read.</li>
+      <li><strong>Cold / inactive users</strong> — don't maintain timelines for users who haven't logged in for weeks. Skip fanning out to them and rebuild their timeline lazily on next login (pure pull). This alone removes a large fraction of wasted fan-out writes.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Redis</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># Fan-out worker inserts a post pointer into a follower's timeline</span>
+ZADD   timeline:u_42  189f3c2a01  189f3c2a01     <span class="cm"># score = post_id (time-sortable)</span>
+ZREMRANGEBYRANK timeline:u_42  0  -801           <span class="cm"># cap to newest 800</span>
+
+<span class="cm"># Read path: newest 20, paginated by cursor (a post_id)</span>
+ZREVRANGEBYSCORE timeline:u_42  (189f2b88f0  -inf  LIMIT 0 20</code></pre>
+    </div>
+
+    <p>Because timelines are sharded across the Redis fleet by user ID, fan-out writes spread evenly across shards — except for the hot post records themselves, which is exactly why celebrities are pulled (their post is one hot key read by millions) rather than pushed (their fan-out would write to millions of cold timelines).</p>
+
+    <h2>Step 9 — Feed Ranking</h2>
+    <p>A reverse-chronological feed is the simple default, but most large feeds are <strong>ranked</strong> — ordered by predicted relevance, not just recency. Ranking is layered on top of the fan-out machinery as a two-stage pipeline:</p>
+
+    <ol>
+      <li><strong>Candidate generation</strong> — the merged set from hybrid fan-out (pushed timeline + pulled celebrity posts) is the candidate pool, typically a few hundred recent posts. Fan-out's job is to produce candidates cheaply; it is not the final order.</li>
+      <li><strong>Scoring / ranking</strong> — each candidate is scored by a model combining signals: <em>affinity</em> (how much you interact with the author), <em>recency</em> (time decay), <em>engagement</em> (likes/replies velocity), <em>content type</em>, and predicted P(like), P(reply), P(dwell). The top N by score become the page.</li>
+    </ol>
+
+    <p>A simple, interview-ready scoring function captures the idea without invoking ML infrastructure:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">score</span>(post, viewer):
+    affinity   = edge_weight(viewer, post.author_id)   <span class="cm"># past interactions</span>
+    recency    = <span class="fn">exp</span>(-AGE_DECAY * hours_since(post.created_at))
+    engagement = <span class="fn">log1p</span>(post.like_count + <span class="num">2</span> * post.reply_count)
+    <span class="kw">return</span> W1 * affinity + W2 * recency + W3 * engagement</code></pre>
+    </div>
+
+    <p>Ranking introduces a freshness-vs-relevance tension: a purely ranked feed can bury brand-new posts (low engagement so far) and feel stale, so production systems blend in a recency floor or reserve slots for fresh content. Ranking models are served from a separate online inference tier; precomputed features (affinity edges, author stats) are cached so scoring a few hundred candidates stays within the latency budget.</p>
+
+    <div class="callout">
+      <div class="callout-label">note</div>
+      <p>Keep ranking <em>after</em> candidate generation, not inside fan-out. If you bake the final rank into the pushed timeline's score, you can't re-rank when the model or the viewer's context changes, and every like would have to rewrite millions of timeline scores. Fan-out produces candidates; ranking orders them at (or near) read time.</p>
+    </div>
+
+    <h2>Step 10 — Pagination</h2>
+    <p>Infinite scroll on a feed that is constantly receiving new posts at the top is a classic correctness trap. The naive approach — <code>LIMIT 20 OFFSET 40</code> — is broken here: if three new posts arrive while the user reads page 1, the offset shifts and page 2 repeats items the user already saw (or skips some).</p>
+
+    <p>The fix is <strong>cursor-based pagination</strong> keyed on a stable, monotonic value — the Snowflake <code>post_id</code>. The cursor is the ID of the last item on the current page; the next page asks for items with an ID strictly less than the cursor:</p>
+
+    <ul>
+      <li><strong>Stable boundaries</strong> — new posts arriving above the cursor don't shift the page below it. The user paginates downward through a consistent, ever-older sequence regardless of what arrives up top.</li>
+      <li><strong>Cheap on Redis</strong> — <code>ZREVRANGEBYSCORE timeline:{u} (cursor -inf LIMIT 0 20</code> is an O(log&nbsp;n + page) range scan, not an offset walk.</li>
+      <li><strong>"Show new posts" pill</strong> — fresh posts above the user's session anchor are surfaced via a separate "N new posts" control that prepends them on demand, rather than silently reflowing the current scroll position.</li>
+      <li><strong>Snapshot semantics for ranked feeds</strong> — when order isn't a single monotonic field, the cursor encodes a session snapshot (a server-side materialized page sequence or a (score, post_id) tuple) so a re-rank mid-scroll doesn't duplicate or drop items.</li>
+    </ul>
+
+    <h2>Step 11 — Core Architecture &amp; Read/Write Paths</h2>
+    <p>Tying it together: an async, queue-driven write path and a merge-and-hydrate read path.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- WRITE PATH (publish a post)</span>
+POST /api/posts { text, media_ids? }
+  → Post service: write post to post store (sharded by post_id)
+  → Append post_id to author's own user timeline
+  → Lookup author_stats.is_celebrity
+       celebrity  → STOP (no fan-out; pulled at read time)
+       normal     → publish { post_id, author_id } to Kafka "fanout" topic
+  → Return 201 immediately   (fan-out happens off the hot path)
+
+Fan-out workers (consume Kafka "fanout")
+  → Load follower_ids for author  (skip inactive followers)
+  → For each follower: ZADD timeline:{follower} score post_id
+                       ZREMRANGEBYRANK timeline:{follower} 0 -801
+
+<span class="cm">-- READ PATH (load home timeline)</span>
+GET /api/feed?cursor&amp;limit
+  → Read pushed timeline:  ZREVRANGEBYSCORE timeline:{me} (cursor -inf
+  → Pull celebrity posts:  recent_posts(c) for each followed celebrity
+  → Merge + rank candidate set
+  → Hydrate: batch-fetch post content + live like/reply counts
+             from post store (mget, cache-fronted)
+  → Filter: drop deleted / blocked / muted
+  → Return { items, next_cursor }</code></pre>
+    </div>
+
+    <p>The post write returns in milliseconds because it never waits on fan-out — fan-out is decoupled through <a href="/tech-stacks/kafka/">Kafka</a>, which buffers bursts (a celebrity-free spike of normal posts) and lets the worker tier scale independently. This is the same async-pipeline reasoning used to keep any hot write path fast: do the minimum synchronously, enqueue the amplification, and let consumers absorb it with their own back-pressure. Hydration at read time means a like that landed one second ago is reflected in the count, even though the timeline pointer was written hours earlier.</p>
+
+    <h2>Step 12 — Scaling &amp; Sharding</h2>
+    <p>Each tier scales independently because the stores are sharded by different keys.</p>
+
+    <h3>Sharding the stores</h3>
+    <ul>
+      <li><strong>Post store</strong> — <a href="/tech-stacks/sharding/">shard by <code>post_id</code></a> (Snowflake). Reads are point lookups by ID; hydration batches IDs and scatter-gathers across shards. Time-sortable IDs keep a single author's posts roughly co-located in time.</li>
+      <li><strong>Timeline cache</strong> — shard Redis by <code>user_id</code>. Fan-out writes and feed reads both hash on the user, so a single user's timeline is one shard, one round trip.</li>
+      <li><strong>Social graph</strong> — shard <code>follows</code> by <code>follower_id</code> for the read-path "who do I follow", and maintain a separate followee-indexed representation for the fan-out "who follows X" lookup. The two queries have opposite access keys, so they get opposite shard keys.</li>
+    </ul>
+
+    <h3>Scaling fan-out</h3>
+    <p>Fan-out workers are stateless Kafka consumers — add partitions and consumers to scale throughput. Partition the fan-out topic by <code>author_id</code> so a single hot author's work stays ordered, and rate-limit / shard the work for large (but sub-celebrity) authors so one mid-tier influencer doesn't head-of-line-block the partition. The celebrity cutoff is the pressure-release valve that keeps the very fat tail off this tier entirely.</p>
+
+    <h3>Read scaling</h3>
+    <p>The feed service is stateless behind a load balancer; scale horizontally. The timeline-cache read absorbs the vast majority of read load. Hot post records (celebrity posts, viral posts) get an extra in-process LRU layer plus cross-shard replication so a single viral post doesn't saturate one Redis node.</p>
+
+    <h2>Step 13 — Fault Tolerance &amp; Edge Cases</h2>
+    <p>The feed is allowed to be eventually consistent, which gives a lot of slack — but the edge cases are where correctness bugs hide.</p>
+    <ul>
+      <li><strong>Deleted posts</strong> — don't chase down millions of timeline entries to remove a deleted post. Leave the pointer; at read time, hydration skips posts flagged <code>is_deleted</code> (tombstone filter). The stale pointer ages out of the capped timeline naturally.</li>
+      <li><strong>Unfollow</strong> — same idea: don't scrub the unfollowed author's posts from the timeline cache. Filter them out at read time against the current follow set, or simply let them age out. Correctness on the next rebuild; no expensive immediate cleanup.</li>
+      <li><strong>Blocks / mutes</strong> — applied as a read-time filter on the candidate set, never baked into fan-out (the block can be added after the post was already fanned out).</li>
+      <li><strong>New-user cold start</strong> — a brand-new account follows nobody, so its pushed timeline is empty. Backfill by pulling recent posts from initial follows, and blend in a "recommended"/discovery feed until the personalized feed has signal.</li>
+      <li><strong>Out-of-order fan-out</strong> — async workers may insert a celebrity-adjacent post late; because timelines are scored by time-sortable post ID, a late insert still lands in the correct chronological position rather than at the top.</li>
+      <li><strong>Redis failure</strong> — a lost timeline shard is recoverable: timelines are a <em>cache</em>, not the source of truth. Rebuild a user's timeline on demand by pulling from the post store and social graph (the fan-out-on-read fallback). Run Redis with replicas to shrink the blast radius.</li>
+      <li><strong>Fan-out lag</strong> — during a fan-out backlog, a normal author's post may reach followers seconds-to-minutes late. Acceptable by the eventual-consistency requirement; monitor queue depth and autoscale workers before lag becomes visible.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">consistency note</div>
+      <p>The unifying principle across these edge cases: the timeline cache is disposable and approximate; the post store and social graph are the source of truth. Anything that must be correct (deletes, blocks, unfollows, live counts) is enforced at read-time hydration/filtering, not by mutating millions of cached pointers. This keeps writes cheap and makes the cache safe to rebuild at any time.</p>
+    </div>
+
+    <h2>Step 14 — Key Tradeoffs</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>Decision</th><th>Choice</th><th>Trade-off accepted</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Fan-out strategy</td><td class="col-a">Hybrid (push normal, pull celebrity)</td><td>Two code paths + a read-time merge, in exchange for bounded write amplification</td></tr>
+        <tr><td>Timeline storage</td><td class="col-a">Post-ID pointers in Redis, capped ~800</td><td>Deep history needs a slower pull fallback; content hydrated separately</td></tr>
+        <tr><td>Fan-out execution</td><td class="col-a">Async via Kafka workers</td><td>Posts appear in feeds with seconds of lag (eventually consistent)</td></tr>
+        <tr><td>Ordering</td><td class="col-b">Ranked (model) over pure chronological</td><td>More infra + a freshness floor to avoid burying new posts</td></tr>
+        <tr><td>Pagination</td><td class="col-a">Cursor on Snowflake post_id</td><td>No random page access; designed for forward infinite scroll</td></tr>
+        <tr><td>Deletes / unfollows</td><td class="col-a">Read-time filter (tombstones)</td><td>Stale pointers linger in cache until they age out</td></tr>
+        <tr><td>Counts</td><td class="col-b">Approximate, async</td><td>Like/reply counts can lag by seconds; avoids hot-row contention</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>News feed design is the study of taming write amplification. Push precomputes the read and wins for the read-heavy common case; pull saves the write path for the fat tail of celebrities; hybrid fan-out is simply the recognition that the follower distribution forces you to do both. Everything else — pointer-only capped timelines, async Kafka fan-out, read-time hydration and filtering, cursor pagination, ranking after candidate generation — exists to keep one number (fan-out writes/sec and its tail) under control while the feed still renders fresh, correct, and fast.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Fan-out-on-write or fan-out-on-read — which do you choose?</strong> Neither alone. Push precomputes each follower's timeline for fast reads but amplifies writes by follower count; pull is cheap to write but slow to read for users who follow thousands. Production uses a hybrid: push for normal users, pull for celebrities, merged at read time.<br>
+      <strong>How do you handle the celebrity / hot-key problem?</strong> A 100M-follower post under pure push is a write storm that lags fan-out for minutes. Mark high-follower accounts as celebrities, skip their fan-out, and pull their recent posts at read time. The celebrity's own post lives in a hot cache shared by all readers.<br>
+      <strong>What exactly is hybrid fan-out?</strong> Classify authors by follower count: below a threshold, push into each follower's timeline cache; above it, don't fan out — read-pull and merge at request time. This bounds write amplification while keeping the common read path a single cache lookup.<br>
+      <strong>Why store post IDs in the timeline cache instead of full posts?</strong> Posts are large, mutable, and duplicated across millions of timelines. Storing ~20-byte post-ID pointers caps memory and lets you hydrate current content/counts at read time, so an edit or delete needs no rewrite of every timeline.<br>
+      <strong>How do you paginate a feed that keeps changing?</strong> Cursor-based pagination keyed on a monotonic post ID, never SQL OFFSET. The cursor marks the last item served, so posts arriving above it don't shift page boundaries — no duplicates or skips while scrolling.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/typeahead/" class="article-nav-card">
+        <div class="article-nav-label">← previous</div>
+        <div class="article-nav-title">Design Search Autocomplete (Typeahead)</div>
+      </a>
+      <a href="/system-design/notification-system/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Design a Notification System</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

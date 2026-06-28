@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="ChatGPT 式 AI 聊天助手系统设计：流式响应、会话存储、推理层、LLM 网关、记忆与 RAG、安全与成本，以及面试取舍。">
+<title>设计 ChatGPT —— 大规模 AI 聊天助手 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/ai-chat-assistant/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/ai-chat-assistant/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="设计 ChatGPT —— 大规模 AI 聊天助手">
+<meta property="og:description" content="ChatGPT 式 AI 聊天助手系统设计：流式响应、会话存储、推理层、LLM 网关、记忆与 RAG、安全与成本，以及面试取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/ai-chat-assistant/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计 ChatGPT —— 大规模 AI 聊天助手">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="设计 ChatGPT —— 系统设计">
+<meta name="twitter:description" content="如何设计大规模流式 AI 聊天助手:推理、流式、记忆、网关、成本。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计 ChatGPT —— 大规模 AI 聊天助手","description":"ChatGPT 式 AI 聊天助手系统设计：流式响应、会话存储、推理层、LLM 网关、记忆与 RAG、安全与成本，以及面试取舍。","datePublished":"2026-06-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/ai-chat-assistant/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-16","inLanguage":"zh"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "它和聊天应用有何不同?", "acceptedAnswer": {"@type": "Answer", "text": "响应是 GPU 上逐 token 生成的——慢且贵——所以你优化首 token 时间和流式,且 GPU 层主导容量与成本。"}}, {"@type": "Question", "name": "流式用什么传输?", "acceptedAnswer": {"@type": "Answer", "text": "SSE —— 纯 HTTP 上的单向服务器推送,简单、对代理友好。只有需要富双向(语音/打断)才上 WebSocket。"}}, {"@type": "Question", "name": "\"记忆\"怎么实现?", "acceptedAnswer": {"@type": "Answer", "text": "模型无状态;每轮在上下文窗口内重发最近历史(把旧轮次总结)加上检索到的事实。"}}, {"@type": "Question", "name": "最大的吞吐杠杆是什么?", "acceptedAnswer": {"@type": "Answer", "text": "GPU worker 上的连续批处理;并发随后被 KV 缓存显存卡住,TTFT 由 prefill 阶段决定。"}}, {"@type": "Question", "name": "怎么控制成本?", "acceptedAnswer": {"@type": "Answer", "text": "模型分档、prompt/语义缓存、前缀(KV)缓存、量化、token 配额、以及总结长上下文。"}}, {"@type": "Question", "name": "怎么应对容量尖峰?", "acceptedAnswer": {"@type": "Answer", "text": "带背压排队 + 降到小模型——把 GPU 短缺变成变慢而不是宕机;对免费用户先做准入控制。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计 ChatGPT —— 大规模 AI 聊天助手","item":"https://sdeoffer.com/zh/system-design/ai-chat-assistant/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent2); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.9; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.9; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.09), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.75; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.7; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent); }
+
+  /* FIGURES (inline SVG diagrams) */
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.6; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent2); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/system-design/ai-chat-assistant/" hreflang="en">EN</a><a href="/zh/system-design/ai-chat-assistant/" class="active" hreflang="zh" lang="zh">中</a></div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">系统设计</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">ai-chat-assistant</span>
+    </nav>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计 ChatGPT —— 大规模 AI 聊天助手</h1>
+    <div class="article-meta">
+      <span>2026年6月16日</span>
+      <span class="separator">·</span>
+      <span>30 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>"设计 ChatGPT" 已悄悄成为最常见的系统设计面试题之一,而且是个好题:它看着像<a href="/zh/system-design/chat-app/">聊天应用</a>,但有意思的部分跟聊天应用毫无关系。响应不是你从数据库里读出的一行数据,而是由 GPU 上的模型<em>一个 token 一个 token 生成</em>的——每个请求都实打实花钱、要好几秒(不是毫秒),还会以 CRUD 服务永远不会有的方式出错或乱来。本文把整套设计从头走一遍:收敛需求、估算负载、请求路径、流式、会话存储、推理层、LLM 网关、记忆与检索、安全、成本,以及面试官一定会追问的取舍。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 快速要点</div>
+      <ul>
+        <li><strong>决定性约束就是这个响应:慢、流式、贵。</strong> 一条回复要好几秒、逐 token 产生,所以整个架构都在优化 <em>首 token 时间(TTFT)</em> 和流式,而不是请求/响应延迟。</li>
+        <li><strong>流式是核心体验</strong> —— 用 Server-Sent Events(SSE)边生成边把 token 推给客户端;连接在一条回答期间一直开着。</li>
+        <li><strong>把无状态 API 层和 GPU 推理层分开。</strong> 二者扩缩的维度完全不同(廉价 CPU 机器 vs 稀缺、昂贵的 GPU),失败模式也不同。</li>
+        <li><strong>模型是无状态的;上下文每轮重建。</strong> 所谓"记忆"就是 harness 每次请求时把会话历史(加上检索到的事实)重新塞进有限的上下文窗口。</li>
+        <li><strong>在推理前面放一个网关</strong>,统一做路由、每用户限流与 token 配额、prompt 缓存、以及 provider/模型降级。</li>
+        <li><strong>成本和容量由 GPU 主导。</strong> 连续批处理、KV 缓存复用、量化、把简单查询路由到小模型,是把成本压下来的几个杠杆。</li>
+        <li><strong>它可能产出有害或错误内容</strong>,所以审核、滥用限制、评测是一等公民,不是事后补丁。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>聊天助手 = 一个流式前门(SSE)+ 无状态 API 层,背后是被 LLM 网关挡在前面的 GPU 推理层。会话存在普通数据库里;"记忆"就是每轮在上下文窗口内重发历史,可选地用检索(RAG)增强。难点全都来自一个事实——回答是在 GPU 上慢且贵地生成的——这逼出了流式、连续批处理、缓存、配额和精细的成本控制。安全与评测和请求路径并行存在。</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI 聊天助手详细架构:无状态应用层、数据存储、GPU 推理层与可观测">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arb" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#38bdf8"/></marker>
+        </defs>
+        <rect x="150" y="44"  width="320" height="250" rx="12" fill="#0f1b27" stroke="#1c4a63"/>
+        <text x="164" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#38bdf8" letter-spacing="1">无状态应用层</text>
+        <rect x="150" y="316" width="320" height="210" rx="12" fill="#181428" stroke="#3b2f63"/>
+        <text x="164" y="338" font-family="'JetBrains Mono',monospace" font-size="10" fill="#a78bfa" letter-spacing="1">数据存储</text>
+        <rect x="540" y="44"  width="300" height="400" rx="12" fill="#231521" stroke="#5e2a45"/>
+        <text x="554" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#f472b6" letter-spacing="1">LLM 推理 · GPU 层</text>
+        <rect x="540" y="466" width="300" height="62"  rx="12" fill="#10241a" stroke="#1f5036"/>
+        <text x="554" y="483" font-family="'JetBrains Mono',monospace" font-size="9"  fill="#4ade80" letter-spacing="1">可观测 · 评测 · 反馈</text>
+
+        <line x1="132" y1="106" x2="166" y2="103" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="150" y="96"  font-family="'JetBrains Mono',monospace" font-size="9" fill="#38bdf8" text-anchor="middle">SSE</text>
+        <line x1="310" y1="120" x2="310" y2="140" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="236" y1="190" x2="236" y2="212" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="384" y1="190" x2="384" y2="212" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="236" y1="258" x2="236" y2="356" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="246" y="332" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0">历史</text>
+        <line x1="384" y1="258" x2="384" y2="356" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="394" y="332" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0">top-k</text>
+        <line x1="452" y1="160" x2="558" y2="106" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="503" y="123" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">prompt</text>
+        <path d="M558,300 L452,182" fill="none" stroke="#38bdf8" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arb)"/>
+        <text x="500" y="250" font-family="'JetBrains Mono',monospace" font-size="9" fill="#38bdf8" text-anchor="middle">token 流</text>
+        <line x1="689" y1="134" x2="689" y2="146" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="180" x2="689" y2="192" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="230" x2="689" y2="242" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="689" y1="444" x2="689" y2="466" stroke="#7a8aa0" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="24"  y="84"  width="108" height="44" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="78"  y="111" font-size="12" fill="#e2e8f0">客户端</text>
+
+          <rect x="168" y="82"  width="284" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="310" y="106" font-size="12" fill="#e2e8f0">API 网关 · 负载均衡</text>
+          <rect x="168" y="140" width="284" height="50" rx="8" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/>
+          <text x="310" y="161" font-size="12" fill="#e2e8f0">聊天编排服务 ×N</text>
+          <text x="310" y="178" font-size="9"  fill="#7a8aa0">无状态 · 持有 SSE · 拼 prompt</text>
+          <rect x="168" y="212" width="136" height="46" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="236" y="240" font-size="11" fill="#e2e8f0">输入审核</text>
+          <rect x="316" y="212" width="136" height="46" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="384" y="240" font-size="11" fill="#e2e8f0">向量化</text>
+
+          <rect x="168" y="356" width="136" height="46" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="236" y="383" font-size="11" fill="#e2e8f0">会话库</text>
+          <rect x="316" y="356" width="136" height="46" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="384" y="383" font-size="11" fill="#e2e8f0">向量库 · RAG</text>
+          <rect x="168" y="420" width="284" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="310" y="445" font-size="11" fill="#e2e8f0">对象存储(文件 / blob)</text>
+
+          <rect x="560" y="82"  width="258" height="52" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/>
+          <text x="689" y="104" font-size="12" fill="#e2e8f0">LLM 网关</text>
+          <text x="689" y="120" font-size="9"  fill="#7a8aa0">路由 · token 配额 · 降级</text>
+          <rect x="560" y="146" width="258" height="34" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="689" y="168" font-size="11" fill="#e2e8f0">语义 / prompt 缓存</text>
+          <rect x="560" y="192" width="258" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/>
+          <text x="689" y="216" font-size="12" fill="#e2e8f0">推理队列</text>
+          <rect x="560" y="242" width="258" height="122" rx="8" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="689" y="262" font-size="12" fill="#e2e8f0">GPU 池</text>
+          <text x="689" y="277" font-size="9"  fill="#7a8aa0">连续批处理 · KV 缓存</text>
+          <rect x="578" y="290" width="222" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="689" y="309" font-size="10" fill="#c8d3e0">小模型池</text>
+          <rect x="578" y="326" width="222" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="689" y="345" font-size="10" fill="#c8d3e0">大模型池</text>
+          <text x="689" y="390" font-size="9" fill="#7a8aa0">自动扩缩 · 峰值约 1,000 GPU</text>
+
+          <rect x="556" y="492" width="92" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="602" y="510" font-size="10" fill="#c8d3e0">指标</text>
+          <rect x="658" y="492" width="80" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="698" y="510" font-size="10" fill="#c8d3e0">评测</text>
+          <rect x="748" y="492" width="84" height="28" rx="6" fill="#1e2535" stroke="#2a3347"/>
+          <text x="790" y="510" font-size="10" fill="#c8d3e0">反馈</text>
+        </g>
+      </svg>
+      <figcaption>端到端架构 —— 无状态应用层(鉴权、编排、审核、向量化)对接数据存储与 GPU 推理层(网关 → 队列 → 批处理 GPU 池);token 经 SSE 流回,链路向可观测与评测上报</figcaption>
+    </figure>
+
+    <h2>第 1 步 —— 收敛需求</h2>
+    <p>照例先界定范围。面试官想看你把聊天<em>产品</em>和 LLM <em>底层管道</em>分开,并决定什么在范围内。一个聚焦的集合:</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>用户在一个会话里发消息,得到模型生成的回复,并<strong>边生成边流式</strong>返回。</li>
+      <li>会话是<strong>持久且多轮的</strong> —— 助手记得同一线程里更早的消息。</li>
+      <li>用户可以列出历史会话、继续、重命名、删除。</li>
+      <li>用户可以<strong>中途停止生成</strong>并重新生成回答。</li>
+      <li>(进阶)模型可以调用<strong>工具</strong>(联网搜索、代码执行)并基于<strong>检索到的文档</strong>作答。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>低首 token 时间(TTFT)</strong> —— 用户应在约 1 秒内看到文字;整段回答花好几秒没关系,只要在流式。</li>
+      <li>API/聊天层<strong>高可用</strong>;GPU 容量打满时<strong>优雅降级</strong>(排队,或退到小模型)。</li>
+      <li><strong>规模</strong>:数百万日活、数万并发的进行中生成。</li>
+      <li><strong>成本控制</strong> —— GPU 推理是大头,设计必须主动管控。</li>
+      <li><strong>安全</strong> —— 过滤滥用输入与有害输出;按用户限额。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>开口就把模型当成一个<strong>"慢、按 token 计费、流式吐字的黑盒"</strong>。这一句定调会驱动后面每个决定——流式传输、批处理、配额、缓存——也表明你懂它和设计一个消息应用的本质区别。</p>
+    </div>
+
+    <h2>第 2 步 —— 容量估算</h2>
+    <p>粗略数字让设计落地,而且这里恰好暴露了为什么 GPU 是大头。假设 <strong>1000 万日活</strong>,每人约 10 条消息 → <strong>1 亿消息/天</strong> ≈ <strong>平均约 1,200 条/秒</strong>,峰值算 <strong>约 5,000 条/秒</strong>。每条回答平均算 <strong>500 个输出 token</strong>。</p>
+    <ul>
+      <li><strong>token 吞吐:</strong> 5,000 req/s × 500 token ≈ 峰值 <strong>250 万输出 token/秒</strong>。这——而不是 QPS——才是真正的负载指标,是 GPU 必须产出的量。</li>
+      <li><strong>并发:</strong> 若一条回答约 5 秒生成,峰值并发生成 ≈ 5,000 × 5 = <strong>约 2.5 万条进行中的流</strong>。每条都占着一个开着的连接,加上 GPU 上它那份 KV 缓存的显存。</li>
+      <li><strong>GPU 估算:</strong> 若单 GPU(带批处理)能撑约 2,500 输出 token/秒,峰值大致需要 <strong>250 万 / 2,500 ≈ 1,000 块 GPU</strong> —— 这就是头号成本。(数字仅作示意;真实吞吐取决于模型大小、批处理与硬件。)</li>
+      <li><strong>存储:</strong> 1 亿消息/天 × 约 1KB ≈ <strong>100GB/天</strong> 的会话文本 —— 跟算力比微不足道。这里存储很便宜;<em>算力</em>才是稀缺资源。</li>
+    </ul>
+    <p>要明确说出的结论:<strong>这是个算力受限系统,不是存储或 QPS 受限的系统。</strong> 大部分架构的存在,都是为了把那约 1,000 块 GPU 用好。</p>
+
+    <h2>第 3 步 —— 高层架构</h2>
+    <p>把系统拆成<strong>无状态应用层</strong>(扩缩便宜,负责鉴权、会话、流式连接)和 <strong>GPU 推理层</strong>(稀缺、昂贵,前面挡着网关和队列)。把这两层分开,是最重要的结构性决定。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">请求路径 —— 从客户端到 GPU</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>客户端 ──SSE──▶ API 网关 / 负载均衡
+                    │
+                    ▼
+            聊天服务(无状态)
+             ├─ 鉴权、限流检查
+             ├─ 加载会话历史        ◀── 会话库
+             ├─ (可选) 检索上下文    ◀── 向量库 (RAG)
+             ├─ 审核输入
+             └─ 拼 prompt ──▶ LLM 网关
+                                   ├─ 按模型/档位路由
+                                   ├─ token 配额检查
+                                   ├─ prompt / 语义缓存  ◀── 缓存
+                                   └─ 入队 ──▶ 推理队列
+                                                     │
+                                                     ▼
+                                          GPU 推理 worker(批处理)
+                                                     │  token 流回
+                                   ◀────────────── token 流 ───────────┘
+            聊天服务把 token ──SSE──▶ 转发给客户端
+                    │ 完成后
+                    └─ 持久化助手消息 ──▶ 会话库</code></pre>
+    </div>
+
+    <p>关键组件:<strong>API/聊天服务</strong>(无状态,持有 SSE 连接、编排一轮对话)、<strong>会话库</strong>(持久的消息历史)、<strong>向量库</strong>(可选,用于检索)、<strong>LLM 网关</strong>(路由、配额、缓存、降级)、<strong>推理队列</strong>,以及真正跑模型的 <strong>GPU 推理 worker</strong>。旁边还有单独的<strong>审核</strong>路径和离线的<strong>评测/分析</strong>流水线。</p>
+
+    <h2>第 4 步 —— 流式响应</h2>
+    <p>决定性的体验选择。因为一条回答要好几秒,你绝不能让用户盯着转圈——要边生成边把 token 流出去。标准传输是 <strong>Server-Sent Events(SSE)</strong>:一条长寿命的 HTTP 响应,服务器持续推 <code>data:</code> 事件。SSE 非常合适,因为在一条回答期间这个流是<em>单向的</em>(服务器 → 客户端),它是纯 HTTP(穿代理和负载均衡都行),而且会自动重连。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>传输</th><th>用于 token 流式是否合适</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">SSE</td><td class="col-b">理想:纯 HTTP 上的单向服务器推送,简单、对代理友好。默认选择。</td></tr>
+        <tr><td class="col-a">WebSocket</td><td class="col-b">能用,但是双向、比所需更重;如果你想在同一通道做富双工(实时语音、打断)才值。</td></tr>
+        <tr><td class="col-a">长轮询</td><td class="col-b">仅作兜底 —— 对 token 级流式来说,每个分片重建连接太浪费。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">聊天服务通过 SSE 转发 token 流</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">async def</span> <span class="fn">stream_reply</span>(conversation_id, user_msg):
+    history = db.<span class="fn">load_history</span>(conversation_id)
+    prompt  = <span class="fn">build_prompt</span>(history, user_msg)     <span class="cm"># 每轮重建上下文</span>
+    full = []
+    <span class="kw">async for</span> token <span class="kw">in</span> gateway.<span class="fn">generate</span>(prompt):  <span class="cm"># token 从 GPU worker 流来</span>
+        full.append(token)
+        <span class="kw">yield</span> <span class="str">f"data: {token}\n\n"</span>             <span class="cm"># 一个 SSE 帧,立即 flush</span>
+    db.<span class="fn">save</span>(conversation_id, user_msg, <span class="str">""</span>.join(full))  <span class="cm"># 流结束后再持久化</span>
+    <span class="kw">yield</span> <span class="str">"data: [DONE]\n\n"</span></code></pre>
+    </div>
+
+    <p>两个值得在面试里点出的后果。第一,<strong>在一条回答期间连接是有状态的</strong>——持有它的那台聊天机器每个请求要活着约 5 秒,所以单机能扛的<em>并发</em>请求远少于普通无状态 API;按并发而不是 QPS 来估机器数。第二,<strong>"停止生成"是个真功能</strong>:客户端关掉 SSE 流,聊天服务必须把取消一路传到 GPU worker,让它停止解码、释放槽位——否则你还在为没人看的 token 付钱。</p>
+
+    <h2>第 5 步 —— 会话与状态</h2>
+    <p>这部分难得地正常。会话和消息就是经典的关系型/文档型数据,schema 很简单;数据量(约 100GB/天文本)也不大。真正有意思的设计选择是<em>历史如何回喂给模型</em>。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">会话 schema</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>conversations(id, user_id, title, created_at, updated_at)
+messages(id, conversation_id, role, content, token_count, created_at)
+              role ∈ {<span class="str">"user"</span>, <span class="str">"assistant"</span>, <span class="str">"system"</span>, <span class="str">"tool"</span>}
+
+<span class="cm"># 读取模式:某会话最近 N 条消息,按 created_at 排序</span>
+<span class="cm"># 按 conversation_id(或 user_id)分区/分片 —— 读取都是按线程的</span></code></pre>
+    </div>
+
+    <p>按 <code>conversation_id</code>(或 <code>user_id</code>)分区:每次读取都是"给我这个线程的消息",把一个会话放在一起就能避免跨分片读。存储可以是 Postgres,也可以是宽列/文档库——访问模式就是简单的按键有序读,几乎什么都行。因为模型有有限的<strong>上下文窗口</strong>,你不会傻傻地把整个线程都发过去:你发能塞下的最近若干条,对于很长的会话则把更早的轮次<strong>总结</strong>成一段紧凑的滚动摘要拼在前面——用一点保真度换取留在窗口内(也留在 token 预算内)。</p>
+
+    <h2>第 6 步 —— 推理层</h2>
+    <p>这是系统的心脏,也是它和任何 CRUD 设计的根本区别。GPU worker 跑模型,把 prompt 变成一串 token。三个想法主导了怎么把它做高效。</p>
+
+    <h3>连续批处理</h3>
+    <p>GPU 是大规模并行的,一次只跑一个请求是浪费。推理服务器(vLLM、TGI、TensorRT-LLM)用<strong>连续(in-flight)批处理</strong>:把许多用户的请求合并成 GPU 上的一个 batch,而且关键是,<em>每个解码步</em>都把已完成的序列换出、把新序列换入,而不是等整个 batch 一起结束。这让 GPU 一直饱和,是最大的单一吞吐杠杆。</p>
+
+    <h3>KV 缓存</h3>
+    <p>生成每个新 token 都要对之前所有 token 做注意力。每步都重算会是平方级,所以 worker 在 GPU 显存里保留一份 <strong>KV 缓存</strong>——prompt 和已生成 token 的注意力 key/value。这让解码很快,但意味着<strong>每个进行中请求的 GPU 显存随上下文长度增长</strong>;限制单 GPU 能同时持有多少条流的,往往是 KV 缓存而不是算力。<strong>前缀缓存</strong>能复用共享 prompt 前缀(比如所有用户共用的 system prompt)的 KV 缓存,省下处理 prompt("prefill")阶段的开销。</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GPU worker 上的连续批处理与 KV 缓存">
+        <defs>
+          <marker id="ar3" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7a8aa0"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace">
+          <text x="20" y="44" font-size="10" fill="#7a8aa0">排队</text>
+          <rect x="20" y="52"  width="86" height="26" rx="5" fill="#1e2535" stroke="#2a3347"/><text x="63" y="69" font-size="10" fill="#e2e8f0" text-anchor="middle">req E</text>
+          <rect x="20" y="86"  width="86" height="26" rx="5" fill="#1e2535" stroke="#2a3347"/><text x="63" y="103" font-size="10" fill="#e2e8f0" text-anchor="middle">req F</text>
+          <line x1="110" y1="92" x2="168" y2="92" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <rect x="172" y="20" width="396" height="244" rx="10" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="370" y="42" font-size="12" fill="#e2e8f0" text-anchor="middle">GPU worker —— 一个 batch 同步解码</text>
+          <text x="188" y="78" font-size="10" fill="#7a8aa0">seq A</text>
+          <rect x="230" y="66" width="210" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="442" y="66" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="110" font-size="10" fill="#7a8aa0">seq B</text>
+          <rect x="230" y="98" width="120" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="352" y="98" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="142" font-size="10" fill="#7a8aa0">seq C</text>
+          <rect x="230" y="130" width="300" height="18" rx="3" fill="#13314f" stroke="#38bdf8"/><rect x="532" y="130" width="16" height="18" rx="3" fill="#4ade80"/>
+          <text x="188" y="174" font-size="10" fill="#7a8aa0">seq D</text>
+          <rect x="230" y="162" width="170" height="18" rx="3" fill="#1e2535" stroke="#2a3347" stroke-dasharray="3 3"/><text x="315" y="175" font-size="9" fill="#7a8aa0" text-anchor="middle">完成 → 换出</text>
+          <rect x="200" y="226" width="14" height="12" rx="2" fill="#13314f" stroke="#38bdf8"/><text x="220" y="236" font-size="10" fill="#7a8aa0">KV 缓存(随上下文增长)</text>
+          <rect x="430" y="226" width="14" height="12" rx="2" fill="#4ade80"/><text x="450" y="236" font-size="10" fill="#7a8aa0">下一 token</text>
+          <line x1="568" y1="75"  x2="626" y2="75"  stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <line x1="568" y1="107" x2="626" y2="107" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <line x1="568" y1="139" x2="626" y2="139" stroke="#7a8aa0" stroke-width="1.5" marker-end="url(#ar3)"/>
+          <text x="660" y="100" font-size="10" fill="#7a8aa0" text-anchor="middle">token</text>
+          <text x="660" y="114" font-size="10" fill="#7a8aa0" text-anchor="middle">输出</text>
+        </g>
+      </svg>
+      <figcaption>连续批处理与 KV 缓存 —— 每个解码步把已完成的序列换出、把排队的换入;每条序列的 KV 缓存(GPU 显存)随其上下文长度增长</figcaption>
+    </figure>
+
+    <h3>Prefill 与 decode</h3>
+    <p>一个请求有两个成本特征不同的阶段:<strong>prefill</strong>(并行处理整个 prompt——算力密集、快、决定 TTFT)和 <strong>decode</strong>(一次生成一个 token——受显存带宽限制、串行、决定 token/秒)。有些系统甚至把它们拆到不同的 GPU 池上。面试里不需要这么深,但能点出这两个阶段、以及 TTFT 来自 prefill,就显出真懂了。</p>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>把 GPU 当成一个<strong>稀缺、批处理、显存受限的池</strong>,而不是普通的无状态 worker。吞吐来自连续批处理;并发被 KV 缓存显存卡住;延迟(TTFT)来自 prefill。这三条事实能解释后面设计的大部分。</p>
+    </div>
+
+    <h2>第 7 步 —— LLM 网关</h2>
+    <p>别让聊天服务直接调 GPU worker。在中间放一个<strong>网关</strong>——就是 <a href="/zh/tech-stacks/api-gateway/">API 网关</a>那套模式,只是为模型特化。它把每个请求都需要的横切关注点集中起来。</p>
+    <ul>
+      <li><strong>路由与模型分档:</strong> 把简单/短的查询送到便宜小模型,难的送到大模型;按用户档位(免费 vs 付费)、地域或 A/B 实验路由。</li>
+      <li><strong>token 配额与限流:</strong> 限额最好用<em>每分钟 token 数</em>而不是每分钟请求数,因为成本随 token 走。在这里按用户和按组织执行预算。</li>
+      <li><strong>缓存:</strong> 对完全相同的 prompt 做精确匹配缓存,对常见问题做<strong>语义缓存</strong>(把 prompt 向量化,若有几乎相同的问题被问过就返回缓存答案)。</li>
+      <li><strong>降级与韧性:</strong> 若某模型/provider 挂了或打满,就重试、退到更小的模型、或排队——让 GPU 短缺变成"变慢"而不是"宕机"。</li>
+      <li><strong>可观测与计费:</strong> 按请求记录 token、延迟、成本、所用模型,用于计费和容量规划。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span>
+          <span class="code-dot" style="background:#ffbd2e"></span>
+          <span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">网关:路由、配额、缓存,再下发</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">handle</span>(req):
+    <span class="kw">if</span> <span class="kw">not</span> quota.<span class="fn">allow</span>(req.user, est_tokens=req.<span class="fn">size</span>()):
+        <span class="kw">return</span> <span class="fn">error</span>(<span class="num">429</span>)                  <span class="cm"># 超出 token 预算</span>
+    <span class="kw">if</span> hit := cache.<span class="fn">lookup</span>(req.prompt):       <span class="cm"># 精确或语义命中</span>
+        <span class="kw">return</span> hit                          <span class="cm"># 0 GPU 成本</span>
+    model = router.<span class="fn">pick</span>(req)               <span class="cm"># 按难度/档位选小或大模型</span>
+    <span class="kw">try</span>:
+        <span class="kw">return</span> pool[model].<span class="fn">enqueue</span>(req)      <span class="cm"># 进批处理推理队列</span>
+    <span class="kw">except</span> Saturated:
+        <span class="kw">return</span> pool[fallback].<span class="fn">enqueue</span>(req)  <span class="cm"># 降级,别失败</span></code></pre>
+    </div>
+
+    <h2>第 8 步 —— 记忆、上下文与 RAG</h2>
+    <p>用户感觉助手有记忆,但模型是无状态的——<strong>"记忆"是 harness 每轮重建出来的</strong>,靠的是选择往上下文窗口里放什么。有三层值得区分:</p>
+    <ul>
+      <li><strong>工作记忆:</strong> 当前线程的最近消息,每轮原样发送(窗口塞满时把更早的轮次总结掉)。</li>
+      <li><strong>长期记忆:</strong> 关于用户的持久事实("偏好 Python""对花生过敏")单独存,相关时注入——通常靠向量相似度检索。</li>
+      <li><strong>检索知识(RAG):</strong> 对于私有/最新文档上的问题,把 query 向量化,从<a href="/zh/tech-stacks/vector-databases/">向量库</a>取 top-k 相关切片,拼到 prompt 前面,让答案基于真实来源。</li>
+    </ul>
+    <p>这三者是同一个动作:<em>调用模型前,把对的文本取出来塞进窗口。</em> 设计含义是请求路径上多了一步检索(向量化 + 向量搜索),以及一个预算决定——多少 token 给历史、多少给检索上下文、多少留给答案。(大规模检索本身是一篇设计,这是 <a href="/zh/system-design/rag-system/">RAG 系统</a>深拆的引子。)</p>
+
+    <h2>第 9 步 —— 安全与滥用</h2>
+    <p>和 CRUD 应用不同,这个系统会<em>产出有害内容</em>、也是滥用的磁石,所以安全是个真子系统。进来时,一道<strong>审核</strong>检查(一个分类器,通常是更小的模型)筛掉违规输入和 prompt 注入企图。出去时,生成的 token 也能被筛——不过流式让这变棘手,因为你已经发出了前面的 token;常见折中是按小窗口审核,一旦越线就掐断流。围绕这一切的是<strong>每用户限流与 token 预算</strong>(防爬取和成本轰炸)、鉴权和审计日志。把网关与审核当成模型自己给不了的策略执行层。</p>
+
+    <h2>第 10 步 —— 成本与延迟优化</h2>
+    <p>因为约 1,000 块 GPU 主导账单,成本优化是设计特性,不是事后想起。主要杠杆:</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>杠杆</th><th>买到什么</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">连续批处理</td><td class="col-b">最高 GPU 利用率 → 单 GPU 产出最多 token。最大的单项收益。</td></tr>
+        <tr><td class="col-a">模型分档 / 路由</td><td class="col-b">简单/短查询用便宜小模型;大模型留给难题。</td></tr>
+        <tr><td class="col-a">prompt 与语义缓存</td><td class="col-b">重复或近重复的问题 ≈ 0 GPU 成本。</td></tr>
+        <tr><td class="col-a">前缀缓存(KV 复用)</td><td class="col-b">共享 system prompt / 长文档不必每个请求重算。</td></tr>
+        <tr><td class="col-a">量化(如 8/4-bit)</td><td class="col-b">单 GPU 装更多请求、显存更低,质量小幅下降。</td></tr>
+        <tr><td class="col-a">token 上限 与 总结</td><td class="col-b">限制上下文与输出长度,直接限制每轮成本。</td></tr>
+      </tbody>
+    </table>
+
+    <p>延迟方面,用户感受到的指标是 <strong>TTFT</strong>(由排队等待 + prefill 决定),之后是<strong>逐 token 延迟</strong>(decode 速度)。改善 TTFT 靠把队列压短(自动扩缩 GPU 池、压力下把负载分到小模型)以及对共享长 prompt 做前缀缓存让 prefill 更便宜。流式掩盖了总延迟:只要文字在约 1 秒内开始流出、且流得比用户读得快,一段 6 秒的回答体感就很好。</p>
+
+    <h2>第 11 步 —— 瓶颈与取舍</h2>
+    <p>收尾时点出这套设计在哪儿吃紧、你会怎么权衡——面试官给这个的分比你再画一个框高。</p>
+    <ul>
+      <li><strong>GPU 容量既是瓶颈也是预算。</strong> 流量尖峰没法靠拉起廉价机器吸收;GPU 稀缺且供给慢。缓解:带背压排队、降到小模型、对免费用户先做准入控制(让位给付费)。</li>
+      <li><strong>是并发而不是 QPS 决定机器数。</strong> 长寿命的流意味着每台机器/GPU 把请求握住好几秒;KV 缓存显存卡住单 GPU 的并发流数。</li>
+      <li><strong>上下文窗口 vs 成本 vs 质量。</strong> 更多历史/检索上下文能提升答案,但更费 token 和延迟;总结省钱却丢细节。</li>
+      <li><strong>质量是概率性的。</strong> 同一个 prompt 可能给出不同或错误的答案,所以你需要评测、对 prompt/模型做 A/B、以及反馈采集(点赞/点踩)作为系统的一部分——不只是看可用性仪表盘。</li>
+      <li><strong>GPU 的多地域很难。</strong> 你想全球都低 TTFT,但 GPU 供给按地域、且不均;你常常路由到"有容量"的地方,用一点延迟换"不失败"。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">小结</div>
+      <p>抛开 LLM 的神秘感,聊天助手就是一个架在稀缺 GPU 池前面的流式前门。把四件事做对,其余自然成立:<strong>流式</strong>吐 token(SSE)、把无状态 API 层和 GPU 层<strong>分开</strong>、每轮在窗口内<strong>重建上下文</strong>、在推理前放一个做路由/token 配额/缓存/降级的<strong>网关</strong>。其它一切——批处理、KV 缓存、审核、成本杠杆——都是为了高效又安全地服务那些昂贵的 token。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>它和聊天应用有何不同?</strong> 响应是 GPU 上逐 token 生成的——慢且贵——所以你优化首 token 时间和流式,且 GPU 层主导容量与成本。<br>
+      <strong>流式用什么传输?</strong> SSE —— 纯 HTTP 上的单向服务器推送,简单、对代理友好。只有需要富双向(语音/打断)才上 WebSocket。<br>
+      <strong>"记忆"怎么实现?</strong> 模型无状态;每轮在上下文窗口内重发最近历史(把旧轮次总结)加上检索到的事实。<br>
+      <strong>最大的吞吐杠杆是什么?</strong> GPU worker 上的连续批处理;并发随后被 KV 缓存显存卡住,TTFT 由 prefill 阶段决定。<br>
+      <strong>怎么控制成本?</strong> 模型分档、prompt/语义缓存、前缀(KV)缓存、量化、token 配额、以及总结长上下文。<br>
+      <strong>怎么应对容量尖峰?</strong> 带背压排队 + 降到小模型——把 GPU 短缺变成变慢而不是宕机;对免费用户先做准入控制。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/system-design/chat-app/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计聊天应用</div>
+      </a>
+      <a href="/zh/system-design/rag-system/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计大规模 RAG 系统</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

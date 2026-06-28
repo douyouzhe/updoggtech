@@ -4,23 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Condensed notes from Designing Data-Intensive Applications (DDIA) — reliability, data models, storage engines, and more.">
-<title>DDIA Notes — Designing Data-Intensive Applications — updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/">
+<title>DDIA Notes: Designing Data-Intensive Applications | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Notes — Designing Data-Intensive Applications">
 <meta property="og:description" content="Condensed, interview-ready notes from Designing Data-Intensive Applications — reliability, data models, and storage engines.">
-<meta property="og:url" content="https://updoggtech.com/ddia/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/ddia/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Notes — Designing Data-Intensive Applications">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Notes">
 <meta name="twitter:description" content="Condensed, interview-ready notes from Designing Data-Intensive Applications.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"CollectionPage","name":"DDIA Notes","url":"https://updoggtech.com/ddia/","description":"Condensed notes from Designing Data-Intensive Applications."}
+{"@context":"https://schema.org","@type":"CollectionPage","name":"DDIA Notes","url":"https://sdeoffer.com/ddia/","description":"Condensed notes from Designing Data-Intensive Applications.","inLanguage":"en","mainEntity":{"@type":"ItemList","itemListElement":[{"@type":"ListItem","position":1,"url":"https://sdeoffer.com/ddia/chapter-1/","name":"Reliable, Scalable & Maintainable"},{"@type":"ListItem","position":2,"url":"https://sdeoffer.com/ddia/chapter-2/","name":"Data Models & Query Languages"},{"@type":"ListItem","position":3,"url":"https://sdeoffer.com/ddia/chapter-3/","name":"Storage & Retrieval"},{"@type":"ListItem","position":4,"url":"https://sdeoffer.com/ddia/chapter-4/","name":"Encoding & Evolution"},{"@type":"ListItem","position":5,"url":"https://sdeoffer.com/ddia/chapter-5/","name":"Replication"},{"@type":"ListItem","position":6,"url":"https://sdeoffer.com/ddia/chapter-6/","name":"Partitioning"},{"@type":"ListItem","position":7,"url":"https://sdeoffer.com/ddia/chapter-7/","name":"Transactions"},{"@type":"ListItem","position":8,"url":"https://sdeoffer.com/ddia/chapter-8/","name":"The Trouble with Distributed Systems"},{"@type":"ListItem","position":9,"url":"https://sdeoffer.com/ddia/chapter-9/","name":"Consistency & Consensus"},{"@type":"ListItem","position":10,"url":"https://sdeoffer.com/ddia/chapter-10/","name":"Batch Processing"},{"@type":"ListItem","position":11,"url":"https://sdeoffer.com/ddia/chapter-11/","name":"Stream Processing"},{"@type":"ListItem","position":12,"url":"https://sdeoffer.com/ddia/chapter-12/","name":"The Future of Data Systems"}]}}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -131,14 +142,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="container">
     <div class="nav-inner">
-      <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+      <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
       <ul class="nav-links">
         <li><a href="/system-design/"><span class="dot"></span>System Design</a></li>
         <li><a href="/tech-stacks/"><span class="dot"></span>Tech Stacks</a></li>
@@ -146,19 +159,20 @@
         <li><a href="/ddia/" class="active"><span class="dot"></span>DDIA</a></li>
       </ul>
       <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/" class="active">EN</a><a href="/zh/ddia/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/" class="active" hreflang="en">EN</a><a href="/zh/ddia/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="container">
   <div class="page-header">
-    <div class="breadcrumb">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
       <a href="/">home</a>
-      <span>/</span>
+      <span aria-hidden="true">/</span>
       <span style="color:var(--text)">ddia</span>
-    </div>
+    </nav>
     <div class="page-label">// ddia notes</div>
     <h1 class="page-title">Designing Data-<br>Intensive Applications</h1>
     <p class="page-desc">Condensed, interview-ready notes from Martin Kleppmann's DDIA — the SDE interview bible. One chapter at a time.</p>
@@ -354,17 +368,18 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="container">
     <div class="footer-inner">
-      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
       <ul class="footer-links">
         <li><a href="/system-design/">System Design</a></li>
         <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
         <li><a href="/ddia/">DDIA</a></li>
         <li><a href="/contact/">Contact</a></li>
       </ul>
-      <div class="footer-copy">© 2024 updoggtech</div>
+      <div class="footer-copy">© 2024 sdeoffer</div>
     </div>
   </div>
 </footer>

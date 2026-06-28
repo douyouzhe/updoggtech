@@ -4,23 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="AI 编程深入——Copilot vs Cursor vs Claude Code、prompt engineering、AI agent、用 LLM API 构建、tool use 与 MCP,以及面试中的 AI。">
-<title>AI 编程 — 工具、Agent 与 LLM API | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/">
+<title>AI 编程 — 工具、Agent 与 LLM API | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="AI 编程 — 工具、Agent 与 LLM API">
 <meta property="og:description" content="AI 编程深入——Copilot vs Cursor vs Claude Code、prompt engineering、AI agent、用 LLM API 构建、tool use 与 MCP,以及面试中的 AI。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="AI 编程 — 工具、Agent 与 LLM API">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="AI 编程 — 工具、Agent 与 LLM API">
 <meta name="twitter:description" content="深入 AI 编码工具、agent、LLM API、tool use/MCP,以及技术面试中的 AI。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"CollectionPage","name":"AI 编程","url":"https://updoggtech.com/zh/ai-coding/","description":"深入 AI 辅助编码工具、agent、LLM API,以及技术面试中的 AI。"}
+{"@context":"https://schema.org","@type":"CollectionPage","name":"AI 编程","url":"https://sdeoffer.com/zh/ai-coding/","description":"深入 AI 辅助编码工具、agent、LLM API,以及技术面试中的 AI。","inLanguage":"zh","mainEntity":{"@type":"ItemList","itemListElement":[{"@type":"ListItem","position":1,"url":"https://sdeoffer.com/zh/ai-coding/loop-engineering/","name":"Loop Engineering 循环工程"},{"@type":"ListItem","position":2,"url":"https://sdeoffer.com/zh/ai-coding/llm-evals/","name":"LLM 应用的评测"},{"@type":"ListItem","position":3,"url":"https://sdeoffer.com/zh/ai-coding/sde-interviews-in-the-ai-era/","name":"AI 时代的 SDE 面试"},{"@type":"ListItem","position":4,"url":"https://sdeoffer.com/zh/ai-coding/ai-in-coding-interviews/","name":"在编码面试中用 AI"},{"@type":"ListItem","position":5,"url":"https://sdeoffer.com/zh/ai-coding/harness-engineering/","name":"Harness 工程"},{"@type":"ListItem","position":6,"url":"https://sdeoffer.com/zh/ai-coding/tool-use-function-calling-mcp/","name":"工具使用、函数调用与 MCP"},{"@type":"ListItem","position":7,"url":"https://sdeoffer.com/zh/ai-coding/building-with-llm-apis/","name":"用 Claude 与 OpenAI API 构建应用"},{"@type":"ListItem","position":8,"url":"https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/","name":"AI coding agent 是如何工作的"},{"@type":"ListItem","position":9,"url":"https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/","name":"AI 辅助编程:最佳实践与陷阱"},{"@type":"ListItem","position":10,"url":"https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/","name":"面向代码的提示工程"},{"@type":"ListItem","position":11,"url":"https://sdeoffer.com/zh/ai-coding/copilot-vs-cursor-vs-claude-code/","name":"Copilot vs Cursor vs Claude Code"}]}}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -130,14 +141,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="container">
     <div class="nav-inner">
-      <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+      <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
       <ul class="nav-links">
         <li><a href="/zh/system-design/"><span class="dot"></span>系统设计</a></li>
         <li><a href="/zh/tech-stacks/"><span class="dot"></span>技术栈</a></li>
@@ -145,19 +158,20 @@
         <li><a href="/zh/ddia/"><span class="dot"></span>DDIA</a></li>
       </ul>
       <div class="nav-search"><input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ai-coding/">EN</a><a href="/zh/ai-coding/" class="active">中</a></div>
+      <div class="lang-switch"><a href="/ai-coding/" hreflang="en">EN</a><a href="/zh/ai-coding/" class="active" hreflang="zh" lang="zh">中</a></div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="container">
   <div class="page-header">
-    <div class="breadcrumb">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
       <a href="/zh/">首页</a>
-      <span>/</span>
+      <span aria-hidden="true">/</span>
       <span style="color:var(--text)">ai-coding</span>
-    </div>
+    </nav>
     <div class="page-label">// ai 编程</div>
     <h1 class="page-title">AI 编程</h1>
     <p class="page-desc">现代工程师究竟如何使用 AI——编码工具、prompt 技艺、agent、在 LLM API 上构建,以及这对面试意味着什么。</p>
@@ -171,82 +185,82 @@
   </div>
 
   <div class="posts-list">
-    <a href="/zh/ai-coding/copilot-vs-cursor-vs-claude-code/" class="post-row" data-cat="tools">
+    <a href="/zh/ai-coding/loop-engineering/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">01</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">Copilot vs Cursor vs Claude Code</span>
-          <span class="post-excerpt">对比主流 AI 编码工具——优势、工作流,以及何时该用哪个。</span>
+          <span class="post-title">Loop Engineering 循环工程</span>
+          <span class="post-excerpt">设计 Agent 循环 —— plan-act-observe、停止条件、预算、循环内验证、恢复,以及循环拓扑。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 10, 2026</span>
+        <span class="post-date">2026年6月21日</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/prompt-engineering-for-code/" class="post-row" data-cat="tools">
+<a href="/zh/ai-coding/llm-evals/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">02</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">面向代码的提示工程</span>
-          <span class="post-excerpt">如何 prompt LLM 写出更好的代码——上下文、约束、示例与迭代回路。</span>
+          <span class="post-title">LLM 应用的评测</span>
+          <span class="post-excerpt">如何测试概率系统与 Agent —— 数据集、LLM-as-judge、轨迹评测、CI 门禁。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 12, 2026</span>
+        <span class="post-date">2026年6月16日</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/ai-assisted-coding-best-practices/" class="post-row" data-cat="tools">
+<a href="/zh/ai-coding/sde-interviews-in-the-ai-era/" class="post-row" data-cat="interviews">
       <div class="post-row-left">
         <span class="post-num">03</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">AI 辅助编程:最佳实践与陷阱</span>
-          <span class="post-excerpt">从 AI 结对编程中获得真实生产力——以及那些悄悄让你付出代价的陷阱。</span>
+          <span class="post-title">AI 时代的 SDE 面试</span>
+          <span class="post-excerpt">当 AI 写样板时该学什么——那些仍能让你被录用的耐久技能。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 14, 2026</span>
+        <span class="post-date">May 24, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/how-ai-coding-agents-work/" class="post-row" data-cat="agents">
+<a href="/zh/ai-coding/ai-in-coding-interviews/" class="post-row" data-cat="interviews">
       <div class="post-row-left">
         <span class="post-num">04</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">AI coding agent 是如何工作的</span>
-          <span class="post-excerpt">深入 agentic 编码——plan / act / observe 循环、tool use 与上下文管理。</span>
+          <span class="post-title">在编码面试中用 AI</span>
+          <span class="post-excerpt">AI 工具何处帮忙、何处被禁,以及如何与面试官谈论它们。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 16, 2026</span>
+        <span class="post-date">May 22, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/building-with-llm-apis/" class="post-row" data-cat="agents">
+<a href="/zh/ai-coding/harness-engineering/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">05</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">用 Claude 与 OpenAI API 构建应用</span>
-          <span class="post-excerpt">一份实用指南——messages、streaming、system prompt、成本与延迟。</span>
+          <span class="post-title">Harness 工程</span>
+          <span class="post-excerpt">LLM 外面那层脚手架——agent 循环、上下文组装、工具设计、验证与护栏。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 18, 2026</span>
+        <span class="post-date">May 21, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/tool-use-function-calling-mcp/" class="post-row" data-cat="agents">
+<a href="/zh/ai-coding/tool-use-function-calling-mcp/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">06</span>
         <div class="post-info">
@@ -261,57 +275,88 @@
       </div>
     </a>
 
-    <a href="/zh/ai-coding/harness-engineering/" class="post-row" data-cat="agents">
+<a href="/zh/ai-coding/building-with-llm-apis/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">07</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">Harness 工程</span>
-          <span class="post-excerpt">LLM 外面那层脚手架——agent 循环、上下文组装、工具设计、验证与护栏。</span>
+          <span class="post-title">用 Claude 与 OpenAI API 构建应用</span>
+          <span class="post-excerpt">一份实用指南——messages、streaming、system prompt、成本与延迟。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 21, 2026</span>
+        <span class="post-date">May 18, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/ai-in-coding-interviews/" class="post-row" data-cat="interviews">
+<a href="/zh/ai-coding/how-ai-coding-agents-work/" class="post-row" data-cat="agents">
       <div class="post-row-left">
         <span class="post-num">08</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">在编码面试中用 AI</span>
-          <span class="post-excerpt">AI 工具何处帮忙、何处被禁,以及如何与面试官谈论它们。</span>
+          <span class="post-title">AI coding agent 是如何工作的</span>
+          <span class="post-excerpt">深入 agentic 编码——plan / act / observe 循环、tool use 与上下文管理。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 22, 2026</span>
+        <span class="post-date">May 16, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
 
-    <a href="/zh/ai-coding/sde-interviews-in-the-ai-era/" class="post-row" data-cat="interviews">
+<a href="/zh/ai-coding/ai-assisted-coding-best-practices/" class="post-row" data-cat="tools">
       <div class="post-row-left">
         <span class="post-num">09</span>
         <div class="post-info">
           <span class="post-tag">AI 编程</span>
-          <span class="post-title">AI 时代的 SDE 面试</span>
-          <span class="post-excerpt">当 AI 写样板时该学什么——那些仍能让你被录用的耐久技能。</span>
+          <span class="post-title">AI 辅助编程:最佳实践与陷阱</span>
+          <span class="post-excerpt">从 AI 结对编程中获得真实生产力——以及那些悄悄让你付出代价的陷阱。</span>
         </div>
       </div>
       <div class="post-row-right">
-        <span class="post-date">May 24, 2026</span>
+        <span class="post-date">May 14, 2026</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/zh/ai-coding/prompt-engineering-for-code/" class="post-row" data-cat="tools">
+      <div class="post-row-left">
+        <span class="post-num">10</span>
+        <div class="post-info">
+          <span class="post-tag">AI 编程</span>
+          <span class="post-title">面向代码的提示工程</span>
+          <span class="post-excerpt">如何 prompt LLM 写出更好的代码——上下文、约束、示例与迭代回路。</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">May 12, 2026</span>
+        <span class="post-arrow">↗</span>
+      </div>
+    </a>
+
+<a href="/zh/ai-coding/copilot-vs-cursor-vs-claude-code/" class="post-row" data-cat="tools">
+      <div class="post-row-left">
+        <span class="post-num">11</span>
+        <div class="post-info">
+          <span class="post-tag">AI 编程</span>
+          <span class="post-title">Copilot vs Cursor vs Claude Code</span>
+          <span class="post-excerpt">对比主流 AI 编码工具——优势、工作流,以及何时该用哪个。</span>
+        </div>
+      </div>
+      <div class="post-row-right">
+        <span class="post-date">May 10, 2026</span>
         <span class="post-arrow">↗</span>
       </div>
     </a>
   </div>
 </div>
 
+</main>
 <footer>
   <div class="container">
     <div class="footer-inner">
-      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+      <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
       <ul class="footer-links">
         <li><a href="/zh/system-design/">系统设计</a></li>
         <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -319,7 +364,7 @@
         <li><a href="/zh/ddia/">DDIA</a></li>
         <li><a href="/zh/contact/">联系</a></li>
       </ul>
-      <div class="footer-copy">© 2024 updoggtech</div>
+      <div class="footer-copy">© 2024 sdeoffer</div>
     </div>
   </div>
 </footer>

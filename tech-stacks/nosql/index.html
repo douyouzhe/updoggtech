@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
-<title>NoSQL — Document, Key-Value, Column-Family & CAP Theorem | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/nosql/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/nosql/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/nosql/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/nosql/">
+<meta name="description" content="NoSQL databases by data model: document, key-value, column-family, and graph stores, the CAP theorem tradeoffs, and when to choose NoSQL over SQL.">
+<title>NoSQL — Document, Key-Value & CAP Theorem | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/nosql/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/nosql/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/nosql/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/nosql/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="NoSQL — Document, Key-Value, Column-Family & CAP Theorem">
-<meta property="og:description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/nosql/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/nosql-1.jpg">
+<meta property="og:description" content="NoSQL databases by data model: document, key-value, column-family, and graph stores, the CAP theorem tradeoffs, and when to choose NoSQL over SQL.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/nosql/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/nosql-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="510">
+<meta property="og:image:alt" content="NoSQL — Document, Key-Value, Column-Family & CAP Theorem">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/nosql-1.jpg">
 <meta name="twitter:title" content="NoSQL — Document, Key-Value, Column-Family & CAP Theorem">
 <meta name="twitter:description" content="A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"NoSQL — Document, Key-Value, Column-Family & CAP Theorem","description":"A practical guide to NoSQL databases — document, key-value, column-family, and graph stores, CAP theorem, and when to choose NoSQL over SQL.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/nosql/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"NoSQL — Document, Key-Value, Column-Family & CAP Theorem","description":"NoSQL databases by data model: document, key-value, column-family, and graph stores, the CAP theorem tradeoffs, and when to choose NoSQL over SQL.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/nosql/"},"image":"https://sdeoffer.com/assets/img/nosql-1.jpg","dateModified":"2023-04-02","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Explain CAP theorem and what \"P is mandatory\" means.", "acceptedAnswer": {"@type": "Answer", "text": "In any distributed system, network partitions will occur — so you cannot sacrifice P. The real tradeoff is CP (return an error or block during partition to stay consistent, e.g. HBase) vs AP (return possibly stale data to stay available, e.g. Cassandra). PACELC extends this: even without a partition, there is a constant latency/consistency tradeoff that matters far more day-to-day."}}, {"@type": "Question", "name": "When would you choose column-family over document stores?", "acceptedAnswer": {"@type": "Answer", "text": "When your write throughput is very high (millions/sec), your read patterns are known upfront, and you can afford to design tables around queries. Cassandra's LSM-tree write path makes writes O(1) regardless of data volume — document stores pay random-write costs at high volume."}}, {"@type": "Question", "name": "Why can't you just use NoSQL for everything?", "acceptedAnswer": {"@type": "Answer", "text": "NoSQL trades multi-table ACID transactions and flexible ad-hoc queries for scale and schema flexibility. If your domain has complex relationships and you need joins or cross-entity transactions, SQL is almost always simpler, safer, and operationally cheaper. Adding NoSQL prematurely adds operational complexity without a bottleneck to solve."}}, {"@type": "Question", "name": "What is eventual consistency and when is it dangerous?", "acceptedAnswer": {"@type": "Answer", "text": "Eventual consistency means replicas will converge over time, but reads may return stale data in the interim. It is dangerous for inventory counts (two threads both reading 1 and writing 0, leading to negative stock), financial balances, and anything where a stale read leads to a real-world action. Use strong consistency (QUORUM in Cassandra, strongly consistent reads in DynamoDB) for these cases — at higher latency cost."}}, {"@type": "Question", "name": "What is the single-table design pattern in DynamoDB?", "acceptedAnswer": {"@type": "Answer", "text": "Storing all entity types in one table and using composite sort keys (e.g. ORDER#2024-01, PROFILE) to co-locate related records so multiple entity types can be fetched in a single query without joins. It requires upfront access-pattern analysis but delivers O(1) reads for all modeled patterns."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"NoSQL — Document, Key-Value, Column-Family & CAP Theorem","item":"https://sdeoffer.com/tech-stacks/nosql/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,31 +152,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/nosql/" class="active">EN</a><a href="/zh/tech-stacks/nosql/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/nosql/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/nosql/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">nosql</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">NoSQL</h1>
     <div class="article-meta">
@@ -196,7 +213,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/nosql-1.jpg" alt="NoSQL database categories and data models" loading="lazy">
+        <img src="/assets/img/nosql-1.jpg" alt="NoSQL database categories and data models" width="1024" height="510" fetchpriority="high">
         <figcaption>NoSQL database categories and data models</figcaption>
       </figure>
 
@@ -206,10 +223,10 @@
     <p>The simplest data model: every value is stored under a unique key. Reads and writes are O(1) by key — literally a hash table lookup. There is no query language, no schema, and no relationships — just raw speed for exact lookups. The value itself is completely opaque to the store; it can be a string, a serialized object, a binary blob, or a counter. The database does not interpret it.</p>
     <ul>
       <li><strong>Examples:</strong> Redis, DynamoDB (in KV mode), Memcached</li>
-      <li><strong>Best for:</strong> Session storage, cache layers, rate limiting counters, feature flags, leaderboards (with Redis sorted sets), distributed locks</li>
+      <li><strong>Best for:</strong> Session storage, cache layers, rate limiting counters, feature flags, <a href="/system-design/leaderboard/">leaderboards</a> (with Redis sorted sets), distributed locks</li>
       <li><strong>Limitation:</strong> Can only access data by exact key; no range scans without additional infrastructure; no secondary indexes unless the database adds them as a separate feature layer</li>
     </ul>
-    <p>Redis deserves special attention because it goes far beyond a simple KV store. Its data structures — strings, lists, sets, sorted sets, hashes, streams, and HyperLogLogs — let you implement sophisticated patterns like sliding-window rate limiters (<code>ZRANGEBYSCORE</code> on timestamps), pub/sub fanout, leaderboards (<code>ZADD</code>/<code>ZRANK</code>), and distributed locks via the <code>SET key value NX PX ttl</code> atomic conditional set. The key insight is that Redis executes all operations atomically in a single-threaded event loop, which eliminates the concurrency bugs that plague multi-threaded in-process caches.</p>
+    <p><a href="/tech-stacks/redis/">Redis</a> deserves special attention because it goes far beyond a simple KV store. Its data structures — strings, lists, sets, sorted sets, hashes, streams, and HyperLogLogs — let you implement sophisticated patterns like sliding-window rate limiters (<code>ZRANGEBYSCORE</code> on timestamps), pub/sub fanout, leaderboards (<code>ZADD</code>/<code>ZRANK</code>), and distributed locks via the <code>SET key value NX PX ttl</code> atomic conditional set. The key insight is that Redis executes all operations atomically in a single-threaded event loop, which eliminates the concurrency bugs that plague multi-threaded in-process caches.</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -323,7 +340,7 @@
     <ul>
       <li><strong>Examples:</strong> Neo4j, Amazon Neptune, ArangoDB, TigerGraph</li>
       <li><strong>Best for:</strong> Social networks, recommendation engines, fraud detection (transaction graphs), knowledge graphs, network topology</li>
-      <li><strong>Limitation:</strong> Poor fit for bulk tabular data; horizontal sharding is harder than other NoSQL types because cutting a graph across partitions causes cross-shard traversal overhead; most graph DBs are best run on a single beefy node or a small cluster</li>
+      <li><strong>Limitation:</strong> Poor fit for bulk tabular data; horizontal <a href="/tech-stacks/sharding/">sharding</a> is harder than other NoSQL types because cutting a graph across partitions causes cross-shard traversal overhead; most graph DBs are best run on a single beefy node or a small cluster</li>
     </ul>
 
     <div class="code-block">
@@ -352,7 +369,7 @@
     </div>
 
     <h2>CAP Theorem — The Distributed Systems Constraint</h2>
-    <p>The CAP theorem, proved by Eric Brewer and formalized by Gilbert and Lynch, states that a distributed data store can only guarantee two of the following three properties simultaneously:</p>
+    <p>The <a href="/ddia/chapter-9/">CAP theorem</a>, proved by Eric Brewer and formalized by Gilbert and Lynch, states that a distributed data store can only guarantee two of the following three properties simultaneously:</p>
     <table class="compare-table">
       <thead>
         <tr><th>Property</th><th>Meaning</th></tr>
@@ -562,16 +579,17 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

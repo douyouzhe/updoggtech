@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
-<title>Design a Video Streaming Platform (Netflix/YouTube) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/video-streaming/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/video-streaming/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/video-streaming/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/video-streaming/">
+<meta name="description" content="Video streaming platform design (Netflix, YouTube) — upload and transcode pipelines, adaptive CDN delivery, and ML-powered recommendations at massive scale.">
+<title>Design Video Streaming Platform (Netflix/YouTube) | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/video-streaming/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/video-streaming/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/video-streaming/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/video-streaming/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design a Video Streaming Platform (Netflix/YouTube)">
-<meta property="og:description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
-<meta property="og:url" content="https://updoggtech.com/system-design/video-streaming/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/video-streaming-1.jpg">
+<meta property="og:description" content="Video streaming platform design (Netflix, YouTube) — upload and transcode pipelines, adaptive CDN delivery, and ML-powered recommendations at massive scale.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/video-streaming/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/video-streaming-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="798">
+<meta property="og:image:alt" content="Design a Video Streaming Platform (Netflix/YouTube)">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/video-streaming-1.jpg">
 <meta name="twitter:title" content="Design a Video Streaming Platform (Netflix/YouTube)">
 <meta name="twitter:description" content="A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Video Streaming Platform (Netflix/YouTube)","description":"A system design deep dive into building a video streaming platform covering upload pipelines, transcoding, CDN delivery, and ML-powered recommendations.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/video-streaming/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Video Streaming Platform (Netflix/YouTube)","description":"Video streaming platform design (Netflix, YouTube) — upload and transcode pipelines, adaptive CDN delivery, and ML-powered recommendations at massive scale.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/video-streaming/"},"image":"https://sdeoffer.com/assets/img/video-streaming-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why TCP over UDP for on-demand video?", "acceptedAnswer": {"@type": "Answer", "text": "TCP retransmission eliminates dropped-packet artifacts (pixelation, blocking); the slight latency increase is acceptable for buffered on-demand content because the player maintains a 2–10 second buffer. UDP is preferred for live streaming where low latency matters more than perfect quality."}}, {"@type": "Question", "name": "Why store recommendations in a key-value store rather than computing them on-the-fly?", "acceptedAnswer": {"@type": "Answer", "text": "Recommendation models are expensive to run; pre-computing offline and serving from a key-value store by user ID gives O(1) lookup with no inference latency on the critical path."}}, {"@type": "Question", "name": "Why use Cassandra for video metadata?", "acceptedAnswer": {"@type": "Answer", "text": "Queries are fixed-pattern (by video ID, by creator), write throughput is high (status updates, view count increments), and there are no relational joins needed — Cassandra's wide-column model is ideal."}}, {"@type": "Question", "name": "How does ABR work?", "acceptedAnswer": {"@type": "Answer", "text": "Video is split into 2–6 second segments at multiple bitrates. The client's ABR algorithm monitors buffer occupancy and measured throughput, selecting the highest quality tier that can be downloaded without rebuffering."}}, {"@type": "Question", "name": "How do you authorize video playback without overloading application servers?", "acceptedAnswer": {"@type": "Answer", "text": "Use CDN-signed URLs embedded in the manifest. The CDN validates the HMAC signature at the edge without any application server involvement — auth happens once at manifest fetch time, not on every segment."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a Video Streaming Platform (Netflix/YouTube)","item":"https://sdeoffer.com/system-design/video-streaming/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/video-streaming/" class="active">EN</a><a href="/zh/system-design/video-streaming/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/video-streaming/" class="active" hreflang="en">EN</a><a href="/zh/system-design/video-streaming/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">video-streaming</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design a Video Streaming Platform</h1>
     <div class="article-meta">
@@ -220,7 +237,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/video-streaming-1.jpg" alt="High-level video streaming platform architecture" loading="lazy">
+      <img src="/assets/img/video-streaming-1.jpg" alt="High-level video streaming platform architecture" width="1024" height="798" fetchpriority="high">
       <figcaption>High-level video streaming platform architecture</figcaption>
     </figure>
 
@@ -335,7 +352,7 @@
     <p>Google's <strong>QUIC</strong> protocol deserves a mention: it achieves TCP-like reliability over UDP, eliminates TCP head-of-line blocking across streams, and supports 0-RTT connection resumption. YouTube has been migrating to QUIC and reports measurable reductions in buffering events, especially on mobile networks with frequent IP address changes (handoffs between WiFi and cellular).</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/video-streaming-2.jpg" alt="Video upload pipeline flow" loading="lazy">
+      <img src="/assets/img/video-streaming-2.jpg" alt="Video upload pipeline flow" loading="lazy" width="1024" height="654">
       <figcaption>Video upload pipeline flow</figcaption>
     </figure>
 
@@ -432,12 +449,12 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/video-streaming-3.jpg" alt="Transcoding pipeline and multi-resolution output" loading="lazy">
+      <img src="/assets/img/video-streaming-3.jpg" alt="Transcoding pipeline and multi-resolution output" loading="lazy" width="1024" height="985">
       <figcaption>Transcoding pipeline and multi-resolution output</figcaption>
     </figure>
 
     <h2>Step 7 — Data Model and Storage Architecture</h2>
-    <p>Storage selection is driven by access patterns. Video streaming has a particularly sharp split: binary video segments belong in object storage; structured metadata belongs in a database.</p>
+    <p>Storage selection is driven by access patterns. Video streaming has a particularly sharp split: binary video segments belong in <a href="/tech-stacks/object-storage/">object storage</a>; structured metadata belongs in a database.</p>
 
     <table class="compare-table">
       <thead>
@@ -497,7 +514,7 @@
     <p>Session tokens are short-lived JWTs (15-minute access tokens + 7-day refresh tokens). On token refresh, the refresh token is validated against Redis (where active refresh tokens are stored) and a new access token is issued without touching the SQL database. This keeps the auth hot path entirely in Redis.</p>
 
     <h2>Step 9 — Content Delivery and Playback Authorization</h2>
-    <p>Video files are served through a globally distributed CDN network. A <strong>Host Optimizer</strong> service directs each client to the nearest CDN node based on geographic proximity and current server load. The CDN layer applies <strong>lazy segment loading</strong> — only the segments the user is currently watching are fetched, rather than the full video file, reducing bandwidth costs and startup latency.</p>
+    <p>Video files are served through a globally distributed <a href="/tech-stacks/cdn/">CDN</a> network. A <strong>Host Optimizer</strong> service directs each client to the nearest CDN node based on geographic proximity and current server load. The CDN layer applies <strong>lazy segment loading</strong> — only the segments the user is currently watching are fetched, rather than the full video file, reducing bandwidth costs and startup latency.</p>
 
     <h3>Playback Authorization with Signed URLs</h3>
     <p>Access control for video playback cannot rely on the CDN checking tokens on every segment request — that would saturate the application servers. Instead, the solution is <strong>CDN-signed URLs</strong>:</p>
@@ -541,11 +558,11 @@
     <p>The homepage combines two data sources:</p>
     <ul>
       <li><strong>Search Service</strong> — an Elasticsearch cluster with fuzzy search and type-ahead for active queries.</li>
-      <li><strong>Recommendations</strong> — pre-computed ML predictions stored in a key-value NoSQL database, keyed by user ID for O(1) lookup.</li>
+      <li><strong>Recommendations</strong> — pre-computed ML predictions stored in a key-value <a href="/tech-stacks/nosql/">NoSQL</a> database, keyed by user ID for O(1) lookup.</li>
     </ul>
 
     <h3>Recommendation Architecture</h3>
-    <p>Recommendations are computed <strong>offline</strong> from watch history, watch duration, and interaction signals (likes, shares, re-watches, skips). These signals are fed into Kafka from the playback service and used to train recommendation models in batch. The architecture has two components:</p>
+    <p>Recommendations are computed <strong>offline</strong> from watch history, watch duration, and interaction signals (likes, shares, re-watches, skips). These signals are fed into <a href="/tech-stacks/kafka/">Kafka</a> from the playback service and used to train recommendation models in batch. The architecture has two components:</p>
     <ul>
       <li><strong>Candidate generation</strong> — a two-tower neural network retrieves ~hundreds of candidate videos from a pool of millions, based on user embedding similarity. The user tower encodes watch history; the video tower encodes video features. Fast approximate nearest-neighbor search (FAISS or ScaNN) retrieves top candidates.</li>
       <li><strong>Ranking</strong> — a pointwise or pairwise ranking model (gradient boosted trees or a DNN) re-scores the candidates using richer features (context, time of day, device type, recency of video) to produce the final ranked list.</li>
@@ -637,16 +654,17 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

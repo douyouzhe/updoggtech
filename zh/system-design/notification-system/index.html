@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="通知系统设计:多渠道 push/SMS/email/in-app、APNs 与 FCM、扇出、去重、限流、重试与 DLQ、用户偏好、模板服务、可观测性与 at-least-once 投递保证。">
+<title>设计一个通知系统 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/notification-system/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/notification-system/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/notification-system/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/notification-system/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="设计一个通知系统 — 系统设计">
+<meta property="og:description" content="通知系统设计:多渠道 push/SMS/email/in-app、APNs 与 FCM、扇出、去重、限流、重试与 DLQ、用户偏好、模板服务、可观测性与 at-least-once 投递保证。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/notification-system/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计一个通知系统 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="设计一个通知系统 — 系统设计">
+<meta name="twitter:description" content="多渠道通知系统的系统设计深入:扇出、APNs/FCM、模板、用户偏好、去重、重试、DLQ 与投递保证。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计一个通知系统","description":"通知系统设计:多渠道 push/SMS/email/in-app、APNs 与 FCM、扇出、去重、限流、重试与 DLQ、用户偏好、模板服务、可观测性与 at-least-once 投递保证。","datePublished":"2026-06-28","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/notification-system/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-28"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "怎么把一条通知扇出给数百万用户而不阻塞?", "acceptedAnswer": {"@type": "Answer", "text": "用消息队列把触发和投递解耦。触发服务只写一条事件;扇出 worker 展开受众,为每个 (user, channel) 入队一个任务到 Kafka。成千上万的渠道 worker 并行消费并调用 APNs/FCM/SMS/email 提供商。触发通知的 API 调用毫秒级返回,因为它只写一条事件,而不是数百万次发送。"}}, {"@type": "Question", "name": "at-least-once 还是 exactly-once 投递,你选哪个?", "acceptedAnswer": {"@type": "Answer", "text": "选 at-least-once。跨第三方提供商(APNs、Twilio、SES)做 exactly-once 不可能,因为它们已经投递后回给你的确认可能丢失。所以在传输上接受 at-least-once,并让消费者幂等:用一个去重键(notification_id + user_id + channel)存在 Redis 里并带 TTL,保证重复事件在到达提供商前就被丢弃。"}}, {"@type": "Question", "name": "怎么处理第三方提供商(APNs/FCM)宕机或被限流?", "acceptedAnswer": {"@type": "Answer", "text": "对瞬时 5xx/429 用指数退避加抖动重试,封顶几次;超过上限后把任务路由到死信队列(DLQ)以便后续重放或人工排查。用每提供商一个令牌桶遵守它的限流,这样你不会被全局限流。永久错误(无效 token、410 Gone)不重试——而是把设备 token 标记为失效并清除。"}}, {"@type": "Question", "name": "怎么在规模下尊重用户偏好和免打扰时段?", "acceptedAnswer": {"@type": "Answer", "text": "在扇出路径上、任何任务入队之前先咨询偏好服务。它存每用户、每分类的渠道开关、用户时区下的免打扰窗口和频率上限,缓存在 Redis 里实现个位数毫秒读取。营销类分类被硬性检查;关键交易类通知(安全告警、OTP)绕过非必要偏好。"}}, {"@type": "Question", "name": "怎么防止同一条通知发两次?", "acceptedAnswer": {"@type": "Answer", "text": "两层幂等:生产者带上一个确定性的 notification_id(常是事件 + 用户 + 模板的哈希);消费者在发送前对 Redis 去重键做 SETNX,若键已存在就跳过。再配合频率上限(每用户每分类每小时最多 N 条),把重复触发和重试风暴收敛成一条被投递的消息。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计一个通知系统 — 系统设计","item":"https://sdeoffer.com/zh/system-design/notification-system/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">跳到主内容</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/notification-system/" hreflang="en">EN</a>
+        <a href="/zh/system-design/notification-system/" class="active" hreflang="zh" lang="zh">中</a>
+      </div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">notification-system</span>
+    </nav>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计一个通知系统</h1>
+    <div class="article-meta">
+      <span>2026年6月28日</span>
+      <span class="separator">·</span>
+      <span>32 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>通知系统看着不起眼,直到你想起:一个产品事件——一次新的点赞、一条物流更新、一次风控告警——可能需要在数秒内、跨四个不同渠道(push、SMS、email、in-app)、经由你无法控制的外部提供商,触达数千万用户,同时还要尊重每个用户的退订和免打扰时段、绝不重复发送同一条消息、并在不可避免的 APNs 或 FCM 抖动下存活。难的部分不是那次"发一封邮件"的调用;而是从一个事件到数百万次投递的扇出、at-least-once 加幂等的投递语义、第三方故障处理,以及让你不至于骚扰用户的偏好与限流逻辑。这些做错,你要么丢掉关键告警,要么在凌晨三点用一场重试风暴把整个用户群叫醒。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>把触发和投递解耦</strong>——生产者写一条事件;消息队列吸收尖峰;扇出 worker 把它展开成每个 (user, channel) 的任务。</li>
+        <li><strong>每渠道一个 worker 池</strong>——push、SMS、email、in-app 各有自己的队列、提供商适配器、限流和重试策略。</li>
+        <li><strong>at-least-once + 幂等消费者</strong>——跨 APNs/Twilio/SES 的 exactly-once 不可能;改为对 <code>notification_id</code> 在 Redis 里去重。</li>
+        <li><strong>偏好在扇出路径里检查</strong>——每分类开关、用户时区的免打扰时段、频率上限,都在任务入队前应用。</li>
+        <li><strong>重试带退避 + DLQ</strong>——瞬时 5xx/429 用指数退避加抖动重试;永久失败(无效 token)清除;耗尽的任务进死信队列。</li>
+        <li><strong>模板服务</strong>——内容存在带版本、本地化的模板里,发送时渲染;生产者传 ID 和变量,而非原始字符串。</li>
+        <li><strong>可观测性是一等公民</strong>——每条通知带一个 ID,从触发 → 队列 → 提供商 → 投递回执全链路追踪,并有每渠道的漏斗指标。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把系统拆成:通知 API、扇出/偏好层、每渠道的队列与 worker,以及提供商适配器(APNs、FCM、Twilio、SES)。用消息队列把突发触发和稳定投递解耦。投递做成 at-least-once,消费者经一个 Redis 去重键做到幂等。在入队前应用用户偏好、免打扰时段和频率上限。瞬时提供商错误带退避重试,耗尽的任务路由到 DLQ。内容从带版本的模板渲染,并对每条通知做端到端追踪。</p>
+    </div>
+
+    <h2>第 1 步 — 澄清需求</h2>
+    <p>通知系统是经典面试题,因为天真答案("循环里调 SendGrid")一旦引入规模、多渠道和可靠性就立刻崩溃。先把范围钉死。</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>跨<strong>四个渠道</strong>发送:移动 push(iOS/Android)、SMS、email,以及 in-app(客户端轮询或经 websocket 接收的信箱/feed)。</li>
+      <li>支持<strong>触发式</strong>(交易类、事件驱动:OTP、订单已发货)和<strong>定时/广播式</strong>(对某个人群的营销活动)通知。</li>
+      <li>尊重<strong>用户偏好</strong>:每分类的渠道开关、免打扰时段、频率上限,以及全局退订。</li>
+      <li>从<strong>模板</strong>渲染内容,带每语言变体和运行时变量。</li>
+      <li>提供<strong>投递状态</strong>:已入队、已发送、已投递、失败、已打开(在提供商上报的范围内)。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>规模</strong>——应对突发扇出:一次广播可能产生 5000 万+ 投递;稳态是每小时数百万次交易类发送。</li>
+      <li><strong>低触发延迟</strong>——接收通知请求的 API 在 &lt;100 ms 内返回;实际投递异步进行。</li>
+      <li><strong>可靠性</strong>——关键通知(OTP、安全)绝不能被静默丢弃;目标是 at-least-once 投递加幂等。</li>
+      <li><strong>无重复</strong>——即便管道重试,用户也不该收到同一条逻辑通知两次。</li>
+      <li><strong>可扩展性</strong>——新增一个渠道(如 WhatsApp)不应需要重写核心。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>尽早把<strong>交易类</strong>和<strong>营销类</strong>分开。它们的优先级正相反:交易类通知绕过营销偏好、要求 at-least-once 投递、跑在低延迟车道;营销类被严格限流、完全尊重退订、可容忍数秒到数分钟的延迟。用一条把两者一视同仁的管道是个危险信号。</p>
+    </div>
+
+    <h2>第 2 步 — 容量估算</h2>
+    <p>估算告诉你瓶颈在哪——它几乎从不是数据库;而是队列吞吐和提供商的限流。</p>
+
+    <h3>流量</h3>
+    <ul>
+      <li>假设 <strong>1 亿 DAU</strong>、平均每用户每天 <strong>5 条通知</strong> → 每天 5 亿条 ≈ <strong>~5,800/秒</strong> 均值。</li>
+      <li>峰值很尖:一次对 5000 万用户的营销广播在几分钟内打出。若想在 10 分钟内排空,即 5000 万 / 600 秒 ≈ <strong>~83,000 投递/秒</strong> 持续——设计必须把均值的 10–20 倍作为突发吸收掉。</li>
+      <li>渠道占比不均:push 占主导(≈70%)、in-app(≈20%)、email(≈8%)、SMS(≈2%,但最贵且限流最严)。</li>
+    </ul>
+
+    <h3>存储</h3>
+    <ul>
+      <li>通知日志记录:~300 字节(各 id、channel、status、时间戳、template_id)。5 亿/天 × 300 B ≈ <strong>~150 GB/天</strong>——这进一个可水平扩展、带 TTL(如 30–90 天)的存储,而不是单台 SQL。</li>
+      <li>设备 token:1 亿用户 × ~2 设备 × ~100 B ≈ <strong>~20 GB</strong>——很小、很热,放在快存储和缓存里。</li>
+      <li>偏好:1 亿用户 × ~200 B ≈ <strong>~20 GB</strong>——每次扇出都要读,所以在 <a href="/zh/tech-stacks/redis/">Redis</a> 里激进缓存。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">备注</div>
+      <p>应该驱动设计的数字不是存储;而是那 <strong>83K/秒的突发</strong>,以及提供商会限流你这个事实。APNs、FCM、Twilio、SES 都施加限流。你的队列存在的意义恰恰是把 83K/秒的突发重塑成提供商愿意接收的稳定流,而不是让你被全局限流或拉黑。</p>
+    </div>
+
+    <h2>第 3 步 — API 设计</h2>
+    <p>对外接口很小。生产者描述<em>发什么</em>、发给<em>谁</em>;系统决定<em>怎么发</em>、<em>何时发</em>。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 发送通知(交易类)</span>
+<span class="kw">POST</span> <span class="str">/api/v1/notifications</span>
+     Authorization: Bearer &lt;service-token&gt;
+     Idempotency-Key: <span class="str">"order-9182-shipped"</span>   <span class="cm">// 边缘去重</span>
+     { <span class="str">"user_id"</span>: <span class="str">"u_123"</span>,
+       <span class="str">"template_id"</span>: <span class="str">"order_shipped_v3"</span>,
+       <span class="str">"channels"</span>: [<span class="str">"push"</span>, <span class="str">"email"</span>],   <span class="cm">// 可选;否则用偏好</span>
+       <span class="str">"variables"</span>: { <span class="str">"order_id"</span>: <span class="str">"9182"</span>, <span class="str">"eta"</span>: <span class="str">"Jun 30"</span> },
+       <span class="str">"priority"</span>: <span class="str">"transactional"</span> }
+     → <span class="num">202</span> { <span class="str">"notification_id"</span>: <span class="str">"ntf_8f2a"</span>, <span class="str">"status"</span>: <span class="str">"accepted"</span> }
+
+<span class="cm"># 对一个人群广播(异步,返回任务句柄)</span>
+<span class="kw">POST</span> <span class="str">/api/v1/broadcasts</span>
+     { <span class="str">"segment_id"</span>: <span class="str">"seg_us_active"</span>, <span class="str">"template_id"</span>: <span class="str">"promo_summer"</span>,
+       <span class="str">"priority"</span>: <span class="str">"promotional"</span>, <span class="str">"send_at"</span>: <span class="str">"2026-07-01T16:00:00Z"</span> }
+     → <span class="num">202</span> { <span class="str">"broadcast_id"</span>: <span class="str">"bc_55"</span>, <span class="str">"status"</span>: <span class="str">"scheduled"</span> }
+
+<span class="cm"># 查询投递状态</span>
+<span class="kw">GET</span> <span class="str">/api/v1/notifications/{id}</span>
+     → { <span class="str">"status"</span>: <span class="str">"delivered"</span>, <span class="str">"channel"</span>: <span class="str">"push"</span>,
+         <span class="str">"attempts"</span>: <span class="num">1</span>, <span class="str">"delivered_at"</span>: <span class="str">"..."</span> }
+
+<span class="cm"># 更新用户偏好</span>
+<span class="kw">PUT</span> <span class="str">/api/v1/users/{id}/preferences</span>
+     { <span class="str">"marketing"</span>: { <span class="str">"push"</span>: <span class="kw">false</span>, <span class="str">"email"</span>: <span class="kw">true</span> },
+       <span class="str">"quiet_hours"</span>: { <span class="str">"start"</span>: <span class="str">"22:00"</span>, <span class="str">"end"</span>: <span class="str">"08:00"</span>, <span class="str">"tz"</span>: <span class="str">"America/New_York"</span> } }</code></pre>
+    </div>
+
+    <p>两个设计要点。第一,<code>Idempotency-Key</code> 头让调用方可以安全地重试触发——如果订单服务崩溃并重新 POST "order-9182-shipped",API 返回同一个 <code>notification_id</code> 而不是发两次。第二,端点返回 <strong>202 Accepted</strong>,而非 200:投递是异步的,所以 API 的唯一职责是校验、去重、持久化请求并入队。所有昂贵的事都在下游发生。</p>
+
+    <h2>第 4 步 — 高层架构</h2>
+    <p>系统是一条由队列连接的、各阶段解耦的管道。核心原则:<strong>触发路径便宜且快;投递路径并行且吸收故障。</strong></p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">flow</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code>生产者(订单服务、社交服务、风控服务、活动工具)
+   │  POST /notifications  |  POST /broadcasts
+   ▼
+[ 通知 API ] ── 校验、边缘去重(Idempotency-Key)、持久化
+   │  发布 1 条事件
+   ▼
+[ Kafka: "notification-events" ]   ← 吸收突发
+   │
+   ▼
+[ 扇出 / 偏好 worker ]
+   ├── 展开受众(1 事件 → N 用户)
+   ├── 加载偏好 + 设备 token(Redis)
+   ├── 丢弃 退订 / 免打扰 / 超频率上限
+   └── 每个 (user, channel) 产出 1 个任务
+   ▼
+[ 每渠道队列 ]   push | sms | email | in-app
+   │             │         │        │
+   ▼             ▼         ▼        ▼
+[ Push wkr ] [ SMS wkr ] [ Email ] [ In-app wkr ]
+   │  APNs/FCM   │ Twilio   │ SES     │ 写信箱 + websocket 推送
+   ▼             ▼          ▼         ▼
+[ 提供商适配器 ] ── 重试/退避、限流、耗尽进 DLQ
+   │  投递回执 / webhook
+   ▼
+[ 状态存储 + 可观测性 ]  (逐条通知追踪、漏斗指标)</code></pre>
+    </div>
+
+    <p>为什么每个阶段之间都要队列?因为每个阶段都有不同且独立的故障模式和吞吐上限。扇出 worker 展开受众的速度远快于 Twilio 接收 SMS 的速度;每个渠道前的 <a href="/zh/tech-stacks/message-queue/">消息队列</a> 就是那个减震器,让快阶段全速跑、而慢的、被限流的提供商以自己的节奏排空。Kafka 还给你可重放性:如果 email worker 有 bug,你修好后从 offset 重新处理,不丢事件。</p>
+
+    <h2>第 5 步 — 渠道适配器:APNs、FCM、SMS、Email、In-App</h2>
+    <p>每个渠道本质上都不同。共享的抽象是一个<strong>渠道适配器接口</strong>——<code>send(job) → {delivered | retryable_error | permanent_error}</code>——但实现差异巨大。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>渠道</th><th>提供商</th><th>传输</th><th>关键约束</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">iOS push</td><td>APNs</td><td>HTTP/2 长连接,基于 token(JWT)鉴权</td><td>单连接多路复用;410 = token 过期 → 清除</td></tr>
+        <tr><td class="col-a">Android push</td><td>FCM</td><td>HTTP/2 REST,OAuth 服务账号</td><td>批量最多 500;<code>UNREGISTERED</code> → 清除 token</td></tr>
+        <tr><td class="col-b">SMS</td><td>Twilio / SNS</td><td>HTTPS REST</td><td>昂贵;每号码限流严格;运营商过滤</td></tr>
+        <tr><td class="col-b">Email</td><td>SES / SendGrid</td><td>HTTPS / SMTP</td><td>信誉/退信管理;DKIM/SPF;异步 webhook</td></tr>
+        <tr><td class="col-a">In-app</td><td>内部</td><td>DB 写 + websocket</td><td>无第三方;用户在线则投递,否则存信箱</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Push:APNs 与 FCM 细节</h3>
+    <p>Push 是量最大的渠道,运维上也最微妙。APNs 使用长连的 HTTP/2——你用一个提供商 JWT(有效约 1 小时,刷新)鉴权一次,然后在同一连接上多路复用成千上万次发送,而不是每条消息都重连。FCM 允许一次调用批量最多 500 条消息。两者都返回逐 token 结果:成功、<strong>可重试</strong>错误(提供商 5xx、连接重置),或<strong>永久</strong>错误(<code>410 Gone</code> / <code>BadDeviceToken</code> / <code>UNREGISTERED</code>)。永久错误是 token 管理信号,不是重试信号——worker 发出一条"清除此 token"事件,这样未来的发送绝不会把一个名额浪费在死设备上。</p>
+
+    <h3>In-app:在线 vs 离线</h3>
+    <p>In-app 是你完全掌控的那个渠道。worker 把通知写进用户的信箱表(这样离线也能保留),然后——如果用户有一条活的 <a href="/zh/tech-stacks/websockets/">websocket</a> 连接——实时推过去。如果离线,信箱那行就够了;客户端下次打开时拉取未读项。这种双写(持久信箱 + 尽力而为的实时推送)让 in-app 既感觉即时、又不丢掉离线用户的通知。</p>
+
+    <div class="callout">
+      <div class="callout-label">可扩展性</div>
+      <p>适配器接口是让核心保持稳定的接缝。新增 WhatsApp 或 web-push 渠道,意味着写一个新适配器和一个新队列——扇出、偏好、去重、重试和可观测层都不动。抵制把渠道逻辑特判进扇出 worker 的诱惑;把它推进适配器。</p>
+    </div>
+
+    <h2>第 6 步 — 扇出问题</h2>
+    <p>扇出是系统的心脏:把<strong>一</strong>条触发事件变成 <strong>N</strong> 个每 (user, channel) 的投递任务。两种形态,成本剖面截然不同。</p>
+
+    <h3>触发式扇出(1 → 少数)</h3>
+    <p>一个交易事件面向一个用户(或一小撮)。扇出很便宜:加载用户偏好和设备 token、决定渠道、产出寥寥几个任务。这条路径对延迟敏感,跑在专用的高优先级车道上。</p>
+
+    <h3>广播式扇出(1 → 数百万)</h3>
+    <p>一次活动面向 5000 万用户的人群。在一个 worker 里做这事不可能——它会跑几个小时,任何崩溃都丢失进度。模式是<strong>带检查点的分层扇出</strong>:</p>
+    <ul>
+      <li>广播被切成<strong>分片</strong>(如每片 1 万用户),通过游标翻页该人群。每个分片成为它自己的一条消息。</li>
+      <li>许多扇出 worker <strong>并行</strong>消费分片;每个把它的 1 万用户展开成每渠道任务。</li>
+      <li>进度按分片<strong>做检查点</strong>,这样一个 worker 崩溃只重做一个 1 万的分片,而不是整个 5000 万广播——并且因为消费者幂等,重做一个分片不会重复发送。</li>
+    </ul>
+
+    <p>这在结构上和你在 <a href="/zh/system-design/news-feed/">news feed</a> 里看到的写时扇出 vs 读时扇出的张力是一样的:提前预计算投递(写放大,发送时快)对比读时计算。对通知来说答案几乎总是写时扇出——一条通知只有被推送才有意义,所以没有"读时"可供推迟。</p>
+
+    <div class="callout">
+      <div class="callout-label">扩展性备注</div>
+      <p>让广播车道和交易车道物理隔离——不同 topic、不同 worker 池、不同优先级。一次 5000 万的营销轰炸绝不能拖延一个 2FA 验证码。在持续负载下,光靠优先级队列不够;隔离 worker 池才能保证关键车道有预留容量。</p>
+    </div>
+
+    <h2>第 7 步 — 模板服务与个性化</h2>
+    <p>生产者绝不能发原始字符串。如果订单服务硬编码 "Your order shipped!",你就无法本地化、无法 A/B 测试,也无法在不跨所有生产者发版的情况下改一个错字。一个<strong>模板服务</strong>把内容集中化。</p>
+    <ul>
+      <li><strong>带版本的模板</strong>——<code>order_shipped_v3</code> 是一个不可变、经评审的产物。生产者引用模板 ID 加一个变量映射;渲染在发送时发生。</li>
+      <li><strong>每语言变体</strong>——每个模板有本地化的正文;渲染器按用户 locale 选择,回退到默认。</li>
+      <li><strong>每渠道渲染</strong>——同一条逻辑通知按渠道渲染不同:40 字符的 push 标题、完整 HTML 邮件、160 字符 SMS。模板打包所有渠道的呈现。</li>
+      <li><strong>安全插值</strong>——变量按渠道转义(邮件 HTML 转义、SMS 防注入)以防内容注入 bug。</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">YAML</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="ty">id</span>: order_shipped_v3
+<span class="ty">category</span>: transactional
+<span class="ty">locales</span>:
+  en:
+    push:  { <span class="ty">title</span>: <span class="str">"Shipped!"</span>, <span class="ty">body</span>: <span class="str">"Order {{order_id}} arrives {{eta}}"</span> }
+    email: { <span class="ty">subject</span>: <span class="str">"Your order is on the way"</span>, <span class="ty">html</span>: <span class="str">"templates/shipped.html"</span> }
+    sms:   { <span class="ty">body</span>: <span class="str">"Order {{order_id}} ships, ETA {{eta}}. Track: {{url}}"</span> }
+  zh:
+    push:  { <span class="ty">title</span>: <span class="str">"已发货!"</span>, <span class="ty">body</span>: <span class="str">"订单 {{order_id}} 预计 {{eta}} 送达"</span> }</code></pre>
+    </div>
+
+    <h2>第 8 步 — 用户偏好与退订</h2>
+    <p>偏好在扇出路径里、在任务入队<strong>之前</strong>检查——绝不先发了再过滤。偏好服务针对给定的 (user, category, channel) 回答:<em>此刻允许吗?</em></p>
+    <ul>
+      <li><strong>每分类、每渠道开关</strong>——用户可能允许安全邮件但关掉营销 push。存为一个 (category × channel) 的布尔矩阵。</li>
+      <li><strong>免打扰时段</strong>——用户睡眠窗口内不发非关键通知,按<em>他们的</em>时区评估。在本地 03:00 生成的通知,要么被丢弃(营销),要么推迟到早晨(摘要)。</li>
+      <li><strong>频率上限</strong>——"每天最多 3 条营销 push"。用一个每 (user, category, day) 的 Redis 计数器执行,由扇出 worker 递增。</li>
+      <li><strong>全局退订 + 合规</strong>——已退订用户被硬过滤。邮件必须遵守一键退订(RFC 8058);SMS 必须遵守 STOP。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">关键覆盖</div>
+      <p>交易类和安全关键通知(OTP、新设备登录、风控告警)<strong>绕过营销偏好和免打扰时段</strong>。偏好检查必须按分类分支:营销类硬过滤;关键类无论退订与否都投递(用户无法对自己的 2FA 验证码退订)。把这个区分编码错了,既是产品失败,对某些分类也是安全失败。</p>
+    </div>
+
+    <h2>第 9 步 — 限流与去重</h2>
+    <p>两个不同的关切,二者都既保护用户也保护提供商。</p>
+
+    <h3>限流</h3>
+    <p>有三个层级,好答案会把三个都点到。<strong>每用户</strong>频率上限(产品层:别烦用户)。<strong>每提供商</strong>限流(运维层:超出配额 APNs/Twilio/SES 会限流或封你),用每个适配器前的一个令牌桶执行,让 worker 池自我节流到提供商的上限。<strong>每租户</strong>限流,如果你是服务多个内部团队的平台,这样一个团队失控的活动不能饿死另一个。这正是 <a href="/zh/system-design/rate-limiter/">设计限流器</a> 里深入讲的那套机制——一个由 Redis 支撑的分布式令牌桶或滑动窗口。</p>
+
+    <h3>去重</h3>
+    <p>去重是让 at-least-once 投递可被接受的关键。同一条逻辑通知可能多次到达消费者——生产者重试了触发、Kafka 在再平衡后重投、或一个广播分片在崩溃后被重新处理。消费者必须把这些收敛成一次发送:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">deliver</span>(job):
+    <span class="cm"># 去重键在多次重试间是确定性的</span>
+    key = <span class="str">f"dedup:{job.notification_id}:{job.user_id}:{job.channel}"</span>
+    <span class="cm"># SETNX 若键已存在返回 False → 已发送过</span>
+    first_time = redis.<span class="fn">set</span>(key, <span class="num">1</span>, nx=<span class="kw">True</span>, ex=<span class="num">86400</span>)
+    <span class="kw">if</span> <span class="kw">not</span> first_time:
+        metrics.<span class="fn">incr</span>(<span class="str">"dedup.suppressed"</span>)   <span class="cm"># 丢弃了一个重复</span>
+        <span class="kw">return</span>
+    result = adapter.<span class="fn">send</span>(job)        <span class="cm"># 调 APNs / Twilio / SES</span>
+    <span class="kw">if</span> result.permanent_error:
+        redis.<span class="fn">delete</span>(key)             <span class="cm"># 放行一次修正后的重试</span>
+        prune_token(job)</code></pre>
+    </div>
+
+    <p>去重键是 <code>notification_id + user_id + channel</code>,所以同一条通知在 push 和 email 上都会发出,但一个被重投的 push 任务被抑制。TTL(24 小时)限定内存,同时覆盖任何现实的重试窗口。要避免的微妙 bug:在成功发送<em>之后</em>才设去重键,意味着发送和设键之间的崩溃会重发;在<em>之前</em>设而永不在永久错误时清掉,意味着一个可修复的失败被永远错误地抑制。上面的顺序——先抢键,只在永久错误时释放——把两者都处理了。</p>
+
+    <h2>第 10 步 — 重试、DLQ 与投递保证</h2>
+    <p>在规模下提供商不断失败:瞬时 5xx、连接重置、429 限流。重试策略必须区分失败类别,且绝不无限重试。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>结果</th><th>例子</th><th>动作</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">成功</td><td>2xx,提供商已接收</td><td>标记 sent;等待投递回执 webhook</td></tr>
+        <tr><td class="col-b">可重试</td><td>5xx、429、超时、连接重置</td><td>指数退避 + 抖动,封顶约 5 次,然后 DLQ</td></tr>
+        <tr><td class="col-b">永久</td><td>410 Gone、无效 token、硬退信、STOP</td><td>不重试;清除 token / 抑制地址;记录</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>带抖动的指数退避</strong>(1s、2s、4s… 再加随机化)防止一次提供商抖动变成同步的重试风暴——所有 worker 步调一致地重试、再次压垮正在恢复的提供商。超过尝试上限后,任务移到一个<strong>死信队列</strong>——一个单独的 topic,耗尽的任务落在那里供排查、告警,以及在根因修复后可选地手动或自动重放。DLQ 把"我们在 APNs 宕机期间静默丢了 20 万条 OTP"变成"20 万条任务停在 DLQ 里,APNs 恢复后自动重放"。</p>
+
+    <h3>为什么是 at-least-once,而非 exactly-once</h3>
+    <p>对外部提供商做 exactly-once 投递无法实现:你调用 Twilio、它发出了 SMS 之后,回给你的确认可能丢失。你分不清"已发但确认丢了"和"没发",所以一个安全的系统会重试——这意味着 SMS 可能发两次。诚实、标准的答案是<strong>传输上 at-least-once 加幂等消费者</strong>:你接受管道可能尝试发送不止一次,并通过第 9 步的去重键让重复尝试无害。这在<em>用户视角</em>下收敛成 effectively-once,而不去声称一个提供商给不了你的保证。</p>
+
+    <div class="callout">
+      <div class="callout-label">投递语义</div>
+      <p>把它说清楚:<strong>at-least-once 投递 + 幂等消费者 = effectively-once 的用户体验。</strong>"exactly-once"是你内部处理的属性(Kafka offset、去重键),绝不是那一跳第三方的属性。声称端到端经 APNs 做到 exactly-once 是经典面试错误。</p>
+    </div>
+
+    <h2>第 11 步 — 数据模型</h2>
+    <p>三个存储,各自为其访问模式而选:设备 token 和偏好是热 key-value 读;通知日志是高吞吐追加。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">SQL</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- 设备 token(热 KV;在 Redis 缓存)</span>
+<span class="kw">CREATE TABLE</span> device_tokens (
+  user_id    <span class="ty">BIGINT</span>,
+  platform   <span class="ty">VARCHAR</span>(<span class="num">10</span>),       <span class="cm">-- ios | android | web</span>
+  token      <span class="ty">VARCHAR</span>(<span class="num">255</span>),
+  last_seen  <span class="ty">TIMESTAMP</span>,
+  <span class="kw">PRIMARY KEY</span> (user_id, platform, token)
+);
+
+<span class="cm">-- 偏好(每次扇出都读;激进缓存)</span>
+<span class="kw">CREATE TABLE</span> preferences (
+  user_id    <span class="ty">BIGINT</span>      <span class="kw">PRIMARY KEY</span>,
+  matrix     <span class="ty">JSONB</span>,                 <span class="cm">-- {category: {channel: bool}}</span>
+  quiet_start <span class="ty">TIME</span>, quiet_end <span class="ty">TIME</span>, tz <span class="ty">VARCHAR</span>(<span class="num">40</span>),
+  unsubscribed <span class="ty">BOOLEAN</span>  <span class="kw">DEFAULT</span> <span class="kw">FALSE</span>
+);
+
+<span class="cm">-- 通知日志(高吞吐追加;NoSQL / Cassandra,TTL 90d)</span>
+<span class="cm">-- 按 user_id 分区,按 created_at 倒序聚簇</span>
+<span class="cm">-- { notification_id, user_id, channel, template_id, status,</span>
+<span class="cm">--   attempts, created_at, sent_at, delivered_at, error_code }</span></code></pre>
+    </div>
+
+    <p>通知日志写多、按"该用户最近的通知"查询——非常适合一个按 <code>user_id</code> 分区、带 TTL 的宽列 <a href="/zh/tech-stacks/nosql/">NoSQL 存储</a>,而不是一张需要不断 <a href="/zh/tech-stacks/sharding/">分片</a> 和清理的关系表。设备 token 和偏好很小、且在热扇出路径上读,所以放在前面挡着 Redis(短 TTL)的快存储里;一次 token 写(新设备登录)使缓存项失效。</p>
+
+    <h2>第 12 步 — 扩展与容错</h2>
+    <p>每个阶段都水平扩展,并独立降级。</p>
+
+    <h3>扩展</h3>
+    <ul>
+      <li><strong>worker 无状态</strong>——扇出和渠道 worker 是 Kafka 消费组;加消费者即加吞吐,分区数按峰值并行度设定。在需要保序处(如"已发货"先于"已送达")按 <code>user_id</code> 分区以保留每用户顺序。</li>
+      <li><strong>渠道池独立扩展</strong>——push 需要数百个 worker;SMS 只需少数,因为 Twilio 本就限流。各池按自己的队列深度自动伸缩。</li>
+      <li><strong>提供商连接池化</strong>——APNs 的 HTTP/2 连接和 FCM 的批量在多次发送间复用;每 worker 一个连接池摊薄 TLS/握手成本。</li>
+    </ul>
+
+    <h3>容错</h3>
+    <ul>
+      <li><strong>提供商宕机</strong>——重试 + DLQ 吸收它;受影响渠道在它的队列里堆积,其他渠道照流。提供商恢复后,排空积压并重放 DLQ。关键:队列要有足够保留期来撑住一次数小时宕机量的任务。</li>
+      <li><strong>worker 崩溃</strong>——Kafka 把未提交消息重投给另一个消费者;幂等去重让重投无害。</li>
+      <li><strong>Redis(去重/缓存)故障</strong>——优雅降级:去重存储宕机时,对非关键渠道可以 fail open(冒几条重复的风险)而不是停止投递;偏好以更高延迟回退到源 DB。</li>
+      <li><strong>毒消息</strong>——一个总是抛错的畸形任务被尝试上限捕获并路由到 DLQ,而不是永远阻塞分区。</li>
+    </ul>
+
+    <h2>第 13 步 — 可观测性</h2>
+    <p>你无法运维一个看不见的通知系统。"用户收到 OTP 了吗?"必须能在数秒内回答。<a href="/zh/tech-stacks/observability/">可观测性</a> 围绕逐条通知的追踪和投递漏斗来构建。</p>
+    <ul>
+      <li><strong>端到端追踪</strong>——每条通知带一个在 API 打上、并贯穿事件、扇出、队列、worker 和提供商调用的 ID,这样你能重建它的完整时间线:accepted → enqueued → sent → provider-acked → delivery-receipt。</li>
+      <li><strong>每渠道漏斗指标</strong>——accepted、suppressed(偏好/去重)、sent、delivered、failed、opened。push 的 delivered/sent 比突然下降是 APNs 问题;suppressed 突增是偏好或去重异常。</li>
+      <li><strong>投递回执 / webhook</strong>——提供商异步上报最终状态(SES 退信、APNs 反馈、Twilio 状态回调)。摄入这些,把"已发送"到"真的投递/退信"的闭环补上,并喂给 token 清除和退信抑制。</li>
+      <li><strong>告警</strong>——对 DLQ 增长率、每提供商错误率和队列滞后告警,而不只是绝对量。一个增长的 DLQ 是提供商或 token 问题的最早信号。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">备注</div>
+      <p>投递回执是"我们发了"和"他们收到了"之间的区别。一条 push 可能被 APNs 接收,却始终到不了手机(设备关机、token 静默失效)。不摄入回执和反馈,你的仪表盘就在撒谎——它显示 100% "已发送",而真实投递率在悄悄下滑。</p>
+    </div>
+
+    <h2>第 14 步 — 关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>投递语义</td><td class="col-a">at-least-once + 幂等</td><td>可能重复尝试,由去重键抑制;跨提供商的 exactly-once 不可能</td></tr>
+        <tr><td>触发 vs 投递</td><td class="col-a">经队列完全解耦</td><td>增加端到端延迟(亚秒到数秒),换来巨大吞吐和隔离</td></tr>
+        <tr><td>扇出时机</td><td class="col-b">写时扇出</td><td>广播时写放大;通知没有读时路径</td></tr>
+        <tr><td>渠道耦合</td><td class="col-a">每渠道一队列 + 一适配器</td><td>更多活动部件;换来独立的扩展、重试和限流</td></tr>
+        <tr><td>偏好检查</td><td class="col-a">在扇出、入队前</td><td>热路径上多一次读(已缓存),换来不在被过滤的发送上浪费提供商配额</td></tr>
+        <tr><td>通知日志</td><td class="col-b">宽列 NoSQL + TTL</td><td>无即席 join;为每用户追加和时间范围读而优化</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>通知系统是一道关于受控扇出和优雅失败的练习。脊梁是一个把突发触发和被限流的提供商解耦的队列;可靠性来自由幂等、带去重键的消费者保护下的 at-least-once 投递;产品正确性来自在入队前检查偏好、并把交易类通知当作一条单独的、绕过偏好的车道。其余一切——模板、重试、DLQ、可观测性——存在的意义,都是让这三件事在规模下运转,而不骚扰用户、也不丢掉那一条真正重要的 OTP。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>怎么把一条通知扇出给数百万用户而不阻塞?</strong> 用消息队列把触发和投递解耦。触发服务只写一条事件;扇出 worker 展开受众,为每个 (user, channel) 入队一个任务到 Kafka。成千上万的渠道 worker 并行消费并调用 APNs/FCM/SMS/email 提供商。触发的 API 调用毫秒级返回,因为它只写一条事件,而非数百万次发送。<br>
+      <strong>at-least-once 还是 exactly-once 投递,你选哪个?</strong> 选 at-least-once。跨第三方提供商(APNs、Twilio、SES)做 exactly-once 不可能,因为它们已经投递后回给你的确认可能丢失。所以在传输上接受 at-least-once,并让消费者幂等:一个去重键(notification_id + user_id + channel)存在 Redis 里并带 TTL,在重复事件到达提供商前就丢弃它。<br>
+      <strong>怎么处理第三方提供商(APNs/FCM)宕机或被限流?</strong> 对瞬时 5xx/429 用指数退避加抖动重试,封顶几次;超过上限后把任务路由到死信队列以便重放。用每提供商一个令牌桶遵守它的限流,这样你不会被全局限流。永久错误(无效 token、410 Gone)不重试——token 被标记为失效并清除。<br>
+      <strong>怎么在规模下尊重用户偏好和免打扰时段?</strong> 在扇出路径上、任何任务入队之前先咨询偏好服务。它存每用户、每分类的渠道开关、用户时区下的免打扰窗口和频率上限,缓存在 Redis 里实现个位数毫秒读取。营销类分类被硬性检查;关键交易类通知(安全告警、OTP)绕过非必要偏好。<br>
+      <strong>怎么防止同一条通知发两次?</strong> 两层幂等:生产者带上确定性的 notification_id(事件 + 用户 + 模板的哈希);消费者在发送前对 Redis 去重键做 SETNX,若已存在就跳过。再配合频率上限,把重复触发和重试风暴收敛成一条被投递的消息。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/system-design/news-feed/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计一个 News Feed</div>
+      </a>
+      <a href="/zh/system-design/rate-limiter/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计一个限流器</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

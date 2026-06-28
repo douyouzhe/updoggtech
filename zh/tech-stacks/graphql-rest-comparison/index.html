@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入对比 GraphQL 与 REST:资源与 API 设计、过度/不足获取、解析器执行模型与 N+1 问题、DataLoader 批处理、缓存(APQ/cacheControl)、schema 设计、游标分页与 Relay Connection、错误处理与部分响应、订阅、联邦与 schema 拼接、查询复杂度安全,以及 REST vs GraphQL vs gRPC 决策矩阵。">
-<title>GraphQL 与 REST 对比 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<meta name="description" content="GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。">
+<title>GraphQL 与 REST 对比 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="GraphQL 与 REST 对比">
 <meta property="og:description" content="GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GraphQL 与 REST 对比">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="GraphQL 与 REST 对比">
 <meta name="twitter:description" content="GraphQL vs REST:N+1、DataLoader、缓存、订阅、联邦、安全、gRPC 决策矩阵。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL 与 REST 对比","description":"GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL 与 REST 对比","description":"GraphQL vs REST:解析器与 N+1、DataLoader、缓存、schema 设计、分页、订阅、联邦、安全、REST/GraphQL/gRPC 决策。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "GraphQL vs REST——何时选 GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "当客户端有复杂、多样的数据需求(如移动应用和 web 应用需要同一数据的不同字段)——GraphQL 用单个类型化查询消除过度获取和多次往返。"}}, {"@type": "Question", "name": "GraphQL 里的 N+1 问题是什么?", "acceptedAnswer": {"@type": "Answer", "text": "查一个项列表,每项触发单独的解析器调用——取 100 部电影各为导演发单独 DB 查询。修法是 DataLoader:它把单个事件循环 tick 内所有 .load(id) 调用批处理成一个批函数,然后在请求生命周期内记忆化结果,把 N 个查询坍缩成 1 个。"}}, {"@type": "Question", "name": "REST 相对 GraphQL 的优势?", "acceptedAnswer": {"@type": "Answer", "text": "REST 的 HTTP 缓存直截了当(GET 请求按 URL 缓存);GraphQL 默认用 POST,使 HTTP 级缓存更难。REST 对消费者稳定可预测的公开 API 也更简单。"}}, {"@type": "Question", "name": "GraphQL 里怎么做缓存?", "acceptedAnswer": {"@type": "Answer", "text": "三层:DataLoader 做请求级记忆化;解析器里的 Redis 做跨请求缓存;自动持久化查询(APQ)把 POST 转 GET 让 CDN 能缓存公开查询。用 @cacheControl 给类型标注以按字段设 max-age。"}}, {"@type": "Question", "name": "怎么防止恶意客户端发查询 DoS 你的 GraphQL 服务器?", "acceptedAnswer": {"@type": "Answer", "text": "深度限制(拒绝深于 N 层的查询)、复杂度分析(每字段分配数值成本,超预算拒绝)、网关按用户限流,以及生产中:持久化查询白名单,只执行已知查询哈希。"}}, {"@type": "Question", "name": "什么时候用 gRPC 而非 GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "内部微服务通信,那里二进制编码、双向流和严格 proto 契约比开发者人体工学或浏览器兼容性更重要。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"GraphQL 与 REST 对比","item":"https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/graphql-rest-comparison/">EN</a>
-        <a href="/zh/tech-stacks/graphql-rest-comparison/" class="active">中</a>
+        <a href="/tech-stacks/graphql-rest-comparison/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/graphql-rest-comparison/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">graphql-rest-comparison</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">GraphQL 与 REST 对比</h1>
     <div class="article-meta">
@@ -454,7 +472,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <p>REST 免费继承几十年的 HTTP 缓存基础设施。<code>GET /movies/123</code> 响应能被浏览器、代理和 CDN 按 URL 为键缓存;<code>Cache-Control</code>、<code>ETag</code>、<code>Last-Modified</code> 头自动接好一切。GraphQL 抛弃了这个,因为几乎所有 GraphQL 请求都经 <code>POST</code> 发到单个端点——HTTP 缓存默认把所有 POST 当不可缓存。这不是小问题;光 CDN 缓存就能在设计良好的 REST API 上吸收 90%+ 的读流量。</p>
 
     <h3>第 1 层——应用级缓存</h3>
-    <p>最可移植的方案是在数据层而非 HTTP 层缓存。DataLoader 已提供请求级记忆化(上面描述)。对跨请求缓存,解析器能在打数据库前检查 Redis。这与 REST 用的 cache-aside 模式一样,只是移进解析器而非 controller。</p>
+    <p>最可移植的方案是在数据层而非 HTTP 层缓存。DataLoader 已提供请求级记忆化(上面描述)。对跨请求缓存,解析器能在打数据库前检查 <a href="/zh/tech-stacks/redis/">Redis</a>。这与 REST 用的 cache-aside 模式一样,只是移进解析器而非 controller。</p>
     <p>更 GraphQL 原生的方法是用缓存提示做<strong>响应字段级缓存</strong>。Apollo Server 的 <code>@cacheControl</code> 指令让你给单个类型或字段标注 max-age 和 scope(<code>PUBLIC</code> 或 <code>PRIVATE</code>)。服务器计算所有解析字段中最小的缓存提示并据此发一个 <code>Cache-Control</code> 头——若所有字段都公开且 max-age 非零,允许共享缓存缓存响应。</p>
 
     <div class="code-block">
@@ -513,7 +531,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
 
     <div class="callout">
       <div class="callout-label">CDN 策略</div>
-      <p>有了 APQ + <code>@cacheControl</code> 提示,完全公开的查询(无用户特定数据)能像 REST 一样从 CDN 边缘节点服务。问题:一个混合公开电影数据和观众观看列表的单个查询会得到最差的缓存提示(maxAge 0、PRIVATE)并完全绕过 CDN。设计查询把公开和私有数据分开,或把它们拆成两个请求。</p>
+      <p>有了 APQ + <code>@cacheControl</code> 提示,完全公开的查询(无用户特定数据)能像 REST 一样从 <a href="/zh/tech-stacks/cdn/">CDN</a> 边缘节点服务。问题:一个混合公开电影数据和观众观看列表的单个查询会得到最差的缓存提示(maxAge 0、PRIVATE)并完全绕过 CDN。设计查询把公开和私有数据分开,或把它们拆成两个请求。</p>
     </div>
 
     <h2>Schema 设计最佳实践</h2>
@@ -786,7 +804,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     </div>
 
     <h3>限流与持久化查询白名单</h3>
-    <p>除每查询分析外,在 API 网关层应用限流——按 IP 和按已认证用户的令牌桶是标准方法。在你控制所有客户端的生产 API 里(第一方移动应用或 SPA),<strong>持久化查询白名单</strong>是最强安全姿态:服务器只执行哈希在批准注册表里的查询;任意查询字符串被完全拒绝。这在生产中实质把 GraphQL 变成类型化 REST API,同时在开发中保留完整灵活性。</p>
+    <p>除每查询分析外,在 <a href="/zh/tech-stacks/api-gateway/">API 网关</a>层应用限流——按 IP 和按已认证用户的令牌桶是标准方法。在你控制所有客户端的生产 API 里(第一方移动应用或 SPA),<strong>持久化查询白名单</strong>是最强安全姿态:服务器只执行哈希在批准注册表里的查询;任意查询字符串被完全拒绝。这在生产中实质把 GraphQL 变成类型化 REST API,同时在开发中保留完整灵活性。</p>
 
     <div class="callout">
       <div class="callout-label">安全清单</div>
@@ -893,7 +911,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <ul>
       <li><strong>用 GraphQL</strong>当你有多种客户端类型(web、iOS、Android、伙伴集成)且数据需求显著不同,或当一个商品页需要在单个低延迟请求里从多个资源取数据时。经典用例是一个 BFF(Backend for Frontend)层,把多个微服务聚合成一个客户端优化的图。</li>
       <li><strong>用 REST</strong>应对消费者未知、HTTP 缓存有价值的公开 API;访问模式可预测的简单 CRUD 服务;内容协商重要的文件上传或响应;以及想要最少运维开销和最广中间件生态的团队。</li>
-      <li><strong>用 gRPC</strong>应对性能关键、载荷大小重要、需要双向流,或想在编译期强制严格契约的内部服务间通信。gRPC 很少直接暴露给浏览器——前面放一个翻译层(gRPC-Gateway、gRPC-web,或 REST/GraphQL 门面)。</li>
+      <li><strong>用 <a href="/zh/tech-stacks/grpc/">gRPC</a></strong>应对性能关键、载荷大小重要、需要双向流,或想在编译期强制严格契约的内部服务间通信。gRPC 很少直接暴露给浏览器——前面放一个翻译层(gRPC-Gateway、gRPC-web,或 REST/GraphQL 门面)。</li>
       <li><strong>混合架构很正常</strong>:一个面向客户端的 GraphQL API 网关、内部微服务间的 gRPC,以及第三方 webhook 和公开集成的 REST 是常见且明智的组合。选取舍适合特定通信通道的协议,而非适合整个系统的那个。</li>
     </ul>
 
@@ -925,9 +943,10 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -935,7 +954,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

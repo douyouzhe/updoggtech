@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Evals for LLM apps: how to test a probabilistic system and an agent — eval datasets, grading methods, LLM-as-judge, trajectory eval, and offline vs online.">
+<title>Evals for LLM Apps — How to Test an Agent | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/llm-evals/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/llm-evals/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Evals for LLM Apps — How to Test an Agent">
+<meta property="og:description" content="Evals for LLM apps: how to test a probabilistic system and an agent — eval datasets, grading methods, LLM-as-judge, trajectory eval, and offline vs online.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/llm-evals/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Evals for LLM Apps — How to Test an Agent">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Evals for LLM Apps">
+<meta name="twitter:description" content="How to actually test LLM apps and agents — datasets, graders, LLM-as-judge, trajectory eval, CI gates.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Evals for LLM Apps — How to Test an Agent","description":"Evals for LLM apps: how to test a probabilistic system and an agent — eval datasets, grading methods, LLM-as-judge, trajectory eval, and offline vs online.","datePublished":"2026-06-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/llm-evals/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-16","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why can't you unit-test an LLM app?", "acceptedAnswer": {"@type": "Answer", "text": "It's non-deterministic and \"correct\" is open-ended, so you evaluate statistically — a rate over many cases — not one input/output."}}, {"@type": "Question", "name": "What's the most important part of an eval?", "acceptedAnswer": {"@type": "Answer", "text": "The dataset — a curated golden set grown from production traffic, with a held-out slice you never tune on."}}, {"@type": "Question", "name": "How do you grade fuzzy outputs?", "acceptedAnswer": {"@type": "Answer", "text": "LLM-as-judge with an explicit rubric (prefer pairwise), validated against human labels and de-biased for position/verbosity."}}, {"@type": "Question", "name": "How do you eval an agent?", "acceptedAnswer": {"@type": "Answer", "text": "Beyond final-answer success, grade the trajectory: tool-call correctness, sane step order, no loops, and step/token/cost budgets."}}, {"@type": "Question", "name": "Offline vs online evals?", "acceptedAnswer": {"@type": "Answer", "text": "Offline suites gate releases in CI (catch regressions); online A/B + guardrail evals + user feedback catch what the offline set misses and feed new cases back."}}, {"@type": "Question", "name": "Biggest risk?", "acceptedAnswer": {"@type": "Answer", "text": "Overfitting to the eval set or trusting an uncalibrated judge — you optimize the metric instead of the product."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"Evals for LLM Apps — How to Test an Agent","item":"https://sdeoffer.com/ai-coding/llm-evals/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.2); border-left: 3px solid var(--accent4); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent4); }
+  .compare-table .col-b { color: var(--accent2); }
+
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.5; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/ai-coding/llm-evals/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/llm-evals/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">llm-evals</span>
+    </nav>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Evals for LLM Apps — How to Test an Agent</h1>
+    <div class="article-meta">
+      <span>Jun 16, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>You can unit-test a function: same input, same output, green or red. You cannot unit-test an LLM the same way — the same prompt can give different answers, "correct" is fuzzy, and a tweak that fixes one case silently breaks ten others. So teams ship on <em>vibes</em>: someone tries a few prompts, it "seems better," it goes out. That doesn't scale and it hides regressions. <strong>Evals</strong> are the discipline that replaces vibes with measurement — a repeatable way to score how well an LLM app or agent does its job, so you can iterate with evidence instead of hope. This piece is about building that: datasets, grading methods, judging with models, evaluating <em>agents</em>, and wiring it all into CI and production.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>You can't unit-test a probabilistic system</strong> — evals are statistical: run many cases, score them, track the rate. One example proves nothing.</li>
+        <li><strong>The eval set is the asset.</strong> A curated "golden set" of realistic cases (input → expected/criteria), grown from production traces, is worth more than any single metric.</li>
+        <li><strong>Four ways to grade:</strong> heuristic/exact, code-based assertions, <em>LLM-as-judge</em>, and human review — use the cheapest one that's trustworthy for each criterion.</li>
+        <li><strong>LLM-as-judge scales human judgment</strong> for fuzzy criteria, but it has biases (position, verbosity, self-preference) and must be <em>calibrated against human labels</em>.</li>
+        <li><strong>Agents need trajectory evals</strong>, not just final-answer checks — did it pick the right tools, in a sane order, without looping or burning budget?</li>
+        <li><strong>Two loops:</strong> offline evals gate releases (CI regression), online evals (A/B + guardrails) catch what the offline set misses.</li>
+        <li><strong>Evals can be gamed.</strong> Overfit to your set and you improve the number, not the product — keep a held-out set and refresh from real traffic.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>An eval harness is a test suite for non-determinism: a dataset of cases, a way to run your system on each, one or more graders (heuristic, code, LLM-judge, human) that score the output, and aggregation that turns scores into a metric you compare against a baseline. Build the dataset from real traffic, grade fuzzy things with an LLM-judge you've calibrated to humans, evaluate agents on their <em>trajectory</em> not just the answer, gate releases on an offline set, and keep online evals running because production always surprises you.</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The eval loop: dataset, run system, grade, aggregate and compare, then ship or iterate, with production traces feeding the dataset">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arp" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="30"  y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="115" y="84" font-size="12" fill="#e2e8f0">Eval dataset</text><text x="115" y="102" font-size="9" fill="#7a8aa0">golden: input → expected</text>
+          <rect x="250" y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="335" y="84" font-size="12" fill="#e2e8f0">System under test</text><text x="335" y="102" font-size="9" fill="#7a8aa0">prompt · RAG · agent</text>
+          <rect x="470" y="56" width="170" height="66" rx="9" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/><text x="555" y="84" font-size="12" fill="#e2e8f0">Graders</text><text x="555" y="102" font-size="9" fill="#7a8aa0">heuristic·code·judge·human</text>
+          <rect x="690" y="56" width="240" height="66" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="810" y="84" font-size="12" fill="#e2e8f0">Aggregate &amp; compare</text><text x="810" y="102" font-size="9" fill="#7a8aa0">success% · faithfulness · cost vs baseline</text>
+          <rect x="690" y="176" width="240" height="56" rx="9" fill="#161b25" stroke="#a78bfa" stroke-width="1.5"/><text x="810" y="200" font-size="12" fill="#e2e8f0">Ship ✓  /  Iterate ↺</text><text x="810" y="218" font-size="9" fill="#7a8aa0">regression? gate the release</text>
+          <rect x="30"  y="290" width="190" height="52" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="125" y="313" font-size="11" fill="#e2e8f0">Production traces</text><text x="125" y="328" font-size="9" fill="#7a8aa0">+ user feedback</text>
+        </g>
+        <line x1="200" y1="89" x2="248" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="420" y1="89" x2="468" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="640" y1="89" x2="688" y2="89" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="810" y1="122" x2="810" y2="176" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <path d="M690,204 L335,204 L335,124" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="500" y="196" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">iterate — fix prompt / model / retrieval</text>
+        <path d="M125,290 L125,124" fill="none" stroke="#7a8aa0" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="150" y="210" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="start">curate new cases</text>
+      </svg>
+      <figcaption>The eval loop — run the system over a dataset, grade each output, aggregate vs a baseline, then ship or iterate; production traces continuously feed new cases back into the dataset</figcaption>
+    </figure>
+
+    <h2>Why Evals, Not Vibes</h2>
+    <p>Three properties of LLM apps break normal testing. They're <strong>non-deterministic</strong> (the same input varies, so a single pass tells you little). "Correct" is <strong>open-ended</strong> (there's rarely one right string — a summary can be good in many ways). And changes have <strong>non-local effects</strong> (improving a prompt for one case quietly degrades others). The consequence is that you must evaluate <em>statistically</em>: run a population of cases and track the <strong>rate</strong> of success, the way you'd track a model's accuracy — not eyeball one output. Evals are how a team answers "is this version actually better?" with a number instead of an argument.</p>
+
+    <h2>What to Evaluate: the Eval Pyramid</h2>
+    <p>Don't only test the whole thing end to end. Like a test pyramid, mix granularities: many cheap <strong>component evals</strong> (does the retriever return the right docs? does the router pick the right tool? does the output parse as valid JSON?), fewer <strong>end-to-end evals</strong> (given a user request, is the final answer good?), and a thin layer of expensive <strong>human review</strong>. Component evals localize failures — when end-to-end drops, they tell you <em>which</em> stage broke — which is exactly what you need in a multi-step pipeline like <a href="/system-design/rag-system/">RAG</a> or an agent.</p>
+
+    <h2>The Eval Dataset</h2>
+    <p>Everything rests on the dataset, and a good one is the real moat. A case is an <strong>input plus a way to judge the output</strong> — sometimes an exact expected answer, more often a set of criteria or a reference to compare against. Where do cases come from?</p>
+    <ul>
+      <li><strong>Production traces</strong> — the best source. Mine real user inputs (especially failures and thumbs-down) and curate them into cases. Your eval set should look like your traffic.</li>
+      <li><strong>Hand-written edge cases</strong> — the tricky inputs you know are hard: ambiguous queries, adversarial prompts, empty/garbage input, the long tail.</li>
+      <li><strong>Synthetic generation</strong> — an LLM can draft candidate cases to bootstrap coverage, but a human must review them or you're grading against made-up truth.</li>
+    </ul>
+    <p>Two rules keep the set honest: <strong>label a held-out slice you never tune on</strong> (so you measure generalization, not memorization), and <strong>keep refreshing it from new traffic</strong> (a static set goes stale as usage shifts). Aim for coverage of the input distribution and the failure modes, not a huge count — a few hundred well-chosen cases beat thousands of near-duplicates.</p>
+
+    <h2>How to Grade an Output</h2>
+    <p>For each case you need a <strong>grader</strong> that turns an output into a score. There are four kinds, cheapest and most reliable first:</p>
+
+    <table class="compare-table">
+      <thead><tr><th>Grader</th><th>When to use it</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">Heuristic / exact</td><td class="col-b">There's a known answer or pattern: exact match, regex, contains-keyword, valid JSON, classification accuracy. Cheap, deterministic — use whenever possible.</td></tr>
+        <tr><td class="col-a">Code-based assertion</td><td class="col-b">Correctness is checkable by running code: does the generated SQL execute and return the right rows? does the code pass tests? Strong and objective.</td></tr>
+        <tr><td class="col-a">LLM-as-judge</td><td class="col-b">The criterion is fuzzy and language-y: is this summary faithful? is this answer helpful and on-tone? Scales human-like judgment cheaply.</td></tr>
+        <tr><td class="col-a">Human review</td><td class="col-b">The gold standard for nuance and for calibrating the others; too slow/costly for every run, so sample it.</td></tr>
+      </tbody>
+    </table>
+
+    <p>The art is matching grader to criterion: don't pay an LLM-judge to check something a regex can verify, and don't pretend a keyword match captures "is this explanation clear." Many real evals combine graders — a code check for format plus an LLM-judge for quality.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">an eval run = dataset × system × graders</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>scores = []
+<span class="kw">for</span> case <span class="kw">in</span> dataset:
+    out = system.<span class="fn">run</span>(case.input)            <span class="cm"># the app/agent under test</span>
+    s = {
+        <span class="str">"format"</span>:  <span class="fn">is_valid_json</span>(out),         <span class="cm"># heuristic</span>
+        <span class="str">"correct"</span>: <span class="fn">run_tests</span>(out, case.tests),  <span class="cm"># code-based</span>
+        <span class="str">"helpful"</span>: judge.<span class="fn">score</span>(case.input, out, rubric),  <span class="cm"># LLM-as-judge</span>
+    }
+    scores.append(s)
+report = <span class="fn">aggregate</span>(scores)               <span class="cm"># pass-rate per criterion</span>
+<span class="fn">assert</span> report.correct &gt;= baseline.correct  <span class="cm"># CI gate: no regression</span></code></pre>
+    </div>
+
+    <h2>LLM-as-Judge, Done Carefully</h2>
+    <p>For the fuzzy criteria — faithfulness, helpfulness, tone, "did it follow instructions" — a strong model can grade outputs at a fraction of the cost and latency of humans. This is <strong>LLM-as-judge</strong>, and it's what makes evaluating open-ended generation tractable. But a naive judge is unreliable, so treat it like a model you're deploying: design it, then validate it.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 720 270" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LLM-as-judge: query, system output, and a rubric go into a judge model that emits a score and rationale">
+        <defs>
+          <marker id="ar2" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7a8aa0"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="24" y="40"  width="170" height="40" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="109" y="64" font-size="11" fill="#e2e8f0">query / task</text>
+          <rect x="24" y="108" width="170" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="109" y="132" font-size="11" fill="#e2e8f0">system output</text>
+          <rect x="24" y="176" width="170" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="109" y="200" font-size="11" fill="#e2e8f0">rubric / reference</text>
+          <rect x="300" y="92"  width="150" height="72" rx="9" fill="#161b25" stroke="#a78bfa" stroke-width="1.5"/><text x="375" y="122" font-size="12" fill="#e2e8f0">Judge LLM</text><text x="375" y="140" font-size="9" fill="#7a8aa0">scores vs rubric</text>
+          <rect x="540" y="92"  width="156" height="72" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="618" y="118" font-size="11" fill="#e2e8f0">score + rationale</text><text x="618" y="136" font-size="9" fill="#7a8aa0">e.g. 1–5 · pass/fail</text>
+          <line x1="194" y1="60"  x2="298" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="194" y1="128" x2="298" y2="128" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="194" y1="196" x2="298" y2="140" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="450" y1="128" x2="538" y2="128" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+        </g>
+      </svg>
+      <figcaption>LLM-as-judge — the task, the system's output, and an explicit rubric go into a judge model that returns a score plus a rationale; calibrate it against human labels before you trust it</figcaption>
+    </figure>
+
+    <h3>Make the judge reliable</h3>
+    <ul>
+      <li><strong>Give it a rubric.</strong> Don't ask "is this good?" — give explicit criteria and a scale ("score 1–5 on faithfulness: 5 = every claim supported by the source…"). Ask for a rationale before the score; it improves consistency.</li>
+      <li><strong>Prefer pairwise when you can.</strong> "Which answer is better, A or B?" is more reliable than absolute 1–5 scores, and it's exactly what you want when comparing two versions.</li>
+      <li><strong>Know the biases.</strong> Judges favor the first option (<em>position bias</em> — randomize order), longer answers (<em>verbosity bias</em>), and their own family's outputs (<em>self-preference</em>). Mitigate, don't ignore.</li>
+      <li><strong>Calibrate against humans.</strong> Have humans label a sample, then check the judge agrees (e.g. measure agreement/correlation). A judge you haven't validated is just another unverified model in your pipeline.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">key point</div>
+      <p>The judge is part of your system, so it needs its own eval. "We use an LLM to grade" is not a quality claim until you can say "and it agrees with human labels X% of the time." Calibration is what separates a trustworthy judge from circular self-assessment.</p>
+    </div>
+
+    <h2>Evaluating Agents, Not Just Answers</h2>
+    <p>Agents (see <a href="/ai-coding/how-ai-coding-agents-work/">how agents work</a>) raise the bar: a multi-step agent can reach a good final answer through a terrible path — or fail in the middle in ways a final-answer check misses. So evaluate the <strong>trajectory</strong>, not only the outcome:</p>
+    <ul>
+      <li><strong>Task success</strong> — did it ultimately accomplish the goal? (the end-to-end metric)</li>
+      <li><strong>Tool-call correctness</strong> — did it call the right tools with the right arguments, and recover when one failed?</li>
+      <li><strong>Trajectory quality</strong> — a sane sequence of steps, no pointless loops, no repeating a failing action.</li>
+      <li><strong>Efficiency</strong> — steps, tokens, latency, and cost to get there; an agent that succeeds in 40 steps and $2 is worse than one that does it in 6 steps and 20¢.</li>
+    </ul>
+    <p>Practically, you log the full trajectory (every prompt, tool call, and observation) and grade it — heuristics for tool-call validity and step/cost budgets, an LLM-judge for "was this a reasonable plan." This is why <a href="/ai-coding/harness-engineering/">harness engineering</a> and evals are joined at the hip: you tune the harness against trajectory evals.</p>
+
+    <h2>Offline Gates and Online Evals</h2>
+    <p>Evals run in two loops, and you need both.</p>
+    <h3>Offline — gate the release</h3>
+    <p>Run the eval suite in CI on every meaningful change (prompt edit, model swap, retrieval tweak). The suite reports pass-rates per criterion and <strong>compares against the current baseline</strong>; a drop blocks the merge, the same way a failing unit test does. This is what lets you change prompts without fear — the set catches the silent regressions.</p>
+    <h3>Online — production never matches your set</h3>
+    <p>Offline evals only cover what you thought to include, and real traffic always drifts, so evaluate in production too: <strong>A/B test</strong> a new version against the old on live traffic with real outcome metrics; run cheap <strong>guardrail evals</strong> on a sample of live outputs (an online LLM-judge flagging unfaithful or unsafe responses); and capture <strong>user feedback</strong> (thumbs, edits, regenerations) as a continuous, if noisy, quality signal. The failures you find online become tomorrow's offline cases — closing the loop in the diagram above.</p>
+
+    <h2>Pitfalls and Tradeoffs</h2>
+    <ul>
+      <li><strong>Overfitting to the eval set.</strong> Tune long enough against a fixed set and you improve the score, not the product. Hold out a slice, refresh from traffic, and watch online metrics too.</li>
+      <li><strong>An unvalidated judge.</strong> Trusting LLM-as-judge without calibrating to humans bakes the judge's biases into every decision. Validate, then re-validate when you change the judge model.</li>
+      <li><strong>Contaminated or stale data.</strong> Cases leaked from training data inflate scores; cases that no longer resemble traffic mislead you. Curate and rotate.</li>
+      <li><strong>Optimizing one number.</strong> A single average hides trade-offs — quality can rise while cost or latency explodes, or one slice regresses while the mean improves. Track a small dashboard (per-criterion, per-slice), not one figure.</li>
+      <li><strong>Cost of evals.</strong> LLM-judge and big suites cost money and time; tier them — fast cheap checks on every commit, the full expensive suite nightly or pre-release.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>Evals turn "seems better" into "is better, by this much." Build a realistic dataset from production, grade each criterion with the cheapest trustworthy method (heuristic → code → calibrated LLM-judge → human), evaluate agents on their trajectory and cost rather than just the final answer, gate releases on an offline suite, and keep online evals running because the eval set never fully matches reality. The team that can measure quality iterates faster than the team arguing about it.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>Why can't you unit-test an LLM app?</strong> It's non-deterministic and "correct" is open-ended, so you evaluate statistically — a rate over many cases — not one input/output.<br>
+      <strong>What's the most important part of an eval?</strong> The dataset — a curated golden set grown from production traffic, with a held-out slice you never tune on.<br>
+      <strong>How do you grade fuzzy outputs?</strong> LLM-as-judge with an explicit rubric (prefer pairwise), validated against human labels and de-biased for position/verbosity.<br>
+      <strong>How do you eval an agent?</strong> Beyond final-answer success, grade the trajectory: tool-call correctness, sane step order, no loops, and step/token/cost budgets.<br>
+      <strong>Offline vs online evals?</strong> Offline suites gate releases in CI (catch regressions); online A/B + guardrail evals + user feedback catch what the offline set misses and feed new cases back.<br>
+      <strong>Biggest risk?</strong> Overfitting to the eval set or trusting an uncalibrated judge — you optimize the metric instead of the product.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/harness-engineering/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Harness Engineering</div>
+      </a>
+      <a href="/ai-coding/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">AI Coding</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

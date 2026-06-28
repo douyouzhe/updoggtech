@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
-<title>DDIA Ch.1 — Reliable, Scalable &amp; Maintainable | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-1/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-1/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-1/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-1/">
+<meta name="description" content="Reliability, scalability, and maintainability — the three pillars of data systems: fault tolerance, load parameters, percentile latency, and operability.">
+<title>DDIA Ch.1 — Reliable, Scalable &amp; Maintainable | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-1/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-1/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-1/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-1/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.1 — Reliable, Scalable &amp; Maintainable">
-<meta property="og:description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-1/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/chapter-1-1.jpg">
+<meta property="og:description" content="Reliability, scalability, and maintainability — the three pillars of data systems: fault tolerance, load parameters, percentile latency, and operability.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-1/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.1 — Reliable, Scalable &amp; Maintainable">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.1 — Reliable, Scalable &amp; Maintainable">
 <meta name="twitter:description" content="Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.1 — Reliable, Scalable & Maintainable","description":"Ch.1 of DDIA: what makes a system reliable, how to reason about scalability with load parameters and percentile latency, and the three pillars of maintainability.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-1/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.1 — Reliable, Scalable & Maintainable","description":"Reliability, scalability, and maintainability — the three pillars of data systems: fault tolerance, load parameters, percentile latency, and operability.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-1/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What's the difference between fault and failure?", "acceptedAnswer": {"@type": "Answer", "text": "A fault is one component deviating from its spec; a failure is when the whole system stops providing the required service. Fault-tolerant systems prevent faults from cascading into failures — and deliberately triggering faults (chaos engineering) is how you verify the machinery works."}}, {"@type": "Question", "name": "Why use p99 instead of average latency?", "acceptedAnswer": {"@type": "Answer", "text": "Averages hide tail behavior. The slowest 1% of users are often your highest-value customers (most data, most active). SLAs are written in percentiles for exactly this reason. Also: a page composed of 20 parallel calls where each has p95 = 200 ms will statistically have a slow call on nearly every render — the average per-call latency is irrelevant to page latency."}}, {"@type": "Question", "name": "Fan-out on write vs read — how did Twitter solve it?", "acceptedAnswer": {"@type": "Answer", "text": "Fan-out on write pre-computes home timelines at write time (fast reads, expensive for high-follower accounts). Twitter uses a hybrid: fan-out on write for normal users, pull-on-read for celebrities. The critical load parameter is the distribution of follower counts, not average tweet rate."}}, {"@type": "Question", "name": "What is head-of-line blocking?", "acceptedAnswer": {"@type": "Answer", "text": "Slow requests occupy server threads, causing subsequent requests to queue behind them. Even if most requests are fast, a p95 slow request can block the queue and inflate end-to-end latency for all concurrent requests. Client-side latency measurement (not server-side) captures this."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.1 — Reliable, Scalable &amp; Maintainable","item":"https://sdeoffer.com/ddia/chapter-1/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -162,31 +175,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-1/" class="active">EN</a><a href="/zh/ddia/chapter-1/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-1/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-1/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-1</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.1</span>
     <h1 class="article-title">Reliable, Scalable &amp; Maintainable</h1>
     <div class="article-meta">
@@ -221,7 +238,7 @@
     <h2>Original Notes</h2>
     <p>The handwritten study notes this chapter summary is based on:</p>
     <figure class="article-figure">
-      <img src="/assets/img/chapter-1-1.jpg" alt="DDIA Chapter 1 handwritten notes" loading="lazy">
+      <img src="/assets/img/chapter-1-1.jpg" alt="DDIA Chapter 1 handwritten notes" width="1200" height="1554" fetchpriority="high">
       <figcaption>Original handwritten notes — DDIA Chapter 1</figcaption>
     </figure>
 
@@ -230,7 +247,7 @@
 
     <h3>Hardware Faults</h3>
     <p>Hard disks crash, RAM develops bad bits, power grids flicker, and someone unplugs the wrong cable. The mean time to failure of a single hard disk is roughly 10–50 years, but in a cluster of 10,000 disks you expect to lose a disk every day. Until recently the standard response was hardware-level redundancy — RAID arrays, dual power supplies, hot-swap CPUs, diesel generators. These were sufficient when a single machine was the unit of deployment.</p>
-    <p>As data volumes and compute requirements grew, applications began running on large numbers of commodity machines. Cloud platforms (AWS, GCP, Azure) explicitly do not guarantee single-machine reliability; instead they design for virtual machine preemption and node loss. The modern answer is <strong>multi-machine redundancy</strong> in software: replicated databases, stateless application servers behind load balancers, and <strong>rolling upgrades</strong> that take nodes out of rotation one at a time so the system keeps serving traffic throughout. Hardware faults remain relevant, but they are now handled by architecture, not just hardware spend.</p>
+    <p>As data volumes and compute requirements grew, applications began running on large numbers of commodity machines. Cloud platforms (AWS, GCP, Azure) explicitly do not guarantee single-machine reliability; instead they design for virtual machine preemption and node loss. The modern answer is <strong>multi-machine redundancy</strong> in software: <a href="/ddia/chapter-5/">replicated databases</a>, stateless application servers behind <a href="/tech-stacks/load-balancing/">load balancers</a>, and <strong>rolling upgrades</strong> that take nodes out of rotation one at a time so the system keeps serving traffic throughout. Hardware faults remain relevant, but they are now handled by architecture, not just hardware spend.</p>
 
     <div class="callout">
       <div class="callout-label">key distinction</div>
@@ -245,7 +262,7 @@
       <li>A service that responds slowly to requests, causing cascading timeouts in dependent services that pile up connections and exhaust their own thread pools — a failure mode that propagates through a microservice graph.</li>
       <li>A dependency that starts returning corrupted or unexpected responses after a version upgrade, corrupting data in callers silently.</li>
     </ul>
-    <p>There is no silver bullet. The mitigations are engineering discipline: careful reasoning about assumptions and interactions at design time, thorough automated testing at unit, integration, and end-to-end levels, process isolation to limit blast radius, crash-and-restart policies (let it fail fast rather than limp along corrupting data), and continuous monitoring with alerting on unexpected invariant violations. Systematic faults often lie dormant for months until a specific condition triggers them, which is why production monitoring of invariants matters even when everything seems fine.</p>
+    <p>There is no silver bullet. The mitigations are engineering discipline: careful reasoning about assumptions and interactions at design time, thorough automated testing at unit, integration, and end-to-end levels, process isolation to limit blast radius, crash-and-restart policies (let it fail fast rather than limp along corrupting data), and <a href="/tech-stacks/observability/">continuous monitoring</a> with alerting on unexpected invariant violations. Systematic faults often lie dormant for months until a specific condition triggers them, which is why production monitoring of invariants matters even when everything seems fine.</p>
 
     <h3>Human Errors</h3>
     <p>Post-mortem analyses of large-scale internet service outages consistently identify operator mistakes as the single leading cause — misconfigured deployments, accidental deletion, wrong database connection string, schema migration applied to the wrong environment. Humans are both the designers and operators of these systems, and they are inevitably fallible. Good system design accepts this and reduces the blast radius:</p>
@@ -408,16 +425,17 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

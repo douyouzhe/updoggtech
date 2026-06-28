@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into vector databases — embeddings, similarity metrics, approximate nearest neighbor (HNSW, IVF, quantization), what a vector DB adds over a library, retrieval-augmented generation (RAG), and hybrid search.">
-<title>Vector Databases — Embeddings &amp; ANN Search | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/vector-databases/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/vector-databases/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/vector-databases/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/vector-databases/">
+<meta name="description" content="Vector databases for semantic search: embeddings and similarity metrics, approximate nearest neighbor (HNSW, IVF), RAG retrieval, and hybrid search.">
+<title>Vector Databases — Embeddings &amp; ANN Search | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/vector-databases/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/vector-databases/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/vector-databases/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/vector-databases/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Vector Databases — Embeddings &amp; ANN Search">
-<meta property="og:description" content="Embeddings, similarity metrics, approximate nearest neighbor (HNSW/IVF), RAG, and hybrid search.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/vector-databases/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Vector databases for semantic search: embeddings and similarity metrics, approximate nearest neighbor (HNSW, IVF), RAG retrieval, and hybrid search.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/vector-databases/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Vector Databases — Embeddings &amp; ANN Search">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Vector Databases — Embeddings &amp; ANN Search">
 <meta name="twitter:description" content="How vector search works: embeddings, similarity, approximate nearest neighbor, and RAG.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Vector Databases — Embeddings & ANN Search","description":"Embeddings, similarity metrics, approximate nearest neighbor (HNSW/IVF), RAG, and hybrid search.","datePublished":"2023-09-18","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/vector-databases/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Vector Databases — Embeddings & ANN Search","description":"Vector databases for semantic search: embeddings and similarity metrics, approximate nearest neighbor (HNSW, IVF), RAG retrieval, and hybrid search.","datePublished":"2023-09-18","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/vector-databases/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-18","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What's an embedding?", "acceptedAnswer": {"@type": "Answer", "text": "A vector from a model where distance ≈ semantic similarity, so similar meanings are nearby points."}}, {"@type": "Question", "name": "Why approximate nearest neighbor?", "acceptedAnswer": {"@type": "Answer", "text": "Exact kNN is O(n·d) — too slow at millions of vectors; ANN (HNSW/IVF) gets ~99% recall far faster by trading a little accuracy."}}, {"@type": "Question", "name": "HNSW vs IVF?", "acceptedAnswer": {"@type": "Answer", "text": "HNSW = navigable small-world graph, high recall/speed, more memory; IVF = cluster into buckets, probe a few, cheaper but slightly lower recall."}}, {"@type": "Question", "name": "What does a vector DB add over a library?", "acceptedAnswer": {"@type": "Answer", "text": "Metadata filtering, persistence/CRUD, scaling, and ops — not just the raw ANN index."}}, {"@type": "Question", "name": "What's RAG?", "acceptedAnswer": {"@type": "Answer", "text": "Embed a query, retrieve the most similar chunks, and feed them into the LLM's context so answers are grounded in your data."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Vector Databases — Embeddings &amp; ANN Search","item":"https://sdeoffer.com/tech-stacks/vector-databases/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -152,18 +169,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/vector-databases/" class="active">EN</a><a href="/zh/tech-stacks/vector-databases/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/vector-databases/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/vector-databases/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">vector-databases</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">Vector Databases</h1>
     <div class="article-meta">
@@ -334,9 +352,10 @@ QUERY (online):
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -344,7 +363,7 @@ QUERY (online):
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

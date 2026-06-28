@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
-<title>DDIA Ch.3 — Storage &amp; Retrieval | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-3/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-3/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-3/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-3/">
+<meta name="description" content="How databases store and retrieve data: log-structured storage, SSTables, LSM-trees, B-trees, secondary indexes, column stores, and OLTP vs OLAP.">
+<title>DDIA Ch.3 — Storage &amp; Retrieval | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-3/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-3/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-3/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-3/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.3 — Storage &amp; Retrieval">
-<meta property="og:description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-3/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/chapter-3-1.jpg">
+<meta property="og:description" content="How databases store and retrieve data: log-structured storage, SSTables, LSM-trees, B-trees, secondary indexes, column stores, and OLTP vs OLAP.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-3/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.3 — Storage &amp; Retrieval">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.3 — Storage &amp; Retrieval">
 <meta name="twitter:description" content="Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.3 — Storage & Retrieval","description":"Ch.3 of DDIA: how databases store and retrieve data — log-structured storage, SSTable, LSM-tree, B-tree, secondary indexes, column stores, and OLTP vs OLAP.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-3/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.3 — Storage & Retrieval","description":"How databases store and retrieve data: log-structured storage, SSTables, LSM-trees, B-trees, secondary indexes, column stores, and OLTP vs OLAP.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-3/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-02","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "LSM-tree vs B-tree — when do you pick each?", "acceptedAnswer": {"@type": "Answer", "text": "LSM-tree for write-heavy workloads (Cassandra, RocksDB): sequential memtable appends + background compaction give higher write throughput and better compression, especially on SSDs. But reads may check multiple SSTables — mitigated by Bloom filters. B-tree for read-heavy or mixed OLTP (PostgreSQL, MySQL): deterministic O(log n) root-to-leaf path for fast predictable reads; writes do random page updates with WAL for durability. For truly mixed workloads, RocksDB (LSM) under MySQL (MyRocks) is a popular hybrid."}}, {"@type": "Question", "name": "What are write amplification, read amplification, and space amplification?", "acceptedAnswer": {"@type": "Answer", "text": "Write amp: bytes written to disk / bytes of application data (B-tree's in-place page writes are high; LSM compaction rewrites data across levels). Read amp: disk reads required per logical read (LSM can check many SSTables; B-tree is one path). Space amp: disk space used / logical data size (LSM has old + new data during compaction; B-tree reclaims freed pages quickly)."}}, {"@type": "Question", "name": "Why does column-oriented storage make analytics faster?", "acceptedAnswer": {"@type": "Answer", "text": "An OLAP query touches 3–5 columns out of potentially hundreds. Row storage must load all 100+ columns to extract those few. Column storage reads only the needed columns — often a 10–30× reduction in I/O. Combined with bitmap/RLE/dictionary compression (column values are repetitive) and CPU SIMD vectorized operations on compressed chunks, both I/O and CPU cycles are dramatically reduced."}}, {"@type": "Question", "name": "What is a Bloom filter and why do LSM-trees use one?", "acceptedAnswer": {"@type": "Answer", "text": "A probabilistic data structure with no false negatives: if the Bloom filter says \"key definitely not here,\" the key is guaranteed absent. LSM-trees attach one per SSTable to skip disk reads for SSTables that cannot contain the queried key — essential for reducing read amplification on negative lookups."}}, {"@type": "Question", "name": "What is write-ahead logging and why do both B-trees and LSM-trees need it?", "acceptedAnswer": {"@type": "Answer", "text": "WAL is an append-only durability log written before any data modification. B-trees use it to recover from crashes that interrupt in-place page updates (which leave pages partially modified). LSM-trees use it to recover the unflushed memtable after a crash (memtable contents are lost from RAM; WAL replays them). In both cases, the WAL is the source of truth for recent writes until they are durably committed to the main data structure."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.3 — Storage &amp; Retrieval","item":"https://sdeoffer.com/ddia/chapter-3/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -162,31 +175,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-3/" class="active">EN</a><a href="/zh/ddia/chapter-3/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-3/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-3/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-3</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.3</span>
     <h1 class="article-title">Storage &amp; Retrieval</h1>
     <div class="article-meta">
@@ -199,7 +216,7 @@
   </div>
 
   <div class="article-body">
-    <p>Chapter 3 answers the question every backend engineer should be able to answer in an interview: "How does a database actually store and retrieve data?" Kleppmann walks through two fundamentally different storage engine families, explains how indexes work, and then pivots to the analytical world of data warehouses and column stores.</p>
+    <p>Chapter 3 answers the question every backend engineer should be able to answer in an interview: "How does a database actually store and retrieve data?" Kleppmann walks through two fundamentally different storage engine families, explains <a href="/tech-stacks/database-indexing/">how indexes work</a>, and then pivots to the analytical world of data warehouses and column stores.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -221,7 +238,7 @@
     <h2>Original Notes</h2>
     <p>The handwritten study notes this chapter summary is based on:</p>
     <figure class="article-figure">
-      <img src="/assets/img/chapter-3-1.jpg" alt="DDIA Chapter 3 handwritten notes" loading="lazy">
+      <img src="/assets/img/chapter-3-1.jpg" alt="DDIA Chapter 3 handwritten notes" width="1200" height="2178" fetchpriority="high">
       <figcaption>Original handwritten notes — DDIA Chapter 3</figcaption>
     </figure>
 
@@ -246,7 +263,7 @@
 
     <h3>Hash Index (Bitcask)</h3>
     <p>The hash index is the simplest index structure for an append-only log. Bitcask (the default storage engine in Riak) maintains an in-memory hash map from every key to the byte offset of its most recent value in the log file. Each write appends a new entry to the log and updates the in-memory hash map pointer. Each read performs one disk seek to the stored offset and loads the value. No scanning needed.</p>
-    <p>The critical constraint: <strong>the entire key set must fit in RAM</strong>. The values can be arbitrarily large and live on disk; only the keys and offsets need to be in memory. This constraint is acceptable for workloads with a bounded number of distinct keys but a high update rate per key — think URL shorteners (millions of URLs, each clicked and updated many times), IoT sensor readings (thousands of sensor IDs, millions of time-series values), or session stores (fixed user count, frequently refreshed sessions).</p>
+    <p>The critical constraint: <strong>the entire key set must fit in RAM</strong>. The values can be arbitrarily large and live on disk; only the keys and offsets need to be in memory. This constraint is acceptable for workloads with a bounded number of distinct keys but a high update rate per key — think <a href="/system-design/url-shortener/">URL shorteners</a> (millions of URLs, each clicked and updated many times), IoT sensor readings (thousands of sensor IDs, millions of time-series values), or <a href="/tech-stacks/redis/">session stores</a> (fixed user count, frequently refreshed sessions).</p>
     <p>The log file grows without bound, so Bitcask segments the log into files of a maximum size. <strong>Compaction</strong> runs as a background process: it reads multiple segment files, keeps only the most recent value for each key (discarding all earlier values for the same key), and writes a new merged segment file. Old segment files are deleted once the merged file is written and the in-memory hash map is updated. Compaction runs concurrently — reads continue against the old segments while compaction writes the new one, then an atomic pointer swap transitions to the new segment.</p>
     <p>On crash recovery, the in-memory hash map is lost. Bitcask rebuilds it by replaying the log on restart — but this is slow for large logs. The optimization is to write a <strong>hash map snapshot</strong> to disk periodically; on restart, load the snapshot and replay only the segment entries written since the last snapshot.</p>
 
@@ -490,16 +507,17 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

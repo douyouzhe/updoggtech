@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="RAG system design — chunk and embed documents, build an ANN vector index, run hybrid retrieval and reranking, ground generation, and handle freshness and cost.">
+<title>Design a RAG System at Scale — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/rag-system/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/rag-system/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/rag-system/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/rag-system/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Design a RAG System at Scale — System Design">
+<meta property="og:description" content="RAG system design — chunk and embed documents, build an ANN vector index, run hybrid retrieval and reranking, ground generation, and handle freshness and cost.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/rag-system/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Design a RAG System at Scale — System Design">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Design a RAG System at Scale">
+<meta name="twitter:description" content="How to design retrieval-augmented generation at scale: indexing, vector search, reranking, grounded answers, cost.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a RAG System at Scale","description":"RAG system design — chunk and embed documents, build an ANN vector index, run hybrid retrieval and reranking, ground generation, and handle freshness and cost.","datePublished":"2026-06-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/rag-system/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-16","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is RAG, in one line?", "acceptedAnswer": {"@type": "Answer", "text": "Retrieve relevant text and put it in the prompt so the LLM answers from your data — changing the prompt, not the model."}}, {"@type": "Question", "name": "Why chunk, and how?", "acceptedAnswer": {"@type": "Answer", "text": "You embed/retrieve spans, and longer spans blur the vector; split on structure (~a few hundred tokens) with overlap, keeping source metadata."}}, {"@type": "Question", "name": "Why hybrid retrieval?", "acceptedAnswer": {"@type": "Answer", "text": "Vectors nail semantics but miss exact terms (codes, names); add BM25 and fuse — then rerank the candidates with a cross-encoder."}}, {"@type": "Question", "name": "Why a reranker?", "acceptedAnswer": {"@type": "Answer", "text": "First-stage retrieval maximizes recall cheaply; a cross-encoder precisely reorders the top ~100 → top ~5 — the biggest cheap quality win."}}, {"@type": "Question", "name": "How do you keep it fresh?", "acceptedAnswer": {"@type": "Answer", "text": "CDC/webhook-driven incremental indexing through the same chunk→embed→upsert path; the index is a replayable projection of the docs."}}, {"@type": "Question", "name": "How do you evaluate it?", "acceptedAnswer": {"@type": "Answer", "text": "The RAG triad — context relevance (recall@k), faithfulness, and answer relevance — on a golden set, with LLM-as-judge at scale."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a RAG System at Scale — System Design","item":"https://sdeoffer.com/system-design/rag-system/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent2); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.09), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent); }
+
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.5; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent2); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/system-design/rag-system/" class="active" hreflang="en">EN</a><a href="/zh/system-design/rag-system/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">rag-system</span>
+    </nav>
+    <span class="article-tag">System Design</span>
+    <h1 class="article-title">Design a RAG System at Scale</h1>
+    <div class="article-meta">
+      <span>Jun 16, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent2)">System Design</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>Retrieval-Augmented Generation (RAG) is how you make an LLM answer questions over <em>your</em> data — private docs, a knowledge base, last week's tickets — without retraining it. The idea is simple: before calling the model, <strong>retrieve the most relevant text and put it in the prompt</strong> so the answer is grounded in real sources instead of the model's frozen, fuzzy memory. But "simple" hides a real distributed system: an offline pipeline that turns documents into a searchable vector index, and an online pipeline that, per query, embeds, searches, reranks, assembles a prompt, and generates a cited answer — all fast, fresh, and cheap. This piece designs both ends and the tradeoffs an interviewer will probe.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>RAG is two pipelines:</strong> an <em>offline indexing</em> pipeline (load → chunk → embed → index) and an <em>online query</em> pipeline (embed → retrieve → rerank → generate). Design them separately.</li>
+        <li><strong>Chunking is the highest-leverage knob.</strong> Too big and retrieval is noisy; too small and you lose context. Split on structure with overlap, and keep a pointer back to the source.</li>
+        <li><strong>The vector index uses approximate nearest neighbor (ANN)</strong> — HNSW or IVF — trading a little recall for sub-linear search over millions of vectors.</li>
+        <li><strong>Hybrid retrieval beats pure vector.</strong> Combine semantic (embeddings) with keyword (BM25) and fuse the scores; add metadata filters for tenancy and freshness.</li>
+        <li><strong>Rerank the candidates.</strong> A cross-encoder reranks the top ~100 down to the top ~5 you actually put in the prompt — the cheapest big quality win.</li>
+        <li><strong>Generation must be grounded and cited.</strong> Instruct the model to answer only from the retrieved context and to cite chunks, so you can show sources and catch hallucination.</li>
+        <li><strong>Quality is measured, not assumed.</strong> Evaluate retrieval (recall@k) and answer faithfulness/relevance — the "RAG triad" — continuously.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Offline, you load documents, split them into overlapping chunks, embed each chunk, and upsert the vectors into an ANN index alongside metadata. Online, you embed the query, run hybrid (vector + keyword) search with metadata filters, rerank the candidates with a cross-encoder, assemble the top chunks into a grounded prompt, and have the LLM answer with citations. The hard parts are chunking, hybrid + rerank quality, freshness/incremental indexing, and evaluating that retrieval actually helped.</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RAG architecture: an offline indexing pipeline and an online query pipeline sharing a vector index">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arg" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#4ade80"/></marker>
+        </defs>
+        <rect x="24"  y="44" width="300" height="452" rx="12" fill="#181428" stroke="#3b2f63"/>
+        <text x="40"  y="66" font-family="'JetBrains Mono',monospace" font-size="10" fill="#a78bfa" letter-spacing="1">INDEXING PIPELINE · OFFLINE</text>
+        <rect x="636" y="44" width="300" height="452" rx="12" fill="#0f1b27" stroke="#1c4a63"/>
+        <text x="652" y="66" font-family="'JetBrains Mono',monospace" font-size="10" fill="#38bdf8" letter-spacing="1">QUERY PIPELINE · ONLINE</text>
+
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="48" y="84"  width="252" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="174" y="108" font-size="11" fill="#e2e8f0">Sources (PDF · web · DB · docs)</text>
+          <rect x="48" y="160" width="252" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="174" y="184" font-size="11" fill="#e2e8f0">Loader &amp; parser</text>
+          <rect x="48" y="234" width="252" height="44" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/><text x="174" y="255" font-size="11" fill="#e2e8f0">Chunker</text><text x="174" y="270" font-size="9" fill="#7a8aa0">split on structure · overlap</text>
+          <rect x="48" y="314" width="252" height="44" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/><text x="174" y="335" font-size="11" fill="#e2e8f0">Embedding model (batch)</text><text x="174" y="350" font-size="9" fill="#7a8aa0">chunk → vector</text>
+          <rect x="48" y="394" width="252" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="174" y="418" font-size="11" fill="#e2e8f0">Upsert vectors + metadata</text>
+
+          <rect x="372" y="216" width="216" height="108" rx="10" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/>
+          <text x="480" y="244" font-size="12" fill="#e2e8f0">VECTOR DB</text>
+          <text x="480" y="262" font-size="9" fill="#7a8aa0">ANN index (HNSW / IVF)</text>
+          <text x="480" y="294" font-size="9" fill="#7a8aa0">+ metadata filter store</text>
+          <text x="480" y="308" font-size="9" fill="#7a8aa0">+ BM25 keyword index</text>
+
+          <rect x="660" y="84"  width="252" height="38" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="786" y="108" font-size="11" fill="#e2e8f0">User query</text>
+          <rect x="660" y="150" width="252" height="38" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="786" y="174" font-size="11" fill="#e2e8f0">Embed query</text>
+          <rect x="660" y="216" width="252" height="44" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="786" y="237" font-size="11" fill="#e2e8f0">Hybrid retrieve (top-k)</text><text x="786" y="252" font-size="9" fill="#7a8aa0">vector + BM25 · filters</text>
+          <rect x="660" y="286" width="252" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="786" y="311" font-size="11" fill="#e2e8f0">Reranker (cross-encoder)</text>
+          <rect x="660" y="352" width="252" height="40" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="786" y="377" font-size="11" fill="#e2e8f0">Prompt assembly (+ chunks)</text>
+          <rect x="660" y="418" width="252" height="44" rx="8" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="786" y="439" font-size="11" fill="#e2e8f0">LLM → grounded answer</text><text x="786" y="454" font-size="9" fill="#7a8aa0">with citations</text>
+        </g>
+
+        <line x1="174" y1="124" x2="174" y2="160" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="174" y1="198" x2="174" y2="234" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="174" y1="278" x2="174" y2="314" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="174" y1="358" x2="174" y2="394" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="300" y1="414" x2="372" y2="300" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="356" y="372" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">upsert</text>
+
+        <line x1="786" y1="122" x2="786" y2="150" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="786" y1="188" x2="786" y2="216" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="786" y1="260" x2="786" y2="286" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="786" y1="326" x2="786" y2="352" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="786" y1="392" x2="786" y2="418" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#arg)"/>
+        <line x1="660" y1="238" x2="588" y2="262" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="624" y="240" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">top-k</text>
+      </svg>
+      <figcaption>RAG = two pipelines over one index — offline, documents are chunked, embedded, and upserted; online, a query is embedded, hybrid-retrieved, reranked, and answered with grounded citations</figcaption>
+    </figure>
+
+    <h2>Step 1 — Clarify the Requirements</h2>
+    <p>Scope it: are we building a Q&amp;A assistant over a corpus (support docs, internal wiki, legal contracts)? How big is the corpus, how fresh must it be, and is it multi-tenant? A focused set:</p>
+    <h3>Functional requirements</h3>
+    <ul>
+      <li>Ingest documents of mixed formats (PDF, HTML, Markdown, database rows) and keep the index updated as they change.</li>
+      <li>Answer a natural-language query with a response <strong>grounded in retrieved sources</strong>, returning citations.</li>
+      <li>Support <strong>metadata filters</strong> (tenant, document type, date, access control) on retrieval.</li>
+      <li>Say "I don't know" when nothing relevant is retrieved rather than hallucinating.</li>
+    </ul>
+    <h3>Non-functional requirements</h3>
+    <ul>
+      <li><strong>Low query latency</strong> — retrieval in tens of milliseconds; end-to-end dominated by the LLM call.</li>
+      <li><strong>Freshness</strong> — new/edited documents searchable within minutes, not a nightly rebuild.</li>
+      <li><strong>Scale</strong> — tens to hundreds of millions of chunks; thousands of queries/sec.</li>
+      <li><strong>Correctness &amp; safety</strong> — never leak one tenant's documents to another; ground answers to limit hallucination.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>State the framing early: <strong>RAG doesn't change the model, it changes the prompt.</strong> Every design decision is about getting the <em>right</em> chunks into a finite context window — so retrieval quality, not the LLM, is what you're really engineering.</p>
+    </div>
+
+    <h2>Step 2 — The Two Pipelines</h2>
+    <p>The cleanest mental model — and the structure interviewers want — is two independent pipelines that meet at the vector index. The <strong>indexing pipeline</strong> runs offline (and incrementally), turning documents into searchable vectors. The <strong>query pipeline</strong> runs online per request. Decoupling them means you can re-index, swap embedding models, or re-chunk without touching the serving path, and scale each on its own profile (indexing is throughput-bound and batchy; querying is latency-bound).</p>
+
+    <h2>Step 3 — Ingestion and Chunking</h2>
+    <p>The indexing pipeline starts by <strong>loading and parsing</strong> heterogeneous sources into clean text (plus structure — headings, tables, page numbers — which you keep as metadata). Then comes the single most consequential choice in RAG: <strong>chunking</strong>.</p>
+    <h3>Why chunking decides quality</h3>
+    <p>You embed and retrieve <em>chunks</em>, not whole documents, because an embedding compresses a span of text into one vector — and the longer the span, the blurrier that vector. Chunk too large and a query matches a vaguely-related page, dragging in noise; chunk too small and a chunk loses the context needed to be meaningful. The sweet spot is usually a few hundred tokens, <strong>split on natural structure</strong> (paragraphs, headings, sections) rather than blind fixed-size cuts, with a small <strong>overlap</strong> between chunks so a sentence spanning a boundary isn't orphaned.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">chunk → embed → upsert (indexing)</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">for</span> doc <span class="kw">in</span> source.<span class="fn">stream</span>():
+    text   = <span class="fn">parse</span>(doc)
+    chunks = <span class="fn">split</span>(text, size=<span class="num">400</span>, overlap=<span class="num">60</span>, on=<span class="str">"headings"</span>)
+    vecs   = embedder.<span class="fn">embed</span>(chunks)          <span class="cm"># batched on GPU/accelerator</span>
+    index.<span class="fn">upsert</span>([{
+        <span class="str">"id"</span>: <span class="fn">hash</span>(doc.id, i), <span class="str">"vector"</span>: v,
+        <span class="str">"text"</span>: c, <span class="str">"doc_id"</span>: doc.id, <span class="str">"tenant"</span>: doc.tenant,
+        <span class="str">"updated_at"</span>: doc.updated_at        <span class="cm"># metadata = filters + citations</span>
+    } <span class="kw">for</span> i,(c,v) <span class="kw">in</span> <span class="fn">enumerate</span>(<span class="fn">zip</span>(chunks, vecs))])</code></pre>
+    </div>
+
+    <p>Note what's stored alongside each vector: the original <strong>text</strong> (so you can put it in the prompt and cite it) and <strong>metadata</strong> (tenant, doc id, timestamp) that powers filtering and freshness. The embedding model choice matters too — pick one and keep it fixed, because changing it means re-embedding the entire corpus (the vectors must live in the same space to be comparable).</p>
+
+    <h2>Step 4 — The Vector Index</h2>
+    <p>Retrieval is a <strong>nearest-neighbor search</strong> in embedding space: find the chunk vectors closest (by cosine similarity) to the query vector. Exact search over hundreds of millions of vectors is too slow, so production systems use <strong>Approximate Nearest Neighbor (ANN)</strong> indexes that trade a sliver of recall for sub-linear query time.</p>
+
+    <table class="compare-table">
+      <thead><tr><th>ANN index</th><th>Tradeoff</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">HNSW (graph)</td><td class="col-b">Excellent recall/latency, fast queries; higher memory and slower builds. The common default.</td></tr>
+        <tr><td class="col-a">IVF / IVF-PQ</td><td class="col-b">Cluster then search a few cells; PQ compresses vectors to cut memory at some recall cost. Good for huge corpora.</td></tr>
+        <tr><td class="col-a">Flat (exact)</td><td class="col-b">Perfect recall, brute force — fine for small/medium sets, doesn't scale to 100M+.</td></tr>
+      </tbody>
+    </table>
+
+    <p>Whether you use a dedicated vector DB (Pinecone, Weaviate, Qdrant, Milvus) or <code>pgvector</code> on Postgres, the same scaling concerns apply: vectors are large and the index often lives <strong>in memory</strong>, so you <strong>shard by document/tenant</strong> across nodes and replicate for availability and read throughput. A query fans out to shards and merges the top results. Sizing rule of thumb: a 768-dim float32 vector is ~3KB, so 100M chunks ≈ 300GB of raw vectors before index overhead — which is why quantization (PQ, or int8) matters at scale.</p>
+
+    <h2>Step 5 — Retrieval: Go Hybrid</h2>
+    <p>Pure vector search is great at <em>semantic</em> matching ("how do I reset my password" finds "account recovery steps") but weak at exact terms — error codes, product SKUs, rare names — where the embedding blurs the very token that matters. The fix is <strong>hybrid retrieval</strong>: run vector search <em>and</em> a classic keyword search (BM25) in parallel, then fuse the rankings (e.g. Reciprocal Rank Fusion). You also apply <strong>metadata filters</strong> here — tenant and access control (non-negotiable for correctness), plus date or document-type constraints.</p>
+
+    <figure class="article-figure">
+      <svg viewBox="0 0 720 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hybrid retrieval and reranking: vector and keyword search fused, then reranked to top chunks">
+        <defs>
+          <marker id="ar2" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#7a8aa0"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="20" y="116" width="120" height="44" rx="8" fill="#1e2535" stroke="#38bdf8" stroke-width="1.5"/><text x="80" y="143" font-size="11" fill="#e2e8f0">query</text>
+          <rect x="200" y="56"  width="170" height="44" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="285" y="78" font-size="11" fill="#e2e8f0">Vector search</text><text x="285" y="92" font-size="9" fill="#7a8aa0">ANN · semantic</text>
+          <rect x="200" y="176" width="170" height="44" rx="8" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="285" y="198" font-size="11" fill="#e2e8f0">Keyword (BM25)</text><text x="285" y="212" font-size="9" fill="#7a8aa0">exact terms</text>
+          <rect x="426" y="116" width="120" height="44" rx="8" fill="#1e2535" stroke="#a78bfa" stroke-width="1.5"/><text x="486" y="138" font-size="11" fill="#e2e8f0">Fuse (RRF)</text><text x="486" y="152" font-size="9" fill="#7a8aa0">~100 cands</text>
+          <rect x="600" y="116" width="104" height="44" rx="8" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="652" y="138" font-size="11" fill="#e2e8f0">Rerank</text><text x="652" y="152" font-size="9" fill="#7a8aa0">→ top 5</text>
+          <line x1="140" y1="130" x2="198" y2="86"  stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="140" y1="146" x2="198" y2="194" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="370" y1="78"  x2="424" y2="128" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="370" y1="198" x2="424" y2="150" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="546" y1="138" x2="598" y2="138" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+        </g>
+      </svg>
+      <figcaption>Hybrid retrieval — vector (semantic) and BM25 (exact-term) results are fused into ~100 candidates, then a cross-encoder reranks them down to the ~5 chunks that go in the prompt</figcaption>
+    </figure>
+
+    <h2>Step 6 — Reranking</h2>
+    <p>Retrieval optimizes for recall: cast a wide net and pull ~100 candidate chunks cheaply. But you can only afford to put a handful in the prompt, and the order/precision of those few drives answer quality. So add a <strong>reranking</strong> stage: a <strong>cross-encoder</strong> model scores each (query, chunk) pair <em>jointly</em> — far more accurate than the bi-encoder embeddings used for first-stage retrieval, but too expensive to run over the whole corpus, which is exactly why it runs only on the ~100 candidates. This two-stage "retrieve wide, rerank narrow" pattern is the cheapest large quality gain in RAG, and a strong thing to volunteer in an interview.</p>
+
+    <h2>Step 7 — Grounded Generation</h2>
+    <p>Now assemble the prompt: the user's question, the top reranked chunks (each tagged with a source id), and an instruction to <strong>answer only from the provided context and cite which chunks were used</strong> — or say it doesn't know if the context is insufficient. This grounding is what turns an LLM from a confident guesser into a sourced assistant, and the citations let users verify and let you measure faithfulness.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">a grounded prompt</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># system</span>
+Answer ONLY using the context below. Cite sources as [n].
+If the context doesn't contain the answer, say you don't know.
+
+<span class="cm"># context  (top reranked chunks)</span>
+[1] (doc: billing-faq#refunds) "Refunds are issued within 5–7 days…"
+[2] (doc: policy-v3#cancel)     "To cancel, go to Settings → Billing…"
+
+<span class="cm"># user</span>
+How long do refunds take, and how do I cancel?</code></pre>
+    </div>
+
+    <p>Two budget decisions live here: <strong>how many chunks</strong> to include (more context can help but adds tokens, latency, and the risk of the model getting "lost in the middle" of a long context), and <strong>what to do on weak retrieval</strong> — if the top scores are low, it's better to return "no good answer found" than to force the model to confabulate.</p>
+
+    <h2>Step 8 — Freshness and Incremental Indexing</h2>
+    <p>A corpus is never static, and a nightly full rebuild is both slow and stale. The serving path needs an index that updates continuously, so wire ingestion to <strong>change events</strong>: a document created/updated/deleted emits an event (via CDC from the source DB or a webhook), which flows through the same chunk → embed → upsert path, and a delete removes that document's chunks. The result is an index that's eventually consistent within minutes. Keep an <code>updated_at</code> on every chunk so you can filter to fresh content and reconcile/garbage-collect stale chunks.</p>
+
+    <div class="callout">
+      <div class="callout-label">key point</div>
+      <p>Treat the index as a <strong>materialized, replayable projection</strong> of your documents — exactly like a search index. The source of truth is the documents; the vector index is derived, so you can always re-chunk or re-embed and rebuild it. That mindset makes embedding-model upgrades and chunking changes a re-index job, not a migration crisis.</p>
+    </div>
+
+    <h2>Step 9 — Evaluation: the RAG Triad</h2>
+    <p>You can't improve what you don't measure, and RAG fails in two distinct places — retrieval and generation — so evaluate both. The common framing is the <strong>RAG triad</strong>:</p>
+    <ul>
+      <li><strong>Context relevance</strong> — did retrieval return chunks actually relevant to the query? (Measure recall@k / precision against a labeled set.)</li>
+      <li><strong>Faithfulness (groundedness)</strong> — is the answer supported by the retrieved chunks, or did the model make something up?</li>
+      <li><strong>Answer relevance</strong> — does the answer actually address the question?</li>
+    </ul>
+    <p>Build a small golden set of (question → ideal sources/answer) pairs for offline regression, and use an <strong>LLM-as-judge</strong> to score faithfulness and relevance at scale (see <a href="/ai-coding/llm-evals/">evals for LLM apps</a>). Capture production signals too — thumbs up/down, "was this cited source correct" — and feed them back. A retrieval bug (wrong chunks) and a generation bug (ignored the chunks) need different fixes, and only separate metrics tell them apart.</p>
+
+    <h2>Step 10 — Scaling and Cost</h2>
+    <p>Three cost centers dominate, and each has a lever:</p>
+    <table class="compare-table">
+      <thead><tr><th>Cost center</th><th>Lever</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">Embedding (indexing)</td><td class="col-b">Batch on accelerators; only re-embed changed chunks; cache embeddings keyed by content hash.</td></tr>
+        <tr><td class="col-a">Index memory</td><td class="col-b">Quantize vectors (PQ / int8); shard across nodes; tier cold data to disk-backed ANN.</td></tr>
+        <tr><td class="col-a">Generation (per query)</td><td class="col-b">Fewer, better chunks (rerank) → shorter prompts; cache answers for repeat queries; small model for easy ones.</td></tr>
+      </tbody>
+    </table>
+    <p>On latency, retrieval + rerank is typically tens of milliseconds; the LLM call dominates end-to-end time, so the same streaming and caching tricks from a <a href="/system-design/ai-chat-assistant/">chat assistant</a> apply. Cache aggressively: query embeddings, retrieval results for hot queries, and full answers for exact repeats.</p>
+
+    <h2>Step 11 — Failure Modes and Tradeoffs</h2>
+    <ul>
+      <li><strong>Retrieved the wrong thing → wrong answer.</strong> Garbage chunks in, confident garbage out. This is why hybrid + rerank + eval matter more than the LLM choice.</li>
+      <li><strong>Chunk size is a genuine tradeoff.</strong> No single size is optimal; tune it against your eval set, and consider storing small chunks but expanding to their surrounding context at generation time.</li>
+      <li><strong>Stale index.</strong> Without incremental indexing, answers cite deleted or outdated docs — a correctness and trust problem; CDC-driven updates and TTL/GC are the fix.</li>
+      <li><strong>Lost in the middle.</strong> Stuffing many chunks can hurt — models attend less to the middle of a long context; fewer, reranked chunks often beat more chunks.</li>
+      <li><strong>Tenant leakage.</strong> A filter bug that returns another tenant's chunks is a security incident; enforce access filters in the query, not just in the UI.</li>
+      <li><strong>It still hallucinates.</strong> Grounding reduces but doesn't eliminate it; citations + faithfulness evals + "say I don't know" are the guardrails.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>RAG is a retrieval system with an LLM stapled to the end — so spend your design effort on retrieval. Two pipelines (offline index, online query), structure-aware chunking with overlap, an ANN index you shard and quantize, hybrid (vector + BM25) retrieval with metadata filters, a cross-encoder rerank, and grounded-with-citations generation. Then close the loop with the RAG triad evals, because the only way to know retrieval helped is to measure it.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What is RAG, in one line?</strong> Retrieve relevant text and put it in the prompt so the LLM answers from your data — changing the prompt, not the model.<br>
+      <strong>Why chunk, and how?</strong> You embed/retrieve spans, and longer spans blur the vector; split on structure (~a few hundred tokens) with overlap, keeping source metadata.<br>
+      <strong>Why hybrid retrieval?</strong> Vectors nail semantics but miss exact terms (codes, names); add BM25 and fuse — then rerank the candidates with a cross-encoder.<br>
+      <strong>Why a reranker?</strong> First-stage retrieval maximizes recall cheaply; a cross-encoder precisely reorders the top ~100 → top ~5 — the biggest cheap quality win.<br>
+      <strong>How do you keep it fresh?</strong> CDC/webhook-driven incremental indexing through the same chunk→embed→upsert path; the index is a replayable projection of the docs.<br>
+      <strong>How do you evaluate it?</strong> The RAG triad — context relevance (recall@k), faithfulness, and answer relevance — on a golden set, with LLM-as-judge at scale.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/system-design/ai-chat-assistant/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Design ChatGPT — an AI Chat Assistant</div>
+      </a>
+      <a href="/system-design/" class="article-nav-card next">
+        <div class="article-nav-label">back to →</div>
+        <div class="article-nav-title">System Design</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

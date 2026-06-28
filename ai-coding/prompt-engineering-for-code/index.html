@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.">
-<title>Prompt Engineering for Code | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<meta name="description" content="Prompt engineering for code: why prompt quality decides code quality — context, constraints, few-shot examples, planning-first, and test-driven prompting.">
+<title>Prompt Engineering for Code | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Prompt Engineering for Code">
-<meta property="og:description" content="Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.">
-<meta property="og:url" content="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Prompt engineering for code: why prompt quality decides code quality — context, constraints, few-shot examples, planning-first, and test-driven prompting.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Prompt Engineering for Code">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Prompt Engineering for Code">
 <meta name="twitter:description" content="Deep dive into prompting strategies that produce clean, correct code from AI coding tools.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Prompt Engineering for Code","description":"Why the quality of your prompt determines the quality of the code — context, constraints, few-shot examples, planning-first, test-driven prompting, and the anti-patterns that silently kill output quality.","datePublished":"2026-05-12","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/prompt-engineering-for-code/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Prompt Engineering for Code","description":"Prompt engineering for code: why prompt quality decides code quality — context, constraints, few-shot examples, planning-first, and test-driven prompting.","datePublished":"2026-05-12","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/prompt-engineering-for-code/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-12","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why does context matter more than model size in AI coding tools?", "acceptedAnswer": {"@type": "Answer", "text": "The context window is finite; the model can only reason about what's in it. Giving it the right files and error messages produces better output than a larger model working with vague prose."}}, {"@type": "Question", "name": "What is planning-first prompting and why does it help?", "acceptedAnswer": {"@type": "Answer", "text": "Asking the model to outline its approach before coding surfaces design errors at the cheapest possible moment — before they get embedded in implementation — and forces the model to reason rather than pattern-match."}}, {"@type": "Question", "name": "What is the most dangerous AI coding anti-pattern?", "acceptedAnswer": {"@type": "Answer", "text": "Accepting the first output without review. The model produces plausible-looking code even when it has subtly violated your constraints, and \"plausible but wrong\" is harder to catch than an obvious error."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"Prompt Engineering for Code","item":"https://sdeoffer.com/ai-coding/prompt-engineering-for-code/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -144,13 +158,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -158,18 +175,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ai-coding/prompt-engineering-for-code/" class="active">EN</a><a href="/zh/ai-coding/prompt-engineering-for-code/">中</a></div>
+      <div class="lang-switch"><a href="/ai-coding/prompt-engineering-for-code/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/prompt-engineering-for-code/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">prompt-engineering-for-code</span>
-    </div>
+    </nav>
     <span class="article-tag">AI Coding</span>
     <h1 class="article-title">Prompt Engineering for Code</h1>
     <div class="article-meta">
@@ -292,7 +310,7 @@ Fix the prefix stripping and make sure an expired token always 401s.</code></pre
         </tr>
         <tr>
           <td>Make it faster</td>
-          <td>The <code>listProducts</code> query must return in &lt;50 ms at p99 with 10k rows; add an index on <code>(category_id, created_at DESC)</code> if missing</td>
+          <td>The <code>listProducts</code> query must return in &lt;50 ms at p99 with 10k rows; add an <a href="/tech-stacks/database-indexing/">index</a> on <code>(category_id, created_at DESC)</code> if missing</td>
         </tr>
         <tr>
           <td>Handle errors better</td>
@@ -300,7 +318,7 @@ Fix the prefix stripping and make sure an expired token always 401s.</code></pre
         </tr>
         <tr>
           <td>Add caching</td>
-          <td>Cache GET /products/:id in Redis with TTL 300 s; use key <code>product:&lt;id&gt;</code>; on cache miss, fetch from DB and populate; on 404 from DB, do not cache</td>
+          <td>Cache GET /products/:id in <a href="/tech-stacks/redis/">Redis</a> with TTL 300 s; use key <code>product:&lt;id&gt;</code>; on cache miss, fetch from DB and populate; on 404 from DB, do not cache</td>
         </tr>
       </tbody>
     </table>
@@ -468,7 +486,7 @@ Constraints:
 <span class="cm">// in duration.go so all cases above pass. Do not add dependencies.</span></code></pre>
     </div>
 
-    <p>When working with an agentic tool like Claude Code, you can take this further: "run the tests after implementing and iterate until they all pass." The agent closes the feedback loop automatically, and you only review the final diff when tests are green.</p>
+    <p>When working with an <a href="/ai-coding/how-ai-coding-agents-work/">agentic tool</a> like Claude Code, you can take this further: "run the tests after implementing and iterate until they all pass." The agent closes the feedback loop automatically, and you only review the final diff when tests are green.</p>
 
     <h2>Decomposing Large Changes for the Model</h2>
     <p>Context windows are finite and attention degrades over long, complex tasks. A change that touches fifteen files, reorganises a data model, and updates three API surfaces is not one prompt — it is five or six. Breaking large changes into focused, independently reviewable steps produces better output and makes each step easier to verify.</p>
@@ -534,7 +552,7 @@ Add cursor-based pagination:
       <li><strong>Keep a prompt log</strong> — note prompts that worked unusually well or badly, and what made the difference. You will start to see patterns in what causes failure.</li>
       <li><strong>Read your diffs carefully</strong> — every time you catch a subtle error in AI output, trace it back to what the prompt was missing. That trace is a prompting lesson.</li>
       <li><strong>Experiment on safe ground</strong> — use test files or throwaway branches to try new prompting strategies before using them on production-critical changes.</li>
-      <li><strong>Share good prompts with your team</strong> — a shared library of high-quality prompts for common tasks (writing migration scripts, generating gRPC handlers, updating OpenAPI specs) raises the team floor, not just the individual ceiling.</li>
+      <li><strong>Share good prompts with your team</strong> — a shared library of high-quality prompts for common tasks (writing migration scripts, generating <a href="/tech-stacks/grpc/">gRPC</a> handlers, updating OpenAPI specs) raises the team floor, not just the individual ceiling.</li>
     </ul>
     <p>The best mental model for prompt engineering: you are writing a specification that will be executed by a highly capable but completely naive contractor. They will do exactly what you say, interpret ambiguity in whatever way seems most common, and never ask for clarification. Write specifications accordingly — unambiguous, complete, and with explicit constraints on what not to do.</p>
 
@@ -563,9 +581,10 @@ Add cursor-based pagination:
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -573,7 +592,7 @@ Add cursor-based pagination:
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

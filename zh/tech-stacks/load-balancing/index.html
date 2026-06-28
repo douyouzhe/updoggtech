@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解负载均衡:L4 vs L7、轮询/最少连接/IP 哈希/一致性哈希等算法、健康检查、粘性会话、SSL/TLS 终止、DNS 负载均衡与 GeoDNS、Anycast、高可用与故障转移、服务网格,以及常见坑与最佳实践。">
-<title>负载均衡 (Load Balancing) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/load-balancing/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/load-balancing/">
+<meta name="description" content="L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。">
+<title>负载均衡 — 算法、L4 vs L7 与健康检查 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/load-balancing/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/load-balancing/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="负载均衡 (Load Balancing)">
 <meta property="og:description" content="L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/load-balancing/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/load-balancing/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/load-balancing-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="739">
+<meta property="og:image:alt" content="负载均衡 (Load Balancing)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/load-balancing-1.jpg">
 <meta name="twitter:title" content="负载均衡 (Load Balancing)">
 <meta name="twitter:description" content="负载均衡怎么工作:L4/L7、算法、健康检查、一致性哈希、Anycast、HA 故障转移。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"负载均衡 (Load Balancing)","description":"L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/load-balancing/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"负载均衡 (Load Balancing)","description":"L4 vs L7、负载均衡算法、健康检查、粘性会话、一致性哈希、TLS 终止、DNS/Anycast、高可用与服务网格。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/load-balancing/"},"image":"https://sdeoffer.com/assets/img/load-balancing-1.jpg","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "L4 vs L7——何时选哪个?", "acceptedAnswer": {"@type": "Answer", "text": "L4 用于裸 TCP 吞吐、非 HTTP 协议,或需要直接服务器返回让返回流量绕开 LB 时;L7 用于需要基于路径的路由、TLS 终止、gRPC 支持或基于头的决策时。"}}, {"@type": "Question", "name": "负载均衡器怎么检测故障服务器?", "acceptedAnswer": {"@type": "Answer", "text": "主动健康检查(按计划对 /health 的合成探测)或被动健康检查(从真实流量的 5xx 错误率推断)。主动检查检测流量前故障;被动检查检测进行中故障。"}}, {"@type": "Question", "name": "粘性会话为什么是问题?", "acceptedAnswer": {"@type": "Answer", "text": "它们降低负载分布、使扩展复杂化,并意味着该服务器宕机时所有会话数据都丢——修法是把会话状态外置到 Redis,让任何服务器处理任何请求。"}}, {"@type": "Question", "name": "一致性哈希是什么、何时用?", "acceptedAnswer": {"@type": "Answer", "text": "把服务器和请求映射到环;增删服务器只影响约 1/n 的 key,而非重排一切。用于分布式缓存、CDN、数据库分片和 Kafka 分区分配。"}}, {"@type": "Question", "name": "Anycast 怎么工作?", "acceptedAnswer": {"@type": "Answer", "text": "同一 IP 通过 BGP 从多个地理 PoP 通告;互联网路由自然把包送到拓扑最近的 PoP——无 DNS 解析、无 TTL 缓存、PoP 宕机时亚秒级故障转移。"}}, {"@type": "Question", "name": "L4 LB 为什么不能均衡 gRPC 流量?", "acceptedAnswer": {"@type": "Answer", "text": "gRPC 在单条 HTTP/2 连接上多路复用许多调用;L4 LB 把整条连接路由到一个后端。只有理解 HTTP/2 帧的 L7 代理才能把单个调用分摊到后端。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"负载均衡 (Load Balancing)","item":"https://sdeoffer.com/zh/tech-stacks/load-balancing/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/load-balancing/">EN</a>
-        <a href="/zh/tech-stacks/load-balancing/" class="active">中</a>
+        <a href="/tech-stacks/load-balancing/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/load-balancing/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">load-balancing</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">负载均衡 (Load Balancing)</h1>
     <div class="article-meta">
@@ -203,7 +221,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/load-balancing-1.jpg" alt="负载均衡把流量分发到后端服务器" loading="lazy">
+        <img src="/assets/img/load-balancing-1.jpg" alt="负载均衡把流量分发到后端服务器" width="1024" height="739" fetchpriority="high">
         <figcaption>负载均衡把流量分发到后端服务器</figcaption>
       </figure>
 
@@ -279,7 +297,7 @@
 
     <h2>粘性会话(Sticky Sessions)</h2>
     <p>有些应用把会话状态存在服务器上(进程内缓存、进行中的文件上传)。<strong>粘性会话</strong>(也叫会话保持)确保某客户端的请求总去同一后端。负载均衡器通常通过在客户端首次请求时设 cookie、在后续请求读它来实现。</p>
-    <p>粘性会话是双刃剑:它改善与有状态应用的兼容性,但降低负载的均匀分布并使故障处理复杂化——若粘住的服务器宕机,它的所有会话反正都丢了。首选修法是把会话状态移到共享存储(Redis、数据库),让任何服务器都能处理任何请求。</p>
+    <p>粘性会话是双刃剑:它改善与有状态应用的兼容性,但降低负载的均匀分布并使故障处理复杂化——若粘住的服务器宕机,它的所有会话反正都丢了。首选修法是把会话状态移到共享存储(<a href="/zh/tech-stacks/redis/">Redis</a>、数据库),让任何服务器都能处理任何请求。</p>
 
     <h2>负载均衡器冗余</h2>
     <p>负载均衡器本身是潜在的单点故障。生产部署用 <strong>active-passive</strong> 或 <strong>active-active</strong> 对,常配一个在节点间浮动的<strong>虚拟 IP(VIP)</strong>。DNS 或 BGP 把 VIP 路由到活跃节点;若它故障,被动节点通过 VRRP(HAProxy + Keepalived)等协议或更新 DNS 记录在数秒内接管 VIP。</p>
@@ -322,7 +340,7 @@
         <span class="kw">return</span> self.ring[self.keys[idx]]   <span class="cm"># 顺时针后继</span></code></pre>
     </div>
 
-    <p>一致性哈希被用于:分布式缓存(Memcached、Redis Cluster)、CDN 边缘服务器、数据库分片路由器,以及 Kafka 的分区分配。每当会话亲和性或缓存局部性重要、且你需要增删节点而不造成灾难性 key 重映射时,它就是答案。</p>
+    <p>一致性哈希被用于:分布式缓存(Memcached、Redis Cluster)、CDN 边缘服务器、<a href="/zh/tech-stacks/sharding/">数据库分片</a>路由器,以及 <a href="/zh/tech-stacks/kafka/">Kafka</a> 的分区分配。每当会话亲和性或缓存局部性重要、且你需要增删节点而不造成灾难性 key 重映射时,它就是答案。</p>
 
     <h2>L4 vs L7——更深入</h2>
     <p>高层区别众所周知,但实现细节决定每种场景该选哪个。</p>
@@ -339,7 +357,7 @@
     <ul>
       <li><strong>请求级路由</strong>——<code>POST /api/orders</code> → 订单服务;<code>GET /api/products</code> → 商品服务。</li>
       <li><strong>头操作</strong>——加 <code>X-Request-ID</code>、改写 <code>Host</code>、在发给后端前剥离内部头。</li>
-      <li><strong>TLS 终止</strong>——在 LB(或服务网格 sidecar)解密,检查明文,可选地重新加密到后端(TLS origination)。集中证书管理。</li>
+      <li><strong>TLS 终止</strong>——在 LB(或<a href="/zh/tech-stacks/api-gateway/">服务网格</a> sidecar)解密,检查明文,可选地重新加密到后端(TLS origination)。集中证书管理。</li>
       <li><strong>认证卸载</strong>——在 LB 校验 JWT 或 API key,只把已认证请求转发给后端。</li>
       <li><strong>限流和熔断</strong>——按客户端/API key 计数请求,在到达后端前拒绝超额。</li>
       <li><strong>gRPC 负载均衡</strong>——L4 LB 无法在一条长连接的 HTTP/2 内均衡单个 gRPC 调用;只有理解 HTTP/2 帧的 L7 代理才能把调用分摊到后端。</li>
@@ -625,9 +643,10 @@ vrrp_instance VI_1 {
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -635,7 +654,7 @@ vrrp_instance VI_1 {
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:地图平台(Google Maps)——容量估算、路网图数据模型、空间索引(Geohash/Quadtree/S2)、瓦片渲染与 CDN、路由算法(Dijkstra/A*/Contraction Hierarchies)、实时导航 WebSocket、位置跟踪与交通融合、搜索与地理编码、缓存/分片/容错、ML 分析、关键取舍。">
-<title>设计地图 Web 应用 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/map-webapp/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/map-webapp/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/map-webapp/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/map-webapp/">
+<meta name="description" content="地图平台（Google Maps）系统设计：路网图模型、空间索引(Geohash/Quadtree/S2)、瓦片 CDN、CH 路由、WebSocket 导航、交通融合与取舍。">
+<title>设计地图 Web 应用 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/map-webapp/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/map-webapp/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/map-webapp/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/map-webapp/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计地图 Web 应用">
-<meta property="og:description" content="地图系统设计:Geohash、瓦片 CDN、Contraction Hierarchies 路由、WebSocket 导航、交通融合。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/map-webapp/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="地图平台（Google Maps）系统设计：路网图模型、空间索引(Geohash/Quadtree/S2)、瓦片 CDN、CH 路由、WebSocket 导航、交通融合与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/map-webapp/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/map-webapp-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="537">
+<meta property="og:image:alt" content="设计地图 Web 应用 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/map-webapp-1.jpg">
 <meta name="twitter:title" content="设计地图 Web 应用">
 <meta name="twitter:description" content="设计地图应用:Geohash、瓦片 CDN、CH 路由、WebSocket 导航、at-most-once ping、交通融合。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计地图 Web 应用", "description": "系统设计:地图平台(Google Maps)——容量估算、路网图数据模型、空间索引(Geohash/Quadtree/S2)、瓦片渲染与 CDN、路由算法(Dijkstra/A*/Contraction Hierarchies)、实时导航 WebSocket、位置跟踪与交通融合、搜索与地理编码、缓存/分片/容错、ML 分析、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/map-webapp/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计地图 Web 应用","description":"地图平台（Google Maps）系统设计：路网图模型、空间索引(Geohash/Quadtree/S2)、瓦片 CDN、CH 路由、WebSocket 导航、交通融合与取舍。","datePublished":"2023-04-08","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/map-webapp/"},"image":"https://sdeoffer.com/assets/img/map-webapp-1.jpg","dateModified":"2023-04-08"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么不为每个路线请求实时跑 Dijkstra?", "acceptedAnswer": {"@type": "Answer", "text": "跨全球路网 O((V+E)logV) 在 3B 用户下不可行——用 Contraction Hierarchies 离线预处理一个层级,然后查询时双向 Dijkstra 只探索一小部分节点并在 <10 ms 返回。"}}, {"@type": "Question", "name": "为什么 geohash 胜过纯 quadtree?", "acceptedAnswer": {"@type": "Answer", "text": "Geohash 把 2D 坐标编码成 1D 可排序字符串,在标准键值存储上支持高效范围查询而无需特殊空间索引支持。Quadtree 对缩放自适应渲染密度更好。"}}, {"@type": "Question", "name": "为什么位置 ping 用至多一次?", "acceptedAnswer": {"@type": "Answer", "text": "单个丢失的 5 秒 GPS 包对导航质量影响可忽略;保证投递的开销(重试、ACK、去重)在 10M 写/秒远超好处。"}}, {"@type": "Question", "name": "交通变化时怎么处理陈旧路由?", "acceptedAnswer": {"@type": "Answer", "text": "交通聚合器在 5 分钟窗口刷新道路段权重;当最短路径成本变化超过阈值时预计算 section 缓存失效,只为受影响 section 对触发定向重算。"}}, {"@type": "Question", "name": "地图瓦片怎么保持快?", "acceptedAnswer": {"@type": "Answer", "text": "XYZ slippy map 方案使每个瓦片 URL 确定,使热门缩放级别近 100% CDN 命中率。只有缓存未命中碰源对象存储。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计地图 Web 应用 — 系统设计","item":"https://sdeoffer.com/zh/system-design/map-webapp/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/map-webapp/">EN</a>
-        <a href="/zh/system-design/map-webapp/" class="active">中</a>
+        <a href="/system-design/map-webapp/" hreflang="en">EN</a>
+        <a href="/zh/system-design/map-webapp/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">map-webapp</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计地图 Web 应用</h1>
     <div class="article-meta">
@@ -223,7 +241,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/map-webapp-1.jpg" alt="地图 Web 应用高层架构" loading="lazy">
+      <img src="/assets/img/map-webapp-1.jpg" alt="地图 Web 应用高层架构" width="1024" height="537" fetchpriority="high">
       <figcaption>地图 Web 应用高层架构</figcaption>
     </figure>
 
@@ -235,7 +253,7 @@
       <li>在渲染的地图上识别道路、地点和兴趣点。</li>
       <li>计算考虑交通、路况和实时事件的准确距离和 ETA。</li>
       <li>逐向导航,偏离或新事件时实时重路由。</li>
-      <li>附近搜索:在半径内找餐厅、加油站、医院。</li>
+      <li><a href="/zh/system-design/nearby/">附近搜索</a>:在半径内找餐厅、加油站、医院。</li>
       <li>多缩放级别的地图瓦片渲染。</li>
       <li>为第三方集成(打车、车辆制造商、数据提供商)提供可插拔 API。</li>
     </ul>
@@ -286,7 +304,7 @@
     </ul>
 
     <h2>第 3 步 — API 设计</h2>
-    <p>通过 API 网关暴露干净的 REST 端点。面试目的三个最重要的面是瓦片服务、路由和附近搜索。</p>
+    <p>通过 <a href="/zh/tech-stacks/api-gateway/">API 网关</a>暴露干净的 REST 端点。面试目的三个最重要的面是瓦片服务、路由和附近搜索。</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -409,7 +427,7 @@
     <p>S2 把球面映射到一个立方体的面,然后用希尔伯特曲线索引产生一个空间填充的 1D cell 层级。像 geohash,S2 cell 能存在任何有序键值存储里;不像 geohash,S2 cell 每级别面积更均匀且在极点正确工作。Google Maps 内部依赖 S2 做许多空间操作——若被问到,值得作为 geohash 的生产级替代提及。</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/map-webapp-2.jpg" alt="Quadtree 空间索引结构" loading="lazy">
+      <img src="/assets/img/map-webapp-2.jpg" alt="Quadtree 空间索引结构" loading="lazy" width="1024" height="337">
       <figcaption>Quadtree 空间索引结构</figcaption>
     </figure>
 
@@ -490,7 +508,7 @@
     <p>当一个交通事件造成显著 ETA 变化,影响<strong>递归地向上冒泡</strong>穿过 section 层级,只更新受影响的路线段而非全局重算。本地路上的一个变化更新那条路的 section 缓存;只有 section 的最佳路径改变时更新才传播到下一 section 层。</p>
 
     <h2>第 8 步 — 实时导航</h2>
-    <p>导航会话需要服务器和客户端间双向、低延迟通信——WebSocket 是这里正确的协议。一个 <strong>WebSocket Manager</strong> 维护已连接用户到其 WebSocket 服务器和端口的键值映射,使导航跟踪服务能触达任何活跃会话,无论哪个 WebSocket 服务器托管它。</p>
+    <p>导航会话需要服务器和客户端间双向、低延迟通信——<a href="/zh/tech-stacks/websockets/">WebSocket</a> 是这里正确的协议。一个 <strong>WebSocket Manager</strong> 维护已连接用户到其 WebSocket 服务器和端口的键值映射,使导航跟踪服务能触达任何活跃会话,无论哪个 WebSocket 服务器托管它。</p>
 
     <p>三个事件触发导航更新:</p>
     <ul>
@@ -526,7 +544,7 @@
     </div>
 
     <h2>第 9 步 — 用户位置跟踪</h2>
-    <p>活跃用户<strong>每 5 秒</strong>传输他们的 GPS 位置(启用位置共享时)。这些包流入一个把生产者与消费者解耦的 Kafka 消息队列。投递保证是<strong>至多一次</strong>:单个丢失的位置包可接受,因为下一个 5 秒后到达,且保证投递的成本(重传、ACK、去重)对此用例远超好处。</p>
+    <p>活跃用户<strong>每 5 秒</strong>传输他们的 GPS 位置(启用位置共享时)。这些包流入一个把生产者与消费者解耦的 <a href="/zh/tech-stacks/kafka/">Kafka</a> 消息队列。投递保证是<strong>至多一次</strong>:单个丢失的位置包可接受,因为下一个 5 秒后到达,且保证投递的成本(重传、ACK、去重)对此用例远超好处。</p>
 
     <p>位置流并行服务多个下游消费者:</p>
     <ul>
@@ -636,9 +654,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -646,7 +665,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

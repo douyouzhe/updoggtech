@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
-<title>Design a URL Shortener (TinyURL) — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/url-shortener/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/url-shortener/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/url-shortener/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/url-shortener/">
+<meta name="description" content="URL shortener design (TinyURL) — encode short keys, weigh hashing vs ID generation, catch collisions with a Bloom filter, purge by TTL, and rate-limit writes.">
+<title>Design a URL Shortener (TinyURL) — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/url-shortener/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/url-shortener/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/url-shortener/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/url-shortener/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design a URL Shortener (TinyURL) — System Design">
-<meta property="og:description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
-<meta property="og:url" content="https://updoggtech.com/system-design/url-shortener/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/url-shortener-1.jpg">
+<meta property="og:description" content="URL shortener design (TinyURL) — encode short keys, weigh hashing vs ID generation, catch collisions with a Bloom filter, purge by TTL, and rate-limit writes.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/url-shortener/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/url-shortener-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="606">
+<meta property="og:image:alt" content="Design a URL Shortener (TinyURL) — System Design">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/url-shortener-1.jpg">
 <meta name="twitter:title" content="Design a URL Shortener (TinyURL) — System Design">
 <meta name="twitter:description" content="A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a URL Shortener (TinyURL)","description":"A system design deep dive into building a URL shortener — hashing vs. ID generation, Bloom filter collision detection, TTL purging strategies, and rate limiting.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/url-shortener/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a URL Shortener (TinyURL)","description":"URL shortener design (TinyURL) — encode short keys, weigh hashing vs ID generation, catch collisions with a Bloom filter, purge by TTL, and rate-limit writes.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/url-shortener/"},"image":"https://sdeoffer.com/assets/img/url-shortener-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why prefer ID generation over hashing for slug generation?", "acceptedAnswer": {"@type": "Answer", "text": "Hash functions (MD5, SHA-1) can produce the same 6-character prefix for different URLs due to the birthday paradox — collision detection and retry add complexity and indeterminate latency. Snowflake or range-based ID generation eliminates collisions at the source."}}, {"@type": "Question", "name": "How does the Bloom filter speed up collision detection?", "acceptedAnswer": {"@type": "Answer", "text": "A Bloom filter negative (bit not set) guarantees the slug is new — no DB lookup needed. Only positives (rare) require a DB fallback. This keeps the write fast path O(1) in memory."}}, {"@type": "Question", "name": "301 or 302 redirect?", "acceptedAnswer": {"@type": "Answer", "text": "301 (permanent) is browser-cached — lower server load but click analytics are lost after the first visit. 302 (temporary) hits the shortener on every click — full analytics at higher cost. Choose based on whether analytics are a product requirement."}}, {"@type": "Question", "name": "How do you handle a viral link that gets 10M clicks in one hour?", "acceptedAnswer": {"@type": "Answer", "text": "Hot key in Redis — cache it across multiple shards or add an in-process LRU cache in each redirect service instance (1–5 s TTL) to absorb the spike before it hits Redis."}}, {"@type": "Question", "name": "How do you prevent the analytics pipeline from slowing down redirects?", "acceptedAnswer": {"@type": "Answer", "text": "Fire-and-forget publish to Kafka — the redirect returns the 302 immediately and does not wait for the Kafka write to confirm. Loss of a few click events during a Kafka outage is acceptable; redirect availability is not."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a URL Shortener (TinyURL) — System Design","item":"https://sdeoffer.com/system-design/url-shortener/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/url-shortener/" class="active">EN</a><a href="/zh/system-design/url-shortener/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/url-shortener/" class="active" hreflang="en">EN</a><a href="/zh/system-design/url-shortener/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">url-shortener</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design a URL Shortener</h1>
     <div class="article-meta">
@@ -219,7 +236,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/url-shortener-1.jpg" alt="High-level URL shortener architecture" loading="lazy">
+      <img src="/assets/img/url-shortener-1.jpg" alt="High-level URL shortener architecture" width="1024" height="606" fetchpriority="high">
       <figcaption>High-level URL shortener architecture</figcaption>
     </figure>
 
@@ -383,7 +400,7 @@ _seq = <span class="num">0</span>
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/url-shortener-2.png" alt="URL shortener system flow diagram" loading="lazy">
+      <img src="/assets/img/url-shortener-2.png" alt="URL shortener system flow diagram" loading="lazy" width="1023" height="711">
       <figcaption>URL shortener system flow diagram</figcaption>
     </figure>
 
@@ -436,7 +453,7 @@ _seq = <span class="num">0</span>
 <span class="cm">-- { slug, timestamp_ms, ip, user_agent, referrer, country, device_type }</span></code></pre>
     </div>
 
-    <p>Key schema decisions: the <code>slug</code> is the primary key — every redirect is a primary-key lookup, which is O(log n) on a B-tree index and extremely fast. The <code>expires_at</code> partial index (filtered to non-NULL rows) keeps the purge scan cheap. The <code>click_count</code> column is an approximate counter — it is incremented asynchronously by the analytics consumer, not on the redirect hot path, so it may lag by minutes but never blocks a redirect.</p>
+    <p>Key schema decisions: the <code>slug</code> is the primary key — every redirect is a primary-key lookup, which is O(log n) on a <a href="/tech-stacks/database-indexing/">B-tree index</a> and extremely fast. The <code>expires_at</code> partial index (filtered to non-NULL rows) keeps the purge scan cheap. The <code>click_count</code> column is an approximate counter — it is incremented asynchronously by the analytics consumer, not on the redirect hot path, so it may lag by minutes but never blocks a redirect.</p>
 
     <h2>Step 7 — Core Architecture and Read/Write Paths</h2>
 
@@ -478,12 +495,12 @@ GET /{slug}
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/url-shortener-3.jpg" alt="Read and write path flow for URL redirect" loading="lazy">
+      <img src="/assets/img/url-shortener-3.jpg" alt="Read and write path flow for URL redirect" loading="lazy" width="1024" height="297">
       <figcaption>Read and write path flow for URL redirect</figcaption>
     </figure>
 
     <h3>Redis caching in depth</h3>
-    <p>With a 100:1 read-to-write ratio, caching is the single highest-leverage optimization. The cache pattern is <strong>look-aside with write-through</strong>: on a write, populate the cache immediately so the first redirect is already a cache hit; on a read miss, pull from the DB and populate. Key caching decisions:</p>
+    <p>With a 100:1 read-to-write ratio, <a href="/tech-stacks/caching/">caching</a> is the single highest-leverage optimization. The cache pattern is <strong>look-aside with write-through</strong>: on a write, populate the cache immediately so the first redirect is already a cache hit; on a read miss, pull from the DB and populate. Key caching decisions:</p>
     <ul>
       <li><strong>TTL</strong> — set to <code>min(link expires_at, 24 hours)</code>. A link expiring tomorrow should not be cached past its expiry. A non-expiring link gets 24 h TTL with eager refresh to avoid stampede on popular links.</li>
       <li><strong>Hot links</strong> — a viral link shared by a celebrity can receive millions of clicks in minutes, saturating one Redis shard. Mitigate with <strong>local in-process cache</strong> (LRU cache in the redirect service, 1 s TTL) in front of Redis, or by replicating hot keys across multiple Redis nodes.</li>
@@ -524,7 +541,7 @@ GET /{slug}
     <p>Click analytics must not add latency to the redirect hot path. The solution is a <strong>fire-and-forget async pipeline</strong>:</p>
 
     <ol>
-      <li>On every redirect, the redirect service publishes a click event to <strong>Kafka</strong> asynchronously (non-blocking). The redirect itself returns immediately.</li>
+      <li>On every redirect, the redirect service publishes a click event to <a href="/tech-stacks/kafka/"><strong>Kafka</strong></a> asynchronously (non-blocking). The redirect itself returns immediately.</li>
       <li>Kafka consumers (analytics workers) consume the event stream and write to a time-series store (ClickHouse, BigQuery, or Redshift) optimized for aggregation queries.</li>
       <li>A separate aggregation job (Spark batch or Flink streaming) pre-computes per-link rollups: total clicks, unique IPs, clicks by country/device/referrer, clicks by hour/day.</li>
       <li>The analytics API (<code>GET /api/links/{slug}/analytics</code>) reads from the pre-computed rollup store, not from raw events — O(1) lookup rather than a full scan of billions of click records.</li>
@@ -578,7 +595,7 @@ Analytics API
     <p>The redirect service is stateless — it reads from Redis and occasionally from the DB. Scale horizontally behind a load balancer. With a hot Redis cache absorbing 95%+ of reads, the DB is under minimal load. Add <strong>read replicas</strong> for the DB to handle the remaining cache misses. Deploy the redirect service in multiple regions with a CDN or GeoDNS routing users to their nearest instance.</p>
 
     <h3>Write scaling</h3>
-    <p>At ~30 writes/sec, a single SQL primary easily handles URL creation. If write scale becomes a concern (say, 10,000 writes/sec for a platform that also offers programmatic link creation via API), <strong>shard the DB by slug prefix</strong>: slugs starting with 0-9 go to shard A, a-m to shard B, n-z to shard C. Since each redirect is a primary-key lookup on the slug, routing to the correct shard is a simple character map — no cross-shard joins needed.</p>
+    <p>At ~30 writes/sec, a single SQL primary easily handles URL creation. If write scale becomes a concern (say, 10,000 writes/sec for a platform that also offers programmatic link creation via API), <a href="/tech-stacks/sharding/"><strong>shard the DB by slug prefix</strong></a>: slugs starting with 0-9 go to shard A, a-m to shard B, n-z to shard C. Since each redirect is a primary-key lookup on the slug, routing to the correct shard is a simple character map — no cross-shard joins needed.</p>
 
     <h3>Multi-region consistency</h3>
     <p>A globally distributed URL shortener must handle the case where a link created in US-East is immediately clicked by a user in Asia-Pacific. Options:</p>
@@ -646,16 +663,17 @@ Analytics API
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

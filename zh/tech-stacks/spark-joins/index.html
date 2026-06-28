@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Apache Spark Join 策略:执行模型与 shuffle、为何 join 策略重要、广播 join、shuffle hash join、sort-merge join、笛卡尔 join、数据倾斜的检测与加盐、Skew Join Hint、Bucketing、Adaptive Query Execution (AQE)、读查询计划与调优参数,以及 join 决策树。">
-<title>Spark Join 策略 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/spark-joins/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/spark-joins/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/spark-joins/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/spark-joins/">
+<meta name="description" content="Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。">
+<title>Spark Join 策略 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/spark-joins/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/spark-joins/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Spark Join 策略">
 <meta property="og:description" content="Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/spark-joins/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/spark-joins/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Spark Join 策略">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Spark Join 策略">
 <meta name="twitter:description" content="Spark join 怎么选:广播 vs sort-merge vs shuffle hash、倾斜处理、Bucketing、AQE。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Spark Join 策略","description":"Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/spark-joins/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Spark Join 策略","description":"Spark join 策略:广播/sort-merge/shuffle hash/笛卡尔、shuffle 成本、数据倾斜、Bucketing、AQE、调优。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/spark-joins/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么 shuffle 是 Spark join 的敌人?", "acceptedAnswer": {"@type": "Answer", "text": "shuffle 强迫序列化、写磁盘、网络传输和反序列化——对 1 TB 数据集是一个操作 3 TB 的 I/O。每个 join 优化都旨在最小化不必要的 shuffle:广播在大侧消除它,Bucketing 完全消除它,Sort-Merge 通过做一次并流式合并来最小化额外工作。"}}, {"@type": "Question", "name": "广播 vs Sort-Merge——各自何时胜?", "acceptedAnswer": {"@type": "Answer", "text": "一侧装进 executor 内存时广播胜——它消除所有大侧网络流量,常带来 10–100 倍加速。大-大 join 时 Sort-Merge 胜,因为它通过顺序扫描在有界常量内存里合并,处理超过总可用 RAM 的数据集而无 OOM 风险。"}}, {"@type": "Question", "name": "Bucketing 怎么消除 shuffle?", "acceptedAnswer": {"@type": "Answer", "text": "两表在写时用相同桶数按同一 join key 预分区。Spark 的 Catalyst 优化器检测到匹配行已在同一 executor 共置,完全跳过 shuffle Exchange 节点——由物理计划里无 Exchange 确认。"}}, {"@type": "Question", "name": "什么是数据倾斜、怎么修?", "acceptedAnswer": {"@type": "Answer", "text": "倾斜是某些 join key 值比其他有多得多的行,造成一个 executor 任务处理比同伴多 1000 倍的数据——一个掉队者拖住整个 stage。修法:(1) AQE 的自动倾斜 join 处理(Spark 3.0+),拆分倾斜分区;(2) 手动加盐——在两侧给倾斜 key 追加随机后缀,为所有盐值复制维度侧;(3) 若倾斜的小维度装进内存就广播它。"}}, {"@type": "Question", "name": "AQE 对 join 做什么?", "acceptedAnswer": {"@type": "Answer", "text": "AQE(Spark 3.0+)在每个 shuffle 边界用实际运行时统计重新优化计划:若实际数据比估计小能把 Sort-Merge 切到广播、合并 shuffle 分区以调正并行度,并自动把倾斜分区拆成子分区以均衡执行。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Spark Join 策略","item":"https://sdeoffer.com/zh/tech-stacks/spark-joins/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/spark-joins/">EN</a>
-        <a href="/zh/tech-stacks/spark-joins/" class="active">中</a>
+        <a href="/tech-stacks/spark-joins/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/spark-joins/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">spark-joins</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Spark Join 策略</h1>
     <div class="article-meta">
@@ -184,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p>Join 是分布式数据处理中最昂贵的操作之一。在 Apache Spark 里,join 策略的选择决定一个作业是几分钟还是几小时跑完——或是否因 OOM 错误或失控的 shuffle 而崩溃集群。Spark 的 Catalyst 优化器基于数据集大小和可用统计自动选策略,但理解每种策略的机制、shuffle 的真实成本、数据倾斜如何悄无声息地摧毁一个选得好的策略,以及自适应查询执行如何在运行时改变局面——这些技能区分了资深数据工程师与那些只调 <code>df.join()</code> 并祈祷的人。</p>
+    <p>Join 是<a href="/zh/ddia/chapter-10/">分布式数据处理</a>中最昂贵的操作之一。在 Apache Spark 里,join 策略的选择决定一个作业是几分钟还是几小时跑完——或是否因 OOM 错误或失控的 shuffle 而崩溃集群。Spark 的 Catalyst 优化器基于数据集大小和可用统计自动选策略,但理解每种策略的机制、shuffle 的真实成本、数据倾斜如何悄无声息地摧毁一个选得好的策略,以及自适应查询执行如何在运行时改变局面——这些技能区分了资深数据工程师与那些只调 <code>df.join()</code> 并祈祷的人。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -369,7 +387,7 @@ spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str"
     </table>
 
     <h2>数据倾斜——沉默的性能杀手</h2>
-    <p>数据倾斜发生在行在 join key 值上分布不均时。若一个 key 有 1000 万行而其他都 1000 行,一个 executor 的任务会处理比同伴多 1 万倍的数据,而其余空闲。这是 Spark 作业在"99% 完成"卡几小时的最常见原因——一个掉队任务拖住整个 stage。</p>
+    <p><a href="/zh/tech-stacks/sharding/">数据倾斜</a>发生在行在 join key 值上分布不均时。若一个 key 有 1000 万行而其他都 1000 行,一个 executor 的任务会处理比同伴多 1 万倍的数据,而其余空闲。这是 Spark 作业在"99% 完成"卡几小时的最常见原因——一个掉队任务拖住整个 stage。</p>
 
     <h3>检测倾斜</h3>
     <p>检查 Spark UI 的 Stage 详情页。按 Duration 或 Input Size 排序任务。若少数任务(或就一个)耗时比中位数戏剧性地长,你有倾斜。代码里这样验证:</p>
@@ -594,9 +612,10 @@ spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str"
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -604,7 +623,7 @@ spark.<span class="fn">conf</span>.<span class="fn">set</span>(<span class="str"
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

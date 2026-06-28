@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Loop engineering is designing the agent loop itself: the plan-act-observe cycle, stopping conditions, step and cost budgets, in-loop verification, and recovery.">
+<title>Loop Engineering — Designing the Agent Loop | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/loop-engineering/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/loop-engineering/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="Loop Engineering — Designing the Agent Loop">
+<meta property="og:description" content="Loop engineering is designing the agent loop itself: the plan-act-observe cycle, stopping conditions, step and cost budgets, in-loop verification, and recovery.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/loop-engineering/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Loop Engineering — Designing the Agent Loop">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="Loop Engineering">
+<meta name="twitter:description" content="Designing the agent loop — plan-act-observe, stopping, budgets, verification, recovery, topologies, and tuning.">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Loop Engineering — Designing the Agent Loop","description":"Loop engineering is designing the agent loop itself: the plan-act-observe cycle, stopping conditions, step and cost budgets, in-loop verification, and recovery.","datePublished":"2026-06-21","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/loop-engineering/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-21","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is \"the loop\"?", "acceptedAnswer": {"@type": "Answer", "text": "The control cycle that wraps an LLM call — call → act → observe → repeat — turning a one-shot model into an agent that explores and self-corrects."}}, {"@type": "Question", "name": "What's the hardest part of a loop?", "acceptedAnswer": {"@type": "Answer", "text": "The stopping condition: knowing when the task is truly done without stopping early or looping forever; gate it on verification, not the model's word."}}, {"@type": "Question", "name": "Why do agents need budgets?", "acceptedAnswer": {"@type": "Answer", "text": "An LLM in a loop spends unboundedly; hard caps on steps/tokens/time/cost are the backstop, ideally with graceful wind-down near the limit."}}, {"@type": "Question", "name": "What's a doom loop and how do you stop it?", "acceptedAnswer": {"@type": "Answer", "text": "The agent repeating a failing action; detect repetition (same call/error N times) and break the pattern — nudge, escalate, or stop — backed by the budget."}}, {"@type": "Question", "name": "What makes the loop converge instead of spin?", "acceptedAnswer": {"@type": "Answer", "text": "In-loop verification — running tests/build and feeding failures back grounds each iteration in the environment."}}, {"@type": "Question", "name": "When would you use sub-agents?", "acceptedAnswer": {"@type": "Answer", "text": "When a task is large or its context gets cluttered — delegate scoped work to fresh sub-agents with clean contexts and merge results, enabling parallelism."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"Loop Engineering — Designing the Agent Loop","item":"https://sdeoffer.com/ai-coding/loop-engineering/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6; --accent4: #a78bfa;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent4); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent4); background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  .code-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; margin: 28px 0; overflow: hidden; }
+  .code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg3); }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  .callout { background: rgba(167,139,250,0.05); border: 1px solid rgba(167,139,250,0.2); border-left: 3px solid var(--accent4); border-radius: 8px; padding: 16px 20px; margin: 28px 0; }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  .takeaways { background: linear-gradient(135deg, rgba(167,139,250,0.09), rgba(56,189,248,0.04)); border: 1px solid rgba(167,139,250,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent4); }
+  .compare-table .col-b { color: var(--accent2); }
+
+  .article-figure { margin: 32px 0; }
+  .article-figure svg, .article-figure img { width: 100%; height: auto; display: block; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; line-height: 1.5; }
+  .article-figure.wide { width: 940px; max-width: 92vw; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent4); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
+      <div class="lang-switch"><a href="/ai-coding/loop-engineering/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/loop-engineering/" hreflang="zh" lang="zh">中</a></div>
+      <a href="/contact/" class="nav-cta">Mock Interview →</a>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">loop-engineering</span>
+    </nav>
+    <span class="article-tag">AI Coding</span>
+    <h1 class="article-title">Loop Engineering — Designing the Agent Loop</h1>
+    <div class="article-meta">
+      <span>Jun 21, 2026</span>
+      <span class="separator">·</span>
+      <span>30 min read</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent4)">AI Coding</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>A model call is one shot: text in, text out, done. An <em>agent</em> is what happens when you wrap that call in a loop — call the model, run what it asked for, feed the result back, and call it again — until the job is finished. That loop is where an agent does all of its exploring, acting, and self-correcting, and designing it well is its own discipline: <strong>loop engineering</strong>. As frontier models converge in raw ability and "context engineering" became the buzzword for what you feed the model, loop engineering is the next layer down — the <em>control flow</em> that decides when to think, when to act, when to stop, and what to do when things go wrong. This is the companion to <a href="/ai-coding/harness-engineering/">harness engineering</a>: the harness is the whole car; this piece is about the engine's combustion cycle.</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ Quick Takeaways</div>
+      <ul>
+        <li><strong>The loop is what turns a one-shot model into an agent.</strong> Call → act → observe → repeat is the cycle where exploration, action, and self-correction happen.</li>
+        <li><strong>Stopping is the hardest part.</strong> Knowing when the task is actually <em>done</em> — and not stopping early or looping forever — is the central control-flow problem.</li>
+        <li><strong>Every loop needs budgets.</strong> Hard caps on steps, tokens, time, and cost are non-negotiable: they're the backstop against a confused agent burning unbounded resources.</li>
+        <li><strong>Verification closes the loop.</strong> Running tests/builds and feeding failures back is what makes the loop <em>converge</em> on a correct answer rather than just spin.</li>
+        <li><strong>Recovery is most of the engineering.</strong> Tool errors, malformed output, and the agent repeating a failing action ("doom loops") need retries, loop detection, and escape hatches.</li>
+        <li><strong>Topology is a design choice:</strong> single loop, reflection (act → critique → retry), plan-then-execute, and orchestrator + sub-agents each fit different tasks.</li>
+        <li><strong>You tune the loop empirically</strong> — small changes to stop conditions, budgets, or context handling swing real success rates, so you measure with evals and trajectory analysis.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>Loop engineering is the discipline of designing the agent's control loop: the plan-act-observe cycle, the stopping conditions that decide when it's done, the step/token/time/cost budgets that bound it, the verification that grounds it in the environment, the recovery logic that handles errors and breaks doom loops, and the topology (single, reflection, plan-execute, sub-agents) that fits the task. Because models are commoditizing, how well you engineer this loop is increasingly what separates an agent that finishes the job from one that flails.</p>
+    </div>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anatomy of the agent loop: the assemble-call-decide-execute-observe cycle, governed by a loop controller and an exit to a verified final answer">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="arp" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+          <marker id="arg" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#4ade80"/></marker>
+        </defs>
+        <rect x="24"  y="44"  width="600" height="404" rx="12" fill="#0f1b27" stroke="#1c4a63"/>
+        <text x="40"  y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#38bdf8" letter-spacing="1">THE AGENT LOOP — one iteration</text>
+        <rect x="664" y="44"  width="272" height="232" rx="12" fill="#181428" stroke="#3b2f63"/>
+        <text x="680" y="66"  font-family="'JetBrains Mono',monospace" font-size="10" fill="#a78bfa" letter-spacing="1">LOOP CONTROLLER</text>
+        <rect x="664" y="300" width="272" height="148" rx="12" fill="#10241a" stroke="#1f5036"/>
+        <text x="680" y="322" font-family="'JetBrains Mono',monospace" font-size="10" fill="#4ade80" letter-spacing="1">EXIT</text>
+
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle">
+          <rect x="60"  y="96"  width="170" height="52" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="145" y="120" font-size="12" fill="#e2e8f0">Assemble context</text><text x="145" y="137" font-size="9" fill="#7a8aa0">system + history + obs</text>
+          <rect x="290" y="96"  width="170" height="52" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="375" y="120" font-size="12" fill="#e2e8f0">Call model</text><text x="375" y="137" font-size="9" fill="#7a8aa0">the only LLM call</text>
+          <rect x="438" y="200" width="150" height="60" rx="9" fill="#161b25" stroke="#f472b6" stroke-width="1.5"/><text x="513" y="226" font-size="12" fill="#e2e8f0">Decide</text><text x="513" y="243" font-size="9" fill="#7a8aa0">tool call? or done?</text>
+          <rect x="248" y="206" width="150" height="50" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="323" y="230" font-size="12" fill="#e2e8f0">Execute action</text><text x="323" y="246" font-size="9" fill="#7a8aa0">tool / cmd</text>
+          <rect x="60"  y="206" width="150" height="50" rx="9" fill="#1e2535" stroke="#2a3347" stroke-width="1.5"/><text x="135" y="230" font-size="12" fill="#e2e8f0">Observe result</text><text x="135" y="246" font-size="9" fill="#7a8aa0">append to state</text>
+
+          <rect x="688" y="86"  width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="110" font-size="11" fill="#c8d3e0">Budget: steps · tokens · cost</text>
+          <rect x="688" y="132" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="156" font-size="11" fill="#c8d3e0">Stop conditions</text>
+          <rect x="688" y="178" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="202" font-size="11" fill="#c8d3e0">Verifier (tests / build)</text>
+          <rect x="688" y="224" width="224" height="38" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="800" y="248" font-size="11" fill="#c8d3e0">Recovery · loop detect</text>
+
+          <rect x="688" y="340" width="224" height="44" rx="9" fill="#1e2535" stroke="#4ade80" stroke-width="1.5"/><text x="800" y="362" font-size="12" fill="#e2e8f0">Final answer</text><text x="800" y="378" font-size="9" fill="#7a8aa0">verified · within budget</text>
+          <rect x="688" y="396" width="224" height="38" rx="9" fill="#1e2535" stroke="#2a3347"/><text x="800" y="420" font-size="11" fill="#c8d3e0">Give up / escalate</text>
+        </g>
+
+        <line x1="230" y1="122" x2="288" y2="122" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="460" y1="130" x2="500" y2="198" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <line x1="438" y1="232" x2="400" y2="232" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <text x="420" y="224" font-family="'JetBrains Mono',monospace" font-size="9" fill="#7a8aa0" text-anchor="middle">act</text>
+        <line x1="248" y1="231" x2="212" y2="231" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar)"/>
+        <path d="M135,206 L135,158 L145,158 L145,150" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="120" y="180" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">loop back</text>
+        <line x1="588" y1="224" x2="686" y2="360" stroke="#4ade80" stroke-width="1.4" marker-end="url(#arg)"/>
+        <text x="636" y="280" font-family="'JetBrains Mono',monospace" font-size="9" fill="#4ade80" text-anchor="middle">done</text>
+        <path d="M664,160 L600,160" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arp)"/>
+        <text x="628" y="152" font-family="'JetBrains Mono',monospace" font-size="9" fill="#a78bfa" text-anchor="middle">governs</text>
+      </svg>
+      <figcaption>Anatomy of the agent loop — assemble context → call model → decide → execute → observe → loop back, with a controller (budgets, stop conditions, verifier, recovery) governing every iteration and an exit only when the answer is verified or the budget is spent</figcaption>
+    </figure>
+
+    <h2>What the Loop Actually Is</h2>
+    <p>Strip away the framework names and every agent is the same five lines: maintain a running <strong>state</strong> (the conversation, plus everything observed so far), call the model on it, and if the model asks to use a tool, execute that tool, append the result to the state, and call the model again. Repeat until the model says it's done or you hit a limit. That's it — the loop is small. What makes it hard is everything you have to decide <em>around</em> those five lines.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">the loop — and the decisions hiding in it</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>state = [system, tools, goal]
+steps, spent = <span class="num">0</span>, <span class="num">0</span>
+<span class="kw">while</span> <span class="kw">not</span> <span class="fn">done</span>(state) <span class="kw">and</span> steps &lt; MAX_STEPS <span class="kw">and</span> spent &lt; BUDGET:   <span class="cm"># ← stop + budget</span>
+    reply = model(state)                          <span class="cm"># the only LLM call</span>
+    <span class="kw">if</span> reply.tool_calls:
+        <span class="kw">for</span> call <span class="kw">in</span> reply.tool_calls:
+            obs = <span class="fn">execute</span>(call)                 <span class="cm"># ← errors? timeouts? recovery</span>
+            state.append(obs)
+    <span class="kw">else</span>:
+        <span class="kw">if</span> <span class="fn">verify</span>(reply): <span class="kw">return</span> reply        <span class="cm"># ← is it actually correct?</span>
+        state.append(<span class="str">"verification failed: …"</span>)   <span class="cm"># ← feed failure back, keep going</span>
+    state = <span class="fn">compact</span>(state)                     <span class="cm"># ← context across iterations</span>
+    steps, spent = steps + <span class="num">1</span>, spent + reply.cost
+<span class="kw">return</span> <span class="fn">give_up</span>(state)                          <span class="cm"># ← graceful failure / escalate</span></code></pre>
+    </div>
+
+    <p>Each comment marks a loop-engineering decision: when is <code>done</code> true, how big are the budgets, how do you recover from a failed <code>execute</code>, what does <code>verify</code> check, how do you <code>compact</code> state so it fits the window, and what happens when you fall out the bottom. The rest of this article is those decisions.</p>
+
+    <h2>Why the Loop Is Now the Product</h2>
+    <p>For a few years the story was "better model wins." That's flattening: frontier models are converging, and the same model dropped into two different loops can have wildly different success rates on real tasks. The loop controls what the model sees each turn, how many attempts it gets, whether it catches its own mistakes, and whether it quits gracefully or burns your budget. So the differentiator has moved <em>up the stack</em>: first to context engineering (what you feed the model), and now to <strong>loop engineering</strong> (how you orchestrate repeated calls into reliable work). Coding agents that "just feel more capable" usually have a better-engineered loop, not a secret model.</p>
+
+    <h2>The Control Flow: Plan, Act, Observe</h2>
+    <p>The canonical loop body is a three-beat cycle, often called <strong>ReAct</strong> (reason + act): the model <strong>reasons</strong> about what to do next, emits an <strong>action</strong> (a tool call), and the harness returns an <strong>observation</strong> that goes back into context for the next reason step. The power is in the feedback: the agent isn't predicting a whole solution up front, it's taking one grounded step at a time, adapting to what each action reveals.</p>
+    <p>The first real design choice lives here: <strong>how much to do per turn.</strong> A single tool call per step is simplest and easiest to recover from, but slow and chatty. Allowing the model to request several tool calls at once (parallel reads, say) cuts latency and token cost — at the price of harder error handling when one of them fails. Most production loops allow batched read-only calls but serialize anything that mutates state, so a failure is localized.</p>
+
+    <h2>Stopping Conditions — the Hard Part</h2>
+    <p>The deceptively hard question in any loop is "are we done?" Stop too early and the agent hands back a half-finished task; never stop and it loops forever, or keeps "improving" a fine answer until it breaks it. There is no single right answer — you compose several signals:</p>
+    <ul>
+      <li><strong>Model-declared completion</strong> — the model stops calling tools and emits a final answer. Necessary but not sufficient: models declare victory prematurely all the time.</li>
+      <li><strong>Verification-gated</strong> — "done" only counts if a check passes (tests green, build succeeds, output matches a schema). This is the strongest signal because it's grounded in the environment, not the model's opinion.</li>
+      <li><strong>Goal/exit criteria</strong> — an explicit predicate ("the function exists and all tests pass") the loop evaluates, rather than trusting prose.</li>
+      <li><strong>Budget exhaustion</strong> — a hard stop regardless of state; the backstop, not the goal.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">key point</div>
+      <p>Never let the model be the <em>sole</em> judge of "done." A model declaring success is a request to stop, not proof of completion — gate it on a verification check whenever the task has one. "It said it was finished" is the agent equivalent of "it compiles on my machine."</p>
+    </div>
+
+    <h2>Budgets: Steps, Tokens, Time, Cost</h2>
+    <p>An LLM in a loop is an unbounded spender by default — a confused agent will happily take 200 steps and burn dollars going nowhere. Budgets are the hard limits that make a loop safe to run unattended, and a serious loop tracks several at once:</p>
+
+    <table class="compare-table">
+      <thead><tr><th>Budget</th><th>What it caps / why</th></tr></thead>
+      <tbody>
+        <tr><td class="col-a">Step / iteration count</td><td class="col-b">The simplest backstop — bounds how many model calls a single task can make, so a stuck agent halts instead of spinning.</td></tr>
+        <tr><td class="col-a">Token budget</td><td class="col-b">Bounds total context + generation tokens; the truest proxy for cost, since spend scales with tokens, not turns.</td></tr>
+        <tr><td class="col-a">Wall-clock / timeout</td><td class="col-b">Caps a single tool call (a hung command) and the whole task; protects latency-sensitive callers.</td></tr>
+        <tr><td class="col-a">Dollar cost</td><td class="col-b">A per-task or per-user ceiling; what you actually bill against and the limit ops cares about.</td></tr>
+      </tbody>
+    </table>
+
+    <p>The subtlety isn't <em>having</em> a budget, it's <strong>what to do as you approach it</strong>. A good loop degrades gracefully: as the step budget runs low it can switch from exploring to wrapping up ("you have 2 steps left — summarize what you found and stop"), rather than getting cut off mid-thought. Budgets aren't just a kill switch; they're a signal the loop can reason about.</p>
+
+    <h2>Verification: Closing the Loop</h2>
+    <p>A loop without verification just iterates; a loop <em>with</em> it converges. The single feature that most separates a real agent from a fancy autocomplete is feeding the result of running the work back into the loop: run the tests, the linter, the build, the query — and turn a failure into an observation the model reasons about and fixes. This grounds the agent in the <strong>environment</strong> instead of its own (often wrong) belief that the code is correct.</p>
+    <p>Verification is what makes the loop's iteration <em>meaningful</em>: each pass isn't a re-roll of the dice, it's a step toward a checked result. The quality of this depends on loop-engineering choices — what to run, how to surface a 5,000-line failure log as the few lines that matter, and when a partial pass is "good enough." A weak model with a tight verify-and-retry loop often beats a strong model with none. (Evaluating whether the loop actually converges is its own discipline — see <a href="/ai-coding/llm-evals/">evals for LLM apps</a>.)</p>
+
+    <h2>Error Recovery and Doom Loops</h2>
+    <p>Agents fail in ways a single call never does, and most of the engineering in a production loop is the recovery paths. The big ones:</p>
+    <ul>
+      <li><strong>Tool errors</strong> — a command fails or a file is missing. The fix is to return a <em>readable, actionable</em> error as the observation ("file not found: did you mean X?"), not a raw stack trace — the error text is feedback the model acts on.</li>
+      <li><strong>Malformed output</strong> — the model emits invalid JSON for a tool call. Re-prompt with the parse error, optionally with constrained decoding, rather than crashing the loop.</li>
+      <li><strong>The doom loop</strong> — the agent repeats the same failing action over and over, convinced it'll work this time. This is the signature agent failure, and it needs explicit <strong>loop detection</strong>.</li>
+    </ul>
+    <p>Loop detection means noticing repetition — the same tool call with the same args, or the same error N times — and <em>breaking the pattern</em>: inject a nudge ("that approach has failed twice; try something different"), escalate to a stronger model, or stop. Without it, a budget is your only protection, and you waste the whole budget on the same mistake. Pairing the two — detect the repeat early, fall back on the budget — is the standard belt-and-suspenders.</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <span class="code-dot" style="background:#ff5f56"></span><span class="code-dot" style="background:#ffbd2e"></span><span class="code-dot" style="background:#27c93f"></span>
+          <span class="code-lang">detecting a doom loop and breaking it</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('pre').innerText)">copy</button>
+      </div>
+      <pre><code>recent = []
+<span class="kw">def</span> <span class="fn">guard</span>(action, result):
+    sig = (action.name, action.args, result.error)   <span class="cm"># fingerprint the attempt</span>
+    recent.append(sig)
+    <span class="kw">if</span> recent[-<span class="num">3</span>:].count(sig) &gt;= <span class="num">3</span>:               <span class="cm"># same failing action 3×</span>
+        <span class="kw">return</span> <span class="str">"STUCK: this has failed repeatedly — change strategy or stop"</span>
+    <span class="kw">return</span> <span class="kw">None</span>                                  <span class="cm"># otherwise continue normally</span></code></pre>
+    </div>
+
+    <h2>Loop Topologies</h2>
+    <p>The plain while-loop is the baseline, but "loop engineering" increasingly means choosing the right <em>shape</em> of loop for the task. Four common topologies:</p>
+
+    <figure class="article-figure wide">
+      <svg viewBox="0 0 960 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four agent loop topologies: single loop, reflection, plan-then-execute, and orchestrator with sub-agents">
+        <defs>
+          <marker id="ar2" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#7a8aa0"/></marker>
+          <marker id="ar2p" markerWidth="9" markerHeight="9" refX="6.5" refY="3.2" orient="auto"><path d="M0,0 L6.5,3.2 L0,6.4 z" fill="#a78bfa"/></marker>
+        </defs>
+        <g font-family="'JetBrains Mono',monospace" text-anchor="middle" font-size="10">
+          <text x="115" y="36" fill="#a78bfa" font-size="11">Single loop</text>
+          <rect x="40"  y="56" width="150" height="34" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="115" y="77" fill="#e2e8f0">act → observe</text>
+          <path d="M40,73 C10,73 10,140 60,140 L190,140 C230,140 215,90 192,80" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2p)"/>
+          <text x="115" y="158" fill="#7a8aa0" font-size="9">repeat until done</text>
+
+          <text x="350" y="36" fill="#a78bfa" font-size="11">Reflection</text>
+          <rect x="282" y="56" width="80" height="34" rx="7" fill="#1e2535" stroke="#2a3347"/><text x="322" y="77" fill="#e2e8f0">draft</text>
+          <rect x="282" y="118" width="80" height="34" rx="7" fill="#1e2535" stroke="#f472b6"/><text x="322" y="139" fill="#e2e8f0">critique</text>
+          <rect x="392" y="86" width="80" height="34" rx="7" fill="#1e2535" stroke="#4ade80"/><text x="432" y="107" fill="#e2e8f0">revise</text>
+          <line x1="322" y1="90" x2="322" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="362" y1="132" x2="392" y2="110" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <path d="M432,86 C432,50 360,50 348,54" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2p)"/>
+
+          <text x="600" y="36" fill="#a78bfa" font-size="11">Plan → execute</text>
+          <rect x="540" y="56" width="120" height="34" rx="7" fill="#1e2535" stroke="#38bdf8"/><text x="600" y="77" fill="#e2e8f0">make plan</text>
+          <rect x="528" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="551" y="138" fill="#e2e8f0">s1</text>
+          <rect x="582" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="605" y="138" fill="#e2e8f0">s2</text>
+          <rect x="636" y="118" width="46" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="659" y="138" fill="#e2e8f0">s3</text>
+          <line x1="600" y1="90" x2="600" y2="116" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <text x="605" y="166" fill="#7a8aa0" font-size="9">steps, each its own mini-loop</text>
+
+          <text x="850" y="36" fill="#a78bfa" font-size="11">Orchestrator + sub-agents</text>
+          <rect x="800" y="56" width="100" height="34" rx="7" fill="#1e2535" stroke="#38bdf8"/><text x="850" y="77" fill="#e2e8f0">main</text>
+          <rect x="752" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="780" y="140" fill="#e2e8f0">sub A</text>
+          <rect x="822" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="850" y="140" fill="#e2e8f0">sub B</text>
+          <rect x="892" y="120" width="56" height="30" rx="6" fill="#1e2535" stroke="#2a3347"/><text x="920" y="140" fill="#e2e8f0">sub C</text>
+          <line x1="828" y1="90" x2="788" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="850" y1="90" x2="850" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <line x1="872" y1="90" x2="912" y2="118" stroke="#7a8aa0" stroke-width="1.4" marker-end="url(#ar2)"/>
+          <text x="850" y="166" fill="#7a8aa0" font-size="9">fan out · merge results</text>
+        </g>
+      </svg>
+      <figcaption>Four loop topologies — a single act/observe loop; a reflection loop (draft → critique → revise); plan-then-execute (one plan, each step its own mini-loop); and an orchestrator that fans work out to sub-agents with clean contexts, then merges</figcaption>
+    </figure>
+
+    <ul>
+      <li><strong>Single loop</strong> — the default ReAct cycle. Best for open-ended tasks where the next step depends on the last observation; simplest to build and debug.</li>
+      <li><strong>Reflection</strong> — after producing an answer, a separate critique step looks for flaws and triggers a revision. Adds a self-review beat that catches errors the first pass missed, at the cost of extra model calls.</li>
+      <li><strong>Plan-then-execute</strong> — the agent drafts a plan first, then executes the steps (each potentially its own small loop). Keeps long tasks coherent and gives you a checkpoint to inspect the plan before spending on execution.</li>
+      <li><strong>Orchestrator + sub-agents</strong> — a main loop delegates scoped jobs (search the codebase, review a diff) to fresh sub-agents with their own clean context, which return just a conclusion. This bounds how much any one context window must hold and enables parallelism — the topology behind most large-task agents.</li>
+    </ul>
+
+    <h2>Context Across Iterations</h2>
+    <p>Every loop iteration appends observations to the state, so a long task inevitably bloats toward the context-window ceiling. Managing that growth is a core loop-engineering job — the loop has to keep the goal and the key facts in view while shedding noise. The standard move is <strong>compaction</strong>: when the state approaches the window, summarize or drop older turns, preserving the goal, the plan, and recent results. Related tactics include offloading detail to an external scratchpad the agent can re-read on demand, and the sub-agent pattern above, which keeps the main loop's context lean by sending heavy work to a child. Get this wrong and the agent "forgets" what it was doing mid-task; get it right and it can work on problems far longer than any single window.</p>
+
+    <h2>Tuning the Loop Empirically</h2>
+    <p>You cannot tune a loop by intuition, because the changes that matter — a different stop condition, a tighter budget, when to compact, whether to add a reflection beat — interact in ways that swing real-world success rates surprisingly far. Serious loop work is empirical: run the agent against benchmark tasks, measure <strong>success rate, steps, and cost</strong>, and inspect <strong>trajectories</strong> (the full sequence of calls and observations) to see <em>where</em> runs go wrong — premature stops, doom loops, budget blowouts. Then change one thing and re-measure. The loop is a system you tune against data, the same way you'd tune any control system.</p>
+
+    <div class="callout">
+      <div class="callout-label">interview tip</div>
+      <p>If asked to "design an agent," resist jumping to the model. Lead with the loop: "It's a call-act-observe cycle; the interesting decisions are the stopping condition, the budgets, in-loop verification, and recovery from doom loops." That framing shows you understand where agent reliability actually comes from.</p>
+    </div>
+
+    <h2>Pitfalls and Tradeoffs</h2>
+    <ul>
+      <li><strong>Trusting model-declared "done."</strong> Without a verification gate, the agent stops on its own say-so and ships half-finished work. Gate on a real check.</li>
+      <li><strong>No loop detection.</strong> Relying on the budget alone means a doom loop wastes the entire budget on one mistake; detect repetition early.</li>
+      <li><strong>Budgets with no graceful degradation.</strong> A hard cut-off mid-thought wastes the work done so far; let the loop wind down when it's near the limit.</li>
+      <li><strong>Over-engineering the topology.</strong> Reflection and multi-agent add model calls, latency, and cost; many tasks are better served by a tight single loop. Add structure only when a simpler loop demonstrably fails.</li>
+      <li><strong>Context rot.</strong> Skipping compaction lets the window fill with stale observations until quality silently degrades; manage state every iteration.</li>
+      <li><strong>Tuning blind.</strong> Without trajectory analysis you fix the wrong thing — you see a low success rate but not whether it's early stops, loops, or bad recovery.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">takeaway</div>
+      <p>An agent is a loop, and loop engineering is the discipline of designing it well. The model supplies the reasoning; the loop supplies the control flow that makes that reasoning into reliable work — deciding when to act, when to stop, how much to spend, how to verify, and how to recover. As models commoditize, this control flow is increasingly the product: the same model in a well-engineered loop finishes the job, and in a careless one flails until the budget runs out.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 interview hot-takes</div>
+      <p><strong>What is "the loop"?</strong> The control cycle that wraps an LLM call — call → act → observe → repeat — turning a one-shot model into an agent that explores and self-corrects.<br>
+      <strong>What's the hardest part of a loop?</strong> The stopping condition: knowing when the task is truly done without stopping early or looping forever; gate it on verification, not the model's word.<br>
+      <strong>Why do agents need budgets?</strong> An LLM in a loop spends unboundedly; hard caps on steps/tokens/time/cost are the backstop, ideally with graceful wind-down near the limit.<br>
+      <strong>What's a doom loop and how do you stop it?</strong> The agent repeating a failing action; detect repetition (same call/error N times) and break the pattern — nudge, escalate, or stop — backed by the budget.<br>
+      <strong>What makes the loop converge instead of spin?</strong> In-loop verification — running tests/build and feeding failures back grounds each iteration in the environment.<br>
+      <strong>When would you use sub-agents?</strong> When a task is large or its context gets cluttered — delegate scoped work to fresh sub-agents with clean contexts and merge results, enabling parallelism.</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/ai-coding/harness-engineering/" class="article-nav-card">
+        <div class="article-nav-label">← prev</div>
+        <div class="article-nav-title">Harness Engineering</div>
+      </a>
+      <a href="/ai-coding/llm-evals/" class="article-nav-card next">
+        <div class="article-nav-label">next →</div>
+        <div class="article-nav-title">Evals for LLM Apps</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/system-design/">System Design</a></li>
+      <li><a href="/tech-stacks/">Tech Stacks</a></li>
+      <li><a href="/ai-coding/">AI Coding</a></li>
+      <li><a href="/ddia/">DDIA</a></li>
+      <li><a href="/contact/">Contact</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

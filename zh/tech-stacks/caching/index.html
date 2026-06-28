@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解缓存:分层缓存栈、五种读写策略(cache-aside/read-through/write-through/write-behind/write-around)、淘汰算法(LRU/LFU/ARC/FIFO/TTL)、TTL 设计、三大失效模式(击穿/穿透/雪崩)、热点 key、分布式缓存一致性、Redis vs Memcached、CDN 边缘缓存与可观测性。">
-<title>缓存 (Caching) | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/caching/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/caching/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/caching/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/caching/">
+<meta name="description" content="分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。">
+<title>缓存 — Cache-Aside、淘汰策略与 Redis vs Memcached | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/caching/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/caching/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/caching/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/caching/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="缓存 (Caching)">
 <meta property="og:description" content="分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/caching/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/caching/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/caching-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="331">
+<meta property="og:image:alt" content="缓存 (Caching)">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/caching-1.jpg">
 <meta name="twitter:title" content="缓存 (Caching)">
 <meta name="twitter:description" content="缓存怎么做:读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、Redis vs Memcached。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"缓存 (Caching)","description":"分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/caching/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"缓存 (Caching)","description":"分层缓存、五种读写策略、淘汰算法、TTL、击穿/穿透/雪崩、热点 key、一致性、Redis vs Memcached、CDN。","datePublished":"2023-04-02","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/caching/"},"image":"https://sdeoffer.com/assets/img/caching-1.jpg","dateModified":"2023-04-02"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "缓存击穿 vs 缓存雪崩——区别是什么?", "acceptedAnswer": {"@type": "Answer", "text": "击穿:一个热门 key 过期,许多线程同时打 DB——用互斥锁或概率提前刷新修复。雪崩:许多 key 同时过期,发送未命中洪流——用 TTL 抖动和预热修复。不同问题,不同修法。"}}, {"@type": "Question", "name": "怎么处理缓存穿透?", "acceptedAnswer": {"@type": "Answer", "text": "缓存空结果(像 \"__null__\" 这样的哨兵带短 TTL),或在前面放布隆过滤器,在不存在的 key 打缓存或 DB 前拒绝它们。"}}, {"@type": "Question", "name": "Redis 还是 Memcached?", "acceptedAnswer": {"@type": "Answer", "text": "超出简单字符串缓存的一切都用 Redis——持久化、pub/sub、排行榜的有序集合、Lua 原子限流、流。只在多核极致规模的裸字符串吞吐是唯一需求且运维简单至上时用 Memcached。"}}, {"@type": "Question", "name": "用什么淘汰策略?", "acceptedAnswer": {"@type": "Answer", "text": "纯缓存用 allkeys-lru;Redis 兼作持久数据时用 volatile-lru。工作集有稳定、明确的热点 key(排行榜、爆款内容)时切到 allkeys-lfu。"}}, {"@type": "Question", "name": "怎么处理打爆单个 Redis 分片的热点 key?", "acceptedAnswer": {"@type": "Answer", "text": "把 key 用随机后缀复制到 N 个槽并扇出读;加一个 1 秒 TTL 的进程内 L1 缓存,在请求打到 Redis 前就吸收大部分。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"缓存 (Caching)","item":"https://sdeoffer.com/zh/tech-stacks/caching/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/caching/">EN</a>
-        <a href="/zh/tech-stacks/caching/" class="active">中</a>
+        <a href="/tech-stacks/caching/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/caching/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">caching</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">缓存 (Caching)</h1>
     <div class="article-meta">
@@ -208,7 +226,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/caching-1.jpg" alt="分布式系统栈中的缓存层" loading="lazy">
+        <img src="/assets/img/caching-1.jpg" alt="分布式系统栈中的缓存层" width="1024" height="331" fetchpriority="high">
         <figcaption>分布式系统栈中的缓存层</figcaption>
       </figure>
 
@@ -453,7 +471,7 @@ bloom = <span class="fn">BloomFilter</span>(capacity=<span class="num">1_000_000
     </ul>
 
     <h2>热点 Key:沉默的瓶颈</h2>
-    <p>在 Redis Cluster 这样的分布式缓存集群里,每个 key 恰好活在一个分片上。一个<strong>热点 key</strong>——单个商品页、一条爆款推文、一篇病毒新闻——可能每秒收到数百万请求,全都路由到同一分片。无论其他分片多空闲,那个分片都成了瓶颈。这是个与缓存击穿(关乎过期)不同的问题——热点 key 是一个吞吐问题,即使 key 已填充且从不过期也存在。</p>
+    <p>在 Redis Cluster 这样的分布式缓存集群里,每个 key 恰好活在一个<a href="/zh/tech-stacks/sharding/">分片</a>上。一个<strong>热点 key</strong>——单个商品页、一条爆款推文、一篇病毒新闻——可能每秒收到数百万请求,全都路由到同一分片。无论其他分片多空闲,那个分片都成了瓶颈。这是个与缓存击穿(关乎过期)不同的问题——热点 key 是一个吞吐问题,即使 key 已填充且从不过期也存在。</p>
 
     <p><strong>缓解:</strong></p>
     <ul>
@@ -502,7 +520,7 @@ NUM_REPLICAS = <span class="num">10</span>
       <p>总是<strong>先</strong>写数据库,再让缓存失效——不是反过来。若你先让缓存失效然后 DB 写失败,你就有一个冷缓存配一个陈旧(或缺失)的 DB 值。若你先写 DB 然后缓存失效失败,你的缓存短暂陈旧但 DB 是权威的;TTL 最终会清理它。这种不对称很重要。</p>
     </div>
 
-    <p>对需要更强保证的系统,考虑<strong>通过变更数据捕获(CDC)的事件驱动失效</strong>:一个 CDC 连接器(Debezium、Maxwell)读数据库的预写日志并把变更事件发布到消息队列。缓存 worker 订阅并失效或刷新缓存条目。这把写路径与缓存失效延迟完全解耦,并确保缓存与 DB 的 WAL(所有写的权威记录)最终一致。</p>
+    <p>对需要更强保证的系统,考虑<strong>通过变更数据捕获(CDC)的事件驱动失效</strong>:一个 CDC 连接器(Debezium、Maxwell)读数据库的预写日志并把变更事件发布到<a href="/zh/tech-stacks/message-queue/">消息队列</a>。缓存 worker 订阅并失效或刷新缓存条目。这把写路径与缓存失效延迟完全解耦,并确保缓存与 DB 的 WAL(所有写的权威记录)最终一致。</p>
 
     <h2>Redis vs. Memcached:一个诚实的对比</h2>
     <p>Redis 和 Memcached 都是内存键值存储,但它们在设计哲学和特性集上实质分道扬镳。一旦你知道你的需求,这个决定很少难分高下。</p>
@@ -524,7 +542,7 @@ NUM_REPLICAS = <span class="num">10</span>
       </tbody>
     </table>
 
-    <p>Redis 是大多数新系统的默认选择。Memcached 在<strong>纯裸字符串吞吐</strong>上在多核机器上保有可观优势——它的多线程架构允许每连接真正的 CPU 级并行,而 Redis 的单线程命令处理无论可用核心多少都串行化所有命令(网络 I/O 在 6.0 多线程,但命令执行仍单线程)。对一个字面上是数百万简单 <code>GET/SET</code> 纯字符串、无需持久化、丰富类型或 pub/sub 的负载,Memcached 在极致规模下能比 Redis 快 20–40%。对其他一切——有序集合排行榜、流处理、Lua 原子限流、持久会话——Redis 毫无疑问是更好的选择。</p>
+    <p><a href="/zh/tech-stacks/redis/">Redis</a> 是大多数新系统的默认选择。Memcached 在<strong>纯裸字符串吞吐</strong>上在多核机器上保有可观优势——它的多线程架构允许每连接真正的 CPU 级并行,而 Redis 的单线程命令处理无论可用核心多少都串行化所有命令(网络 I/O 在 6.0 多线程,但命令执行仍单线程)。对一个字面上是数百万简单 <code>GET/SET</code> 纯字符串、无需持久化、丰富类型或 pub/sub 的负载,Memcached 在极致规模下能比 Redis 快 20–40%。对其他一切——有序集合排行榜、流处理、Lua 原子限流、持久会话——Redis 毫无疑问是更好的选择。</p>
 
     <div class="callout">
       <div class="callout-label">要知道的 Redis 淘汰策略</div>
@@ -532,7 +550,7 @@ NUM_REPLICAS = <span class="num">10</span>
     </div>
 
     <h2>CDN 边缘缓存</h2>
-    <p>内容分发网络是位于网络边缘——地理上靠近终端用户——的全球分布式缓存。对面向公众的内容,CDN 是你能部署的杠杆最高的缓存:与其让一个来自新加坡的请求穿行 200 ms 到你的 US-East 源,它命中新加坡的 CDN 边缘节点并在 10 ms 内返回。</p>
+    <p><a href="/zh/tech-stacks/cdn/">内容分发网络</a>是位于网络边缘——地理上靠近终端用户——的全球分布式缓存。对面向公众的内容,CDN 是你能部署的杠杆最高的缓存:与其让一个来自新加坡的请求穿行 200 ms 到你的 US-East 源,它命中新加坡的 CDN 边缘节点并在 10 ms 内返回。</p>
 
     <h3>在 CDN 缓存什么</h3>
     <ul>
@@ -647,9 +665,10 @@ redis.<span class="fn">call</span>(<span class="str">'PEXPIRE'</span>, key, wind
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -657,7 +676,7 @@ redis.<span class="fn">call</span>(<span class="str">'PEXPIRE'</span>, key, wind
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

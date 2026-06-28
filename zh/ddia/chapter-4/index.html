@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 4 章:数据编码与 schema 演化——向后/向前兼容、语言特定序列化的陷阱、JSON/XML、Protobuf/Thrift 字段标签、Avro 写者/读者 schema,以及通过数据库/服务(REST/RPC)/消息代理的三种数据流。">
-<title>DDIA 第4章 — 编码与演化 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-4/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-4/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-4/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-4/">
+<meta name="description" content="数据编码与 schema 演化——DDIA 第 4 章讲向后/向前兼容、Protobuf/Thrift/Avro 与数据库、REST/RPC、消息代理数据流。">
+<title>DDIA 第4章 — 编码与演化 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-4/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-4/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-4/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-4/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="编码与演化">
-<meta property="og:description" content="DDIA 第 4 章:编码、向后/向前兼容、Protobuf/Thrift/Avro、REST/RPC、消息代理数据流。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-4/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="数据编码与 schema 演化——DDIA 第 4 章讲向后/向前兼容、Protobuf/Thrift/Avro 与数据库、REST/RPC、消息代理数据流。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-4/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第4章 — 编码与演化">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="编码与演化">
 <meta name="twitter:description" content="DDIA 第 4 章:编码与演化、字段标签、Avro schema、RPC 批判、消息传递。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 4 章 — 编码与演化", "description": "DDIA 第 4 章:数据编码与 schema 演化——向后/向前兼容、语言特定序列化的陷阱、JSON/XML、Protobuf/Thrift 字段标签、Avro 写者/读者 schema,以及通过数据库/服务(REST/RPC)/消息代理的三种数据流。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-4/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 4 章 — 编码与演化","description":"数据编码与 schema 演化——DDIA 第 4 章讲向后/向前兼容、Protobuf/Thrift/Avro 与数据库、REST/RPC、消息代理数据流。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-4/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "向后 vs 向前兼容?", "acceptedAnswer": {"@type": "Answer", "text": "向后 = 新代码读旧数据(容易)。向前 = 旧代码读新数据(难;它必须忽略未知字段)。滚动升级同时需要两者。"}}, {"@type": "Question", "name": "为什么字段标签在 Protobuf/Thrift 里这么重要?", "acceptedAnswer": {"@type": "Answer", "text": "数字标签而非名字在字节里标识字段——那是保持它紧凑、且使演化规则(用新标签加可选字段、绝不重用标签)安全的原因。"}}, {"@type": "Question", "name": "Avro 特别在哪?", "acceptedAnswer": {"@type": "Answer", "text": "它按字段名把写者 schema 与读者 schema 匹配,用默认填补空缺——无标签号——对 Kafka + Schema Registry 这类动态生成的 schema 完美。"}}, {"@type": "Question", "name": "为什么位置透明 RPC 被批评?", "acceptedAnswer": {"@type": "Answer", "text": "网络调用能以未知结果超时,本地调用不会;假装不是这样忽略了部分失败,并迫使你为幂等、重试和超时设计。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第4章 — 编码与演化","item":"https://sdeoffer.com/zh/ddia/chapter-4/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-4/">EN</a>
-        <a href="/zh/ddia/chapter-4/" class="active">中</a>
+        <a href="/ddia/chapter-4/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-4/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-4</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 4 章</span>
     <h1 class="article-title">编码与演化</h1>
     <div class="article-meta">
@@ -376,7 +394,7 @@
     <p>当进程经网络通信,常见安排是<strong>客户端和服务器</strong>:服务器暴露 API,客户端调它。Web 这样工作(浏览器和 web 服务器),且服务端应用越来越被分解成相互调用的更小服务——<strong>面向服务或微服务架构</strong>。一个关键目标是服务能被<strong>独立部署和演化</strong>,意味着新旧版本的客户端和服务器必须互操作——又是同样的兼容问题。</p>
     <p>Web 服务的两大哲学:</p>
     <ul>
-      <li><strong>REST</strong>——建在 HTTP 原则上的设计哲学:资源由 URL 标识、用标准动词(GET、POST、PUT、DELETE)操作、简单格式、可缓存。RESTful API 简单,对公开 API 主导。</li>
+      <li><strong><a href="/zh/tech-stacks/graphql-rest-comparison/">REST</a></strong>——建在 HTTP 原则上的设计哲学:资源由 URL 标识、用标准动词(GET、POST、PUT、DELETE)操作、简单格式、可缓存。RESTful API 简单,对公开 API 主导。</li>
       <li><strong>SOAP</strong>——基于 XML 的协议,刻意避免用 HTTP 特性,由冗长的机器可读契约(WSDL)描述,带重型工具和代码生成。如今在遗留企业系统外大体失宠。</li>
     </ul>
 
@@ -393,10 +411,10 @@
       <div class="callout-label">面试级要点</div>
       <p>这是本章与"分布式计算谬误"的连接。假装网络可靠、快速、同质——位置透明 RPC 讲的谎言——正是导致系统在生产中行为糟糕的原因。一个好答案指出区别:远程调用能以<em>未知</em>结果超时,本地调用从不,而那种不确定性驱动了对幂等、重试和超时的需要。</p>
     </div>
-    <p>现代 RPC 框架对此更诚实:gRPC(建于 Protobuf)、Thrift、Finagle 和 Avro RPC 用 future/promise 和流暴露异步性质,并加服务发现。RPC 对同一组织拥有的服务间请求仍是好搭配,通常在一个数据中心内。对 API <strong>演化</strong>,服务比数据库容易:你常能在客户端前更新所有服务器,所以只跨几个版本维护兼容是合理的,在 URL 或 HTTP 头里标明版本。</p>
+    <p>现代 RPC 框架对此更诚实:<a href="/zh/tech-stacks/grpc/">gRPC(建于 Protobuf)</a>、Thrift、Finagle 和 Avro RPC 用 future/promise 和流暴露异步性质,并加服务发现。RPC 对同一组织拥有的服务间请求仍是好搭配,通常在一个数据中心内。对 API <strong>演化</strong>,服务比数据库容易:你常能在客户端前更新所有服务器,所以只跨几个版本维护兼容是合理的,在 URL 或 HTTP 头里标明版本。</p>
 
     <h3>消息传递数据流</h3>
-    <p>第三种模式坐落在 RPC 和数据库之间:通过<strong>消息代理</strong>(RabbitMQ、ActiveMQ、Kafka、NATS 等)的<strong>异步消息传递</strong>。发送者(生产者)把消息投到一个命名队列或主题;代理存它并投递给一个或多个消费者。像 RPC,消息以低延迟去另一个进程;像数据库,它经过一个临时持有数据的中介。相对直接 RPC 的优势:</p>
+    <p>第三种模式坐落在 RPC 和数据库之间:通过<strong><a href="/zh/tech-stacks/message-queue/">消息代理</a></strong>(RabbitMQ、ActiveMQ、Kafka、NATS 等)的<strong>异步消息传递</strong>。发送者(生产者)把消息投到一个命名队列或主题;代理存它并投递给一个或多个消费者。像 RPC,消息以低延迟去另一个进程;像数据库,它经过一个临时持有数据的中介。相对直接 RPC 的优势:</p>
     <ul>
       <li><strong>缓冲</strong>——若接收者不可用或过载,代理充当缓冲,改善可靠性。</li>
       <li><strong>重投</strong>——它能自动把消息重投给崩溃的进程,防止消息丢失。</li>
@@ -436,9 +454,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -446,7 +465,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

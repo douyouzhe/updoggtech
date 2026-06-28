@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 Apache Kafka——分布式事件流平台:发布/订阅模型、生产者/消费者、分区与副本、acks 与 ISR、消费者组与再均衡、日志压实、KRaft、性能调优、Kafka Streams/Connect 与 Schema Registry。">
-<title>Apache Kafka | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/kafka/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/kafka/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/kafka/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/kafka/">
+<meta name="description" content="分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。">
+<title>Apache Kafka — 发布订阅、分区与精确一次 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/kafka/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/kafka/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/kafka/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/kafka/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Apache Kafka">
 <meta property="og:description" content="分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/kafka/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/kafka/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Apache Kafka">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="Apache Kafka">
 <meta name="twitter:description" content="Kafka 怎么工作:分区与副本、acks/ISR、消费者组再均衡、日志压实、KRaft。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Apache Kafka","description":"分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。","datePublished":"2023-03-31","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/kafka/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Apache Kafka","description":"分布式事件流平台:发布/订阅、分区与副本、acks 与 ISR、消费者组、日志压实、KRaft、调优与生态。","datePublished":"2023-03-31","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/kafka/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-03-31"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Kafka 怎么保证 exactly-once?", "acceptedAnswer": {"@type": "Answer", "text": "幂等生产者(PID + 序列号防止重试时重复)加上把 produce + offset 提交原子地包进 beginTransaction()/commitTransaction() 的事务。"}}, {"@type": "Question", "name": "Kafka 为什么这么快?", "acceptedAnswer": {"@type": "Answer", "text": "顺序追加写 + OS 页缓存(避免双重缓冲)+ 零拷贝 sendfile 系统调用 + 批量压缩。"}}, {"@type": "Question", "name": "什么触发消费者组再均衡?", "acceptedAnswer": {"@type": "Answer", "text": "成员加入/离开、超过 session 超时(session.timeout.ms)、超过 max poll 间隔(max.poll.interval.ms),或分区数变化。用 CooperativeStickyAssignor 让再均衡增量化而非 stop-the-world。"}}, {"@type": "Question", "name": "日志压实 vs 保留?", "acceptedAnswer": {"@type": "Answer", "text": "保留按时间/大小删旧段;压实只保留每个 key 的最新记录——实质是一个持久的 KV 变更日志。空值墓碑表示删除。"}}, {"@type": "Question", "name": "Kafka vs RabbitMQ?", "acceptedAnswer": {"@type": "Answer", "text": "Kafka 用于高吞吐事件流、重放和 CDC;RabbitMQ 用于复杂路由、任务队列和亚毫秒延迟需求。"}}, {"@type": "Question", "name": "KRaft 是什么、为何重要?", "acceptedAnswer": {"@type": "Answer", "text": "Kafka 内建的 Raft 元数据层,替代 ZooKeeper,去掉独立依赖、支持百万级分区、把集群启动从分钟降到秒。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Apache Kafka","item":"https://sdeoffer.com/zh/tech-stacks/kafka/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/kafka/">EN</a>
-        <a href="/zh/tech-stacks/kafka/" class="active">中</a>
+        <a href="/tech-stacks/kafka/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/kafka/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">kafka</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">Apache Kafka</h1>
     <div class="article-meta">
@@ -184,7 +202,7 @@
   </div>
 
   <div class="article-body">
-    <p>Kafka 是一个开源的<strong>分布式事件流平台</strong>,被数千家公司用于高性能数据管道、流式分析、数据集成和关键业务应用。它的核心是一个<strong>发布/订阅(pub/sub)</strong>系统:生产者把消息写入主题(topic),消费者从它们关心的主题读取。它远远超出了 ActiveMQ 或 RabbitMQ 这类传统消息队列。</p>
+    <p>Kafka 是一个开源的<strong>分布式事件流平台</strong>,被数千家公司用于高性能数据管道、流式分析、数据集成和关键业务应用。它的核心是一个<strong>发布/订阅(pub/sub)</strong>系统:生产者把消息写入主题(topic),消费者从它们关心的主题读取。它远远超出了 ActiveMQ 或 RabbitMQ 这类传统<a href="/zh/tech-stacks/message-queue/">消息队列</a>。</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ 速览要点</div>
@@ -215,14 +233,14 @@
     <h2>生产者架构</h2>
     <p>生产者用一个 <code>ProducerRecord</code>(消息包装)调用 <code>.send()</code>。流程:</p>
     <ul>
-      <li><strong>序列化器(serializer)</strong>把消息转成字节流(自定义序列化器,或通过 Schema Registry 用 Protobuf/Avro)。</li>
+      <li><strong>序列化器(serializer)</strong>把消息转成字节流(自定义序列化器,或通过 Schema Registry 用 <a href="/zh/tech-stacks/grpc/">Protobuf</a>/Avro)。</li>
       <li><strong>分区器(partitioner)</strong>决定目标分区,实现跨集群的分布式存储和并行处理。</li>
       <li>记录在发送前先排进<strong>RecordAccumulator</strong>(内存)。两个旋钮控制时机:<code>BATCH_SIZE_CONFIG</code>(队列阈值)和 <code>LINGER_MS_CONFIG</code>(最大等待)。</li>
       <li><strong>Sender</strong> 创建网络客户端并等待 <code>acks</code> 确认。</li>
     </ul>
 
     <h2>消费者模型</h2>
-    <p>Kafka 用<strong>拉(pull)</strong>模型——消费者按自己的节奏请求数据,比推(push)更解耦。许多独立消费者可以读同一个主题,但<strong>同一个消费者组内的消费者不能共享一个分区</strong>:整个组表现为一个逻辑订阅者,每个分区恰好被一个成员拥有。</p>
+    <p>Kafka 用<strong>拉(pull)</strong>模型——消费者按自己的节奏请求数据,比推(push)更解耦。许多独立消费者可以读同一个主题,但<strong>同一个消费者组内的消费者不能共享一个分区</strong>:整个组表现为一个逻辑订阅者,每个<a href="/zh/tech-stacks/sharding/">分区</a>恰好被一个成员拥有。</p>
 
     <h2>分区与副本</h2>
     <p>并行来自把一个主题拆成分散在多台服务器上的<strong>分区</strong>。<code>DefaultPartitioner</code> 用 <code>hash(key) % num_partitions</code>;自定义实现重写 <code>partition()</code>。</p>
@@ -528,7 +546,7 @@ kafka-configs --bootstrap-server localhost:<span class="num">9092</span> \
     <p>Kafka 不只是消息代理——它是整个流处理生态的基础。两个组件把它延伸得最远:<strong>Kafka Streams</strong> 在你的 JVM 应用内做流处理,<strong>Kafka Connect</strong> 做即插即用的数据管道连接器。</p>
 
     <h3>Kafka Streams</h3>
-    <p>Kafka Streams 是一个轻量<strong>客户端库</strong>(不是集群),用于构建流处理应用。不像 Apache Flink 或 Spark Streaming,没有单独的处理集群要管——库跑在你的应用进程里,从输入主题读、把结果写到输出主题。容错靠把状态(窗口聚合、连接表)存在磁盘上的 RocksDB,并由一个 Kafka changelog 主题支撑,用于崩溃后恢复。</p>
+    <p>Kafka Streams 是一个轻量<strong>客户端库</strong>(不是集群),用于构建<a href="/zh/ddia/chapter-11/">流处理</a>应用。不像 Apache Flink 或 Spark Streaming,没有单独的处理集群要管——库跑在你的应用进程里,从输入主题读、把结果写到输出主题。容错靠把状态(窗口聚合、连接表)存在磁盘上的 RocksDB,并由一个 Kafka changelog 主题支撑,用于崩溃后恢复。</p>
 
     <div class="code-block">
       <div class="code-block-header">
@@ -701,9 +719,10 @@ kafka-consumer-groups \
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -711,7 +730,7 @@ kafka-consumer-groups \
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

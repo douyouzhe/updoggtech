@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
-<title>Sharding — Consistent Hashing, Shard Keys & Database Partitioning | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/sharding/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/sharding/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/sharding/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/sharding/">
+<meta name="description" content="Database sharding to scale writes: horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
+<title>Sharding — Consistent Hashing & Shard Keys | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/sharding/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/sharding/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/sharding/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
-<meta property="og:description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/sharding/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/sharding-1.jpg">
+<meta property="og:description" content="Database sharding to scale writes: horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/sharding/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/sharding-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="261">
+<meta property="og:image:alt" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/sharding-1.jpg">
 <meta name="twitter:title" content="Sharding — Consistent Hashing, Shard Keys & Database Partitioning">
 <meta name="twitter:description" content="A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Sharding — Consistent Hashing, Shard Keys & Database Partitioning","description":"A practical guide to database sharding — horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/sharding/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Sharding — Consistent Hashing, Shard Keys & Database Partitioning","description":"Database sharding to scale writes: horizontal vs vertical partitioning, sharding strategies, consistent hashing, hotspot avoidance, and cross-shard queries.","datePublished":"2023-04-02","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/sharding/"},"image":"https://sdeoffer.com/assets/img/sharding-1.jpg","dateModified":"2023-04-02","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Hash vs range sharding — when to pick each?", "acceptedAnswer": {"@type": "Answer", "text": "Hash for even write distribution across many keys (user_id, device_id); range when you need efficient time-window or contiguous key scans and can tolerate hotspot risk (or you route writes through a hash prefix to distribute them)."}}, {"@type": "Question", "name": "Why is consistent hashing better than modulo sharding?", "acceptedAnswer": {"@type": "Answer", "text": "Adding a node with modulo hashing remaps ~(N-1)/N of all keys (nearly everything); consistent hashing moves only ~k/n keys to the new node, minimizing data migration and allowing live resharding with minimal disruption."}}, {"@type": "Question", "name": "What makes a bad shard key?", "acceptedAnswer": {"@type": "Answer", "text": "Low cardinality (boolean, enum), monotonically increasing values (timestamps, auto-increment) with hash sharding, or keys misaligned with query patterns — all create hotspots or force expensive scatter-gather fan-outs."}}, {"@type": "Question", "name": "How do you handle a cross-shard transaction?", "acceptedAnswer": {"@type": "Answer", "text": "Prefer co-locating related transactional data on the same shard by design. When unavoidable, use the Saga pattern (eventual consistency with compensating actions) over 2PC (which creates blocking and coordinator bottlenecks)."}}, {"@type": "Question", "name": "What is the difference between sharding and replication?", "acceptedAnswer": {"@type": "Answer", "text": "Sharding distributes different rows across nodes for write scalability; replication copies the same rows to multiple nodes for read scalability and HA. Production systems need both — each shard is itself replicated."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Sharding — Consistent Hashing, Shard Keys & Database Partitioning","item":"https://sdeoffer.com/tech-stacks/sharding/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,31 +152,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/sharding/" class="active">EN</a><a href="/zh/tech-stacks/sharding/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/sharding/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/sharding/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">sharding</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">Sharding</h1>
     <div class="article-meta">
@@ -199,7 +216,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/sharding-1.jpg" alt="Horizontal database sharding across multiple nodes" loading="lazy">
+        <img src="/assets/img/sharding-1.jpg" alt="Horizontal database sharding across multiple nodes" width="1024" height="261" fetchpriority="high">
         <figcaption>Horizontal database sharding across multiple nodes</figcaption>
       </figure>
 
@@ -207,8 +224,8 @@
     <p>Sharding is an expensive operational commitment. Before reaching for it, exhaust the options on the scaling ladder in order — each step adds less complexity than sharding:</p>
     <ol>
       <li><strong>Vertical scaling</strong> — give the primary more CPU, RAM, and faster storage. Straightforward, but bounded by the largest commercially available instance type. A modern cloud instance can carry 192 vCPUs and 3 TB of RAM, handling hundreds of thousands of queries per second — most workloads never need to go beyond this.</li>
-      <li><strong>Read replicas</strong> — route read traffic to replicas; concentrate writes on the primary. Typically a 5–10× effective read capacity multiplier for read-heavy workloads (90:1 or higher read:write ratios). The primary still bottlenecks on writes.</li>
-      <li><strong>Caching</strong> — a Redis cache absorbing 95% of read traffic means your database only sees 5% of the full load. The effective capacity gain is enormous and requires no data architecture change.</li>
+      <li><strong><a href="/ddia/chapter-5/">Read replicas</a></strong> — route read traffic to replicas; concentrate writes on the primary. Typically a 5–10× effective read capacity multiplier for read-heavy workloads (90:1 or higher read:write ratios). The primary still bottlenecks on writes.</li>
+      <li><strong><a href="/tech-stacks/caching/">Caching</a></strong> — a <a href="/tech-stacks/redis/">Redis</a> cache absorbing 95% of read traffic means your database only sees 5% of the full load. The effective capacity gain is enormous and requires no data architecture change.</li>
       <li><strong>Functional decomposition (vertical partitioning)</strong> — split different business domains into separate databases, each running on its own server. The orders database, the catalog database, and the user database each scale independently without any single-table row-level splitting.</li>
       <li><strong>Sharding (horizontal partitioning)</strong> — when a single table is too large or too hot for one server even after the above steps, split its rows across multiple shards.</li>
     </ol>
@@ -349,7 +366,7 @@
     </div>
 
     <h3>Virtual nodes: why 150?</h3>
-    <p>With a small number of physical nodes (say, 3), the probability that the hash function places them evenly around the ring is low — you might end up with one node owning 60% of the key space and another owning 15%. Virtual nodes solve this by assigning each physical node <em>multiple</em> positions on the ring (150 is the Cassandra default). With 150 virtual nodes per physical node, the law of large numbers kicks in and load balances to within a few percentage points of ideal. The tradeoff is memory — the ring table grows by a factor of the virtual node count, but even at 1000 virtual nodes with 100 physical nodes, the ring table is only 100,000 entries, which is trivially small.</p>
+    <p>With a small number of physical nodes (say, 3), the probability that the hash function places them evenly around the ring is low — you might end up with one node owning 60% of the key space and another owning 15%. Virtual nodes solve this by assigning each physical node <em>multiple</em> positions on the ring (150 is the <a href="/tech-stacks/nosql/">Cassandra</a> default). With 150 virtual nodes per physical node, the law of large numbers kicks in and load balances to within a few percentage points of ideal. The tradeoff is memory — the ring table grows by a factor of the virtual node count, but even at 1000 virtual nodes with 100 physical nodes, the ring table is only 100,000 entries, which is trivially small.</p>
 
     <p>Virtual nodes also simplify heterogeneous clusters: a node with twice the memory and CPU capacity can be assigned 300 virtual nodes instead of 150, causing it to own ~twice the key space and bear twice the traffic — without any special-casing in the routing logic.</p>
 
@@ -518,16 +535,17 @@ Phase 4 — Cleanup:
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

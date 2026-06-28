@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into WebSockets and real-time communication — why HTTP isn't enough, polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex connections, and scaling stateful connections with a pub/sub backplane.">
-<title>WebSockets &amp; Realtime | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/websockets/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/websockets/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/websockets/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/websockets/">
+<meta name="description" content="WebSockets for real-time apps: why HTTP falls short, polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, and scaling with a pub/sub backplane.">
+<title>WebSockets &amp; Realtime | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/websockets/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/websockets/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/websockets/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/websockets/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="WebSockets &amp; Realtime">
-<meta property="og:description" content="Polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex, and scaling with a pub/sub backplane.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/websockets/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="WebSockets for real-time apps: why HTTP falls short, polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, and scaling with a pub/sub backplane.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/websockets/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="WebSockets &amp; Realtime">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="WebSockets &amp; Realtime">
 <meta name="twitter:description" content="How real-time works: WebSockets vs SSE vs long-polling, the handshake, and scaling connections.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"WebSockets & Realtime","description":"Polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, full-duplex, and scaling with a pub/sub backplane.","datePublished":"2023-10-04","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/websockets/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"WebSockets & Realtime","description":"WebSockets for real-time apps: why HTTP falls short, polling vs long-polling vs SSE vs WebSockets, the upgrade handshake, and scaling with a pub/sub backplane.","datePublished":"2023-10-04","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/websockets/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-10-04","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why not just HTTP for real-time?", "acceptedAnswer": {"@type": "Answer", "text": "HTTP is client-initiated request/response — the server can't push; polling is wasteful and laggy."}}, {"@type": "Question", "name": "WebSocket vs SSE?", "acceptedAnswer": {"@type": "Answer", "text": "SSE is one-way (server→client) over plain HTTP and simpler; WebSockets are full-duplex for when the client also sends frequently."}}, {"@type": "Question", "name": "How does the handshake work?", "acceptedAnswer": {"@type": "Answer", "text": "An HTTP request with Upgrade: websocket → 101 Switching Protocols → the connection becomes a persistent bidirectional socket."}}, {"@type": "Question", "name": "How do you scale WebSockets?", "acceptedAnswer": {"@type": "Answer", "text": "Sticky routing to the server holding the connection, capacity for many idle sockets, and a pub/sub backplane (Redis/Kafka) to fan messages out to clients on other servers."}}, {"@type": "Question", "name": "How do you keep connections healthy?", "acceptedAnswer": {"@type": "Answer", "text": "Ping/pong heartbeats to detect dead sockets, and client reconnection with backoff and message resume."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"WebSockets &amp; Realtime","item":"https://sdeoffer.com/tech-stacks/websockets/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -152,18 +169,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/websockets/" class="active">EN</a><a href="/zh/tech-stacks/websockets/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/websockets/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/websockets/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">websockets</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">WebSockets &amp; Realtime</h1>
     <div class="article-meta">
@@ -328,9 +346,10 @@ Bob   ──ws──▶ WS-server-2 ◀──subscribe "room42"─┤  (backplan
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -338,7 +357,7 @@ Bob   ──ws──▶ WS-server-2 ◀──subscribe "room42"─┤  (backplan
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

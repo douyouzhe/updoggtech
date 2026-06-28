@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:酒店预订(Booking.com/Expedia)——全程 SQL + ACID、DB 级 CHECK 约束防超卖、乐观锁并发控制、Redis TTL 结账持有、Kafka→Elasticsearch 搜索、预订状态机、支付授权/捕获与幂等、取消退款、可用性日历、分析、扩展容错、为什么不用 Cassandra、关键取舍。">
-<title>设计酒店预订应用 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/hotel-booking/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/hotel-booking/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/hotel-booking/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/hotel-booking/">
+<meta name="description" content="酒店预订（Booking/Expedia）系统设计：SQL+ACID、CHECK 约束防超卖、乐观锁、Redis TTL 持有、ES 搜索、状态机、支付幂等与取舍。">
+<title>设计酒店预订应用 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/hotel-booking/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/hotel-booking/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/hotel-booking/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/hotel-booking/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计酒店预订应用">
-<meta property="og:description" content="酒店预订系统设计:SQL+ACID、CHECK 约束防超卖、乐观锁、Redis 持有、状态机、支付幂等。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/hotel-booking/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="酒店预订（Booking/Expedia）系统设计：SQL+ACID、CHECK 约束防超卖、乐观锁、Redis TTL 持有、ES 搜索、状态机、支付幂等与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/hotel-booking/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/hotel-booking-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="525">
+<meta property="og:image:alt" content="设计酒店预订应用 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/hotel-booking-1.jpg">
 <meta name="twitter:title" content="设计酒店预订应用">
 <meta name="twitter:description" content="设计酒店预订:SQL+ACID、防超卖约束、乐观锁、Redis TTL 持有、状态机、对账。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计酒店预订应用", "description": "系统设计:酒店预订(Booking.com/Expedia)——全程 SQL + ACID、DB 级 CHECK 约束防超卖、乐观锁并发控制、Redis TTL 结账持有、Kafka→Elasticsearch 搜索、预订状态机、支付授权/捕获与幂等、取消退款、可用性日历、分析、扩展容错、为什么不用 Cassandra、关键取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/hotel-booking/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计酒店预订应用","description":"酒店预订（Booking/Expedia）系统设计：SQL+ACID、CHECK 约束防超卖、乐观锁、Redis TTL 持有、ES 搜索、状态机、支付幂等与取舍。","datePublished":"2023-04-08","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/hotel-booking/"},"image":"https://sdeoffer.com/assets/img/hotel-booking-1.jpg","dateModified":"2023-04-08"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "并发请求下怎么防止双重预订?", "acceptedAnswer": {"@type": "Answer", "text": "room_availability 表上的 CHECK (available_count >= 0) 约束使任何会递减到零以下的事务在 DB 级别失败。带 version 列的乐观锁确保同一房间+日期的两个并发预订不能都成功——一个会用新数据重试。"}}, {"@type": "Question", "name": "为什么不像电商用 Cassandra 做订单历史那样做预订?", "acceptedAnswer": {"@type": "Answer", "text": "酒店预订量低到 SQL 能保留完整历史;ACID 事务干净防双重预订;Cassandra 的最终一致模型会需要复杂的应用级冲突解决。"}}, {"@type": "Question", "name": "用户选房间后放弃结账会怎样?", "acceptedAnswer": {"@type": "Answer", "text": "Redis TTL(~10 分钟)自动过期,触发一个后台作业(或键空间通知处理器)为每个住宿日期重新递增 available_count——无需手动清理或 cron 作业。"}}, {"@type": "Question", "name": "怎么让预订 API 幂等?", "acceptedAnswer": {"@type": "Answer", "text": "要求一个客户端生成的 Idempotency-Key 头;把它存在 bookings 表作 UNIQUE 列。用同键重试的请求返回已存在的预订而非创建重复——防止网络重试时双重扣款。"}}, {"@type": "Question", "name": "怎么处理预订确认时支付处理器超时?", "acceptedAnswer": {"@type": "Answer", "text": "在捕获调用前把 PaymentIntent ID 存进预订记录。用同一 PaymentIntent ID 带指数退避重试捕获(Stripe 去重)。一个每晚对账作业抓住任何 PaymentIntent 已捕获但预订还在 RESERVED 状态的预订——把它们提升到 BOOKED。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计酒店预订应用 — 系统设计","item":"https://sdeoffer.com/zh/system-design/hotel-booking/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/hotel-booking/">EN</a>
-        <a href="/zh/system-design/hotel-booking/" class="active">中</a>
+        <a href="/system-design/hotel-booking/" hreflang="en">EN</a>
+        <a href="/zh/system-design/hotel-booking/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">hotel-booking</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计酒店预订应用</h1>
     <div class="article-meta">
@@ -223,7 +241,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-1.jpg" alt="酒店预订应用高层架构" loading="lazy">
+      <img src="/assets/img/hotel-booking-1.jpg" alt="酒店预订应用高层架构" width="1024" height="525" fetchpriority="high">
       <figcaption>酒店预订应用高层架构</figcaption>
     </figure>
 
@@ -327,7 +345,7 @@
     <h2>第 4 步 — 酒店和房间列表服务</h2>
     <p>酒店和房间目录存在一个 <strong>SQL 数据库</strong>。理由刻意简单:世界上酒店数量有限且可预测地增长。关系数据库是正确契合——数据结构化、增长可预见、查询模式(按 ID 查酒店、按酒店列房间)很适合 SQL 索引。</p>
 
-    <p>酒店图片和视频存在 <strong>AWS S3</strong>(或等价对象存储)。SQL 数据库持有这些媒体资产的引用(URL)。一个 <strong>CDN</strong> 坐在 S3 前以低延迟服务全球用户群——从地理上邻近的 CDN 边缘节点取酒店图片比命中 us-east-1 的源桶快数个数量级。</p>
+    <p>酒店图片和视频存在 <strong>AWS S3</strong>(或等价<a href="/zh/tech-stacks/object-storage/">对象存储</a>)。SQL 数据库持有这些媒体资产的引用(URL)。一个 <strong>CDN</strong> 坐在 S3 前以低延迟服务全球用户群——从地理上邻近的 <a href="/zh/tech-stacks/cdn/">CDN</a> 边缘节点取酒店图片比命中 us-east-1 的源桶快数个数量级。</p>
 
     <p>酒店或房间被创建或更新时,变更作为事件发布到 <strong>Kafka</strong>。一个消费者读这些事件并异步更新 <strong>Elasticsearch 搜索索引</strong>,使搜索结果与真相来源最终一致。售罄房间随 <code>available_count</code> 降到零从结果移除——这个移除流经同一 CDC 管道,而非预订路径上的直接 Elasticsearch 写。</p>
 
@@ -395,7 +413,7 @@
     <p>关键 schema 决策:<code>CHECK (available_count &gt;= 0)</code> 约束是防超卖的数据库级守卫。<code>version</code> 列支持乐观并发控制。<code>idempotency_key UNIQUE</code> 约束在 DB 级别防止重复预订。<code>room_availability</code> 上的 <code>price_cents</code> 列捕获预订时的每晚费率——价格在预订后能变,但客人确认的费率锁在预订记录的 <code>total_cents</code> 里。</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-2.jpg" alt="酒店和房间数据库 schema" loading="lazy">
+      <img src="/assets/img/hotel-booking-2.jpg" alt="酒店和房间数据库 schema" loading="lazy" width="1024" height="810">
       <figcaption>酒店和房间数据库 schema</figcaption>
     </figure>
 
@@ -519,7 +537,7 @@ Redis TTL 过期(10 分钟)
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/hotel-booking-3.jpg" alt="预订 schema 和状态生命周期" loading="lazy">
+      <img src="/assets/img/hotel-booking-3.jpg" alt="预订 schema 和状态生命周期" loading="lazy" width="1024" height="1778">
       <figcaption>预订 schema 和状态生命周期</figcaption>
     </figure>
 
@@ -560,7 +578,7 @@ COMPLETED        ← 住宿已发生(终态)
   → 通知客人和酒店管理</code></pre>
     </div>
 
-    <p>状态机作为 <code>bookings</code> 表的 <code>status</code> 列持久在 SQL 里,由应用级转换检查守卫。每个转换也发出一个 Kafka 事件,允许下游服务(通知、分析、收入报告)反应而不直接耦合到预订服务。</p>
+    <p>状态机作为 <code>bookings</code> 表的 <code>status</code> 列持久在 SQL 里,由应用级转换检查守卫。每个转换也发出一个 <a href="/zh/tech-stacks/kafka/">Kafka</a> 事件,允许下游服务(通知、分析、收入报告)反应而不直接耦合到预订服务。</p>
 
     <h2>第 10 步 — 支付处理与幂等</h2>
     <p>酒店预订的支付处理遵循与电商相同的原则,但有一个关键时间差异:酒店支付常<strong>在预订时授权但在入住时捕获</strong>(或后付酒店在退房时)。这种授权-捕获分离给酒店资金保证、给客人灵活性——但给支付状态机加复杂度。</p>
@@ -652,7 +670,7 @@ COMPLETED        ← 住宿已发生(终态)
 
     <h3>搜索扩展</h3>
     <ul>
-      <li>Elasticsearch 横向可扩展——加 shard 给更大索引、加副本给更高读吞吐。</li>
+      <li><a href="/zh/tech-stacks/elasticsearch/">Elasticsearch</a> 横向可扩展——加 shard 给更大索引、加副本给更高读吞吐。</li>
       <li>在 Redis 缓存热门搜索查询(城市 + 日期范围)配 60–120 s TTL。大多数搜索流量高度重复(同样热门城市、同样热门日期)。</li>
       <li>可用性过滤(Elasticsearch 后的 SQL 查找)是重搜索负载下的瓶颈。用读副本和 Redis 里预计算的可用性缓存缓解。</li>
     </ul>
@@ -723,9 +741,10 @@ COMPLETED        ← 住宿已发生(终态)
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -733,7 +752,7 @@ COMPLETED        ← 住宿已发生(终态)
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:聊天应用(WhatsApp/微信规模)——WebSocket 与 WebSocket Manager 路由、Snowflake 消息 ID、在线/离线投递与去重、写扇出 vs 读扇出、群聊有序、已读回执、在线状态心跳采样、媒体存储、扩展与容错、关键取舍。">
-<title>设计聊天应用 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/chat-app/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/chat-app/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/chat-app/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/chat-app/">
+<meta name="description" content="聊天应用（WhatsApp/微信）系统设计：WebSocket 路由、Snowflake ID、离线投递去重、写/读扇出、群聊有序、已读回执、在线状态、媒体存储与取舍。">
+<title>设计聊天应用 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/chat-app/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/chat-app/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/chat-app/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/chat-app/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计聊天应用">
-<meta property="og:description" content="聊天应用系统设计:WebSocket、Snowflake ID、写/读扇出、已读回执、在线状态采样、媒体存储。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/chat-app/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="聊天应用（WhatsApp/微信）系统设计：WebSocket 路由、Snowflake ID、离线投递去重、写/读扇出、群聊有序、已读回执、在线状态、媒体存储与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/chat-app/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/chat-app-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="859">
+<meta property="og:image:alt" content="设计聊天应用 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/chat-app-1.jpg">
 <meta name="twitter:title" content="设计聊天应用">
 <meta name="twitter:description" content="设计聊天应用:WebSocket 路由、Snowflake、扇出策略、回执、在线状态、媒体。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计聊天应用", "description": "系统设计:聊天应用(WhatsApp/微信规模)——WebSocket 与 WebSocket Manager 路由、Snowflake 消息 ID、在线/离线投递与去重、写扇出 vs 读扇出、群聊有序、已读回执、在线状态心跳采样、媒体存储、扩展与容错、关键取舍。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/chat-app/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计聊天应用","description":"聊天应用（WhatsApp/微信）系统设计：WebSocket 路由、Snowflake ID、离线投递去重、写/读扇出、群聊有序、已读回执、在线状态、媒体存储与取舍。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/chat-app/"},"image":"https://sdeoffer.com/assets/img/chat-app-1.jpg","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "当数百万 WebSocket 连接散布在许多服务器上时,怎么把消息路由到正确服务器?", "acceptedAnswer": {"@type": "Answer", "text": "一个 WebSocket Manager(Redis 支撑)存 user_id → server:port;任何服务能 O(1) 查目标服务器并经内部 RPC 转发消息。"}}, {"@type": "Question", "name": "为什么给群聊大小设上限?", "acceptedAnswer": {"@type": "Answer", "text": "一条群消息扇出到每个成员——1,000 人群意味 1,000 次单独投递。设上限约束最坏扇出延迟并防止单条消息饱和投递管道。"}}, {"@type": "Question", "name": "消息发给离线用户会怎样?", "acceptedAnswer": {"@type": "Answer", "text": "消息以 Pending 状态存储;一个推送通知(APNs/FCM)唤醒接收者设备;重连时客户端发它的 last-seen ID,服务器投递所有漏掉的消息,状态更新为 Delivered。"}}, {"@type": "Question", "name": "写扇出 vs 读扇出——何时用各个?", "acceptedAnswer": {"@type": "Answer", "text": "写扇出在发送时复制到每个收件箱(快读,O(N) 写)——用于 DM 和小群。读扇出在共享日志里存一次(O(1) 写,O(成员) 读)——用于写放大会过高的大群。"}}, {"@type": "Question", "name": "怎么在重试时防止重复消息?", "acceptedAnswer": {"@type": "Answer", "text": "客户端生成的幂等键(UUID)存在 Redis 里带 24 小时 TTL。消息服务写前检查键;若已存在,返回已存在的消息 ID 而不创建重复。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计聊天应用 — 系统设计","item":"https://sdeoffer.com/zh/system-design/chat-app/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/chat-app/">EN</a>
-        <a href="/zh/system-design/chat-app/" class="active">中</a>
+        <a href="/system-design/chat-app/" hreflang="en">EN</a>
+        <a href="/zh/system-design/chat-app/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chat-app</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计聊天应用</h1>
     <div class="article-meta">
@@ -223,7 +241,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-1.jpg" alt="聊天应用高层架构" loading="lazy">
+      <img src="/assets/img/chat-app-1.jpg" alt="聊天应用高层架构" width="1024" height="859" fetchpriority="high">
       <figcaption>聊天应用高层架构</figcaption>
     </figure>
 
@@ -334,7 +352,7 @@
       </tbody>
     </table>
 
-    <p>WebSocket 胜出,因为它们每客户端维护一条持久连接,使服务器能在消息到达瞬间推送、无轮询延迟、无连接重建开销。连接在用户会话生命周期内保持开着;每 30 秒一次心跳 ping/pong 检测死连接而无需客户端轮询。</p>
+    <p><a href="/zh/tech-stacks/websockets/">WebSocket</a> 胜出,因为它们每客户端维护一条持久连接,使服务器能在消息到达瞬间推送、无轮询延迟、无连接重建开销。连接在用户会话生命周期内保持开着;每 30 秒一次心跳 ping/pong 检测死连接而无需客户端轮询。</p>
 
     <h2>第 5 步 — 核心服务</h2>
     <ul>
@@ -349,7 +367,7 @@
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket 连接管理与消息路由" loading="lazy">
+      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket 连接管理与消息路由" loading="lazy" width="1024" height="587">
       <figcaption>WebSocket 连接管理与消息路由</figcaption>
     </figure>
 
@@ -410,7 +428,7 @@
     <p>消息表按 <code>conversation_id</code> 分区,使最常见查询——"加载这个会话的最后 50 条消息"——是单分区扫描。聚簇键 <code>message_id</code>(一个 Snowflake ID)在分区内按时间保持消息有序。Cassandra 是这里正确的存储,因为写模式(高吞吐、仅追加)和读模式(分区内按时间范围扫描)完美映射到 Cassandra 的强项。</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-3.jpg" alt="消息对象 schema" loading="lazy">
+      <img src="/assets/img/chat-app-3.jpg" alt="消息对象 schema" loading="lazy" width="1024" height="617">
       <figcaption>消息对象 schema</figcaption>
     </figure>
 
@@ -553,7 +571,7 @@
     </ul>
 
     <h2>第 13 步 — 媒体存储</h2>
-    <p>图片、音频和视频不内联存在消息对象里。相反,消息记录持有一个 CDN URL,实际二进制内容住在对象存储。上传流程:</p>
+    <p>图片、音频和视频不内联存在消息对象里。相反,消息记录持有一个 CDN URL,实际二进制内容住在<a href="/zh/tech-stacks/object-storage/">对象存储</a>。上传流程:</p>
     <ol>
       <li>客户端调 <code>POST /api/media/upload</code>。</li>
       <li>媒体服务生成一个预签名 S3 上传 URL 并连同一个 <code>media_id</code> 返回。</li>
@@ -576,12 +594,12 @@
 
     <h3>消息的 Cassandra 分片</h3>
     <ul>
-      <li>消息按 <code>conversation_id</code> 分区。Cassandra 用一致性哈希把分区分布在节点上,所以加节点重分布负载而无需全量重分片。</li>
+      <li>消息按 <code>conversation_id</code> 分区。Cassandra 用<a href="/zh/tech-stacks/sharding/">一致性哈希</a>把分区分布在节点上,所以加节点重分布负载而无需全量重分片。</li>
       <li>热门会话(一个庞大群聊)能使单个分区成热点。缓解:在分区键里给时间分桶——<code>conversation_id + month</code> 作复合分区键,使消息历史分布在基于时间的桶上。</li>
     </ul>
 
     <h3>消息队列与重放</h3>
-    <p>消息服务在持久到 Cassandra 前把每条进来的消息发布到 Kafka。这服务两个目的:它把写路径与下游消费者(通知服务、分析、搜索索引器)解耦,且它支持重放——若一个消费者落后或崩溃,它能从它最后提交的 Kafka offset 重放而不丢消息。</p>
+    <p>消息服务在持久到 Cassandra 前把每条进来的消息发布到 <a href="/zh/tech-stacks/kafka/">Kafka</a>。这服务两个目的:它把写路径与下游消费者(通知服务、分析、搜索索引器)解耦,且它支持重放——若一个消费者落后或崩溃,它能从它最后提交的 Kafka offset 重放而不丢消息。</p>
 
     <h2>关键取舍</h2>
     <table class="compare-table">
@@ -626,9 +644,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -636,7 +655,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

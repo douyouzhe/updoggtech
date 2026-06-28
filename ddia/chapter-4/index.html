@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.4 of DDIA: how data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protocol Buffers, Thrift, and Avro, and the three modes of dataflow — databases, services, and message passing.">
-<title>DDIA Ch.4 — Encoding &amp; Evolution | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-4/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-4/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-4/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-4/">
+<meta name="description" content="Data encoding for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.">
+<title>DDIA Ch.4 — Encoding &amp; Evolution | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-4/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-4/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-4/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-4/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.4 — Encoding &amp; Evolution">
-<meta property="og:description" content="How data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-4/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Data encoding for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-4/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.4 — Encoding &amp; Evolution">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.4 — Encoding &amp; Evolution">
 <meta name="twitter:description" content="Backward vs forward compatibility, schema evolution, and the three modes of dataflow.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.4 — Encoding & Evolution","description":"How data is encoded for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.","datePublished":"2023-04-03","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-4/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.4 — Encoding & Evolution","description":"Data encoding for storage and transmission, backward vs forward compatibility, schema evolution with Protobuf/Thrift/Avro, and the three modes of dataflow.","datePublished":"2023-04-03","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-4/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-03","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Backward vs forward compatibility?", "acceptedAnswer": {"@type": "Answer", "text": "Backward = new code reads old data (easy). Forward = old code reads new data (hard; it must ignore unknown fields). Rolling upgrades need both at once."}}, {"@type": "Question", "name": "Why are field tags so important in Protobuf/Thrift?", "acceptedAnswer": {"@type": "Answer", "text": "The numeric tag, not the name, identifies a field in the bytes — that's what keeps it compact and what makes the evolution rules (add optional fields with new tags, never reuse a tag) safe."}}, {"@type": "Question", "name": "What's special about Avro?", "acceptedAnswer": {"@type": "Answer", "text": "It matches a writer's schema against a reader's schema by field name, with defaults filling gaps — no tag numbers — which is perfect for dynamically generated schemas like Kafka + Schema Registry."}}, {"@type": "Question", "name": "Why is location-transparent RPC criticized?", "acceptedAnswer": {"@type": "Answer", "text": "A network call can time out with an unknown result, unlike a local call; pretending otherwise ignores partial failure and forces you to design for idempotency, retries, and timeouts."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.4 — Encoding &amp; Evolution","item":"https://sdeoffer.com/ddia/chapter-4/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-4/" class="active">EN</a><a href="/zh/ddia/chapter-4/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-4/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-4/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-4</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.4</span>
     <h1 class="article-title">Encoding &amp; Evolution</h1>
     <div class="article-meta">
@@ -372,7 +390,7 @@
     <p>When processes communicate over a network, the common arrangement is <strong>clients and servers</strong>: servers expose an API, clients call it. The web works this way (browsers and web servers), and server-side applications are increasingly decomposed into smaller services that call each other — <strong>service-oriented or microservices architecture</strong>. A key goal is that services can be <strong>deployed and evolved independently</strong>, which means old and new versions of clients and servers must interoperate — the same compatibility problem again.</p>
     <p>Two broad philosophies for web services:</p>
     <ul>
-      <li><strong>REST</strong> — a design philosophy built on the principles of HTTP: resources identified by URLs, manipulated with the standard verbs (GET, POST, PUT, DELETE), simple formats, and cacheability. RESTful APIs are simple and dominant for public APIs.</li>
+      <li><strong><a href="/tech-stacks/graphql-rest-comparison/">REST</a></strong> — a design philosophy built on the principles of HTTP: resources identified by URLs, manipulated with the standard verbs (GET, POST, PUT, DELETE), simple formats, and cacheability. RESTful APIs are simple and dominant for public APIs.</li>
       <li><strong>SOAP</strong> — an XML-based protocol that deliberately avoids using HTTP features, described by a verbose machine-readable contract (WSDL) with heavy tooling and code generation. Now largely out of favor outside legacy enterprise systems.</li>
     </ul>
 
@@ -389,10 +407,10 @@
       <div class="callout-label">interview-grade point</div>
       <p>This is the chapter's connection to the "fallacies of distributed computing." Pretending the network is reliable, fast, and homogeneous — the lie that location-transparent RPC tells — is precisely what causes systems to behave badly in production. A good answer names the difference: a remote call can time out with an <em>unknown</em> outcome, which a local call never does, and that uncertainty drives the need for idempotency, retries, and timeouts.</p>
     </div>
-    <p>Modern RPC frameworks are more honest about this: gRPC (built on Protobuf), Thrift, Finagle, and Avro RPC expose the asynchronous nature with futures/promises and streams, and add service discovery. RPC is still a fine fit for requests between services owned by the same organization, typically within one datacenter. For API <strong>evolution</strong>, services have it easier than databases: you can often update all the servers before the clients, so it's reasonable to maintain compatibility only across a few versions, signalling the version in the URL or an HTTP header.</p>
+    <p>Modern RPC frameworks are more honest about this: <a href="/tech-stacks/grpc/">gRPC (built on Protobuf)</a>, Thrift, Finagle, and Avro RPC expose the asynchronous nature with futures/promises and streams, and add service discovery. RPC is still a fine fit for requests between services owned by the same organization, typically within one datacenter. For API <strong>evolution</strong>, services have it easier than databases: you can often update all the servers before the clients, so it's reasonable to maintain compatibility only across a few versions, signalling the version in the URL or an HTTP header.</p>
 
     <h3>Message-Passing Dataflow</h3>
-    <p>The third mode sits between RPC and databases: <strong>asynchronous message passing</strong> via a <strong>message broker</strong> (RabbitMQ, ActiveMQ, Kafka, NATS, and others). A sender (producer) posts a message to a named queue or topic; the broker stores it and delivers it to one or more consumers. Like RPC, the message goes to another process with low latency; like a database, it goes through an intermediary that holds the data temporarily. The advantages over direct RPC:</p>
+    <p>The third mode sits between RPC and databases: <strong>asynchronous message passing</strong> via a <strong><a href="/tech-stacks/message-queue/">message broker</a></strong> (RabbitMQ, ActiveMQ, Kafka, NATS, and others). A sender (producer) posts a message to a named queue or topic; the broker stores it and delivers it to one or more consumers. Like RPC, the message goes to another process with low latency; like a database, it goes through an intermediary that holds the data temporarily. The advantages over direct RPC:</p>
     <ul>
       <li><strong>Buffering</strong> — the broker acts as a buffer if the recipient is unavailable or overloaded, improving reliability.</li>
       <li><strong>Redelivery</strong> — it can automatically redeliver messages to a process that crashed, preventing message loss.</li>
@@ -431,9 +449,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -441,7 +460,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

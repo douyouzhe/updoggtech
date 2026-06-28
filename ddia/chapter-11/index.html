@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.11 of DDIA: stream processing — event streams, message brokers, log-based vs traditional queues, change data capture, event sourcing, reasoning about time and windows, stream joins, and fault tolerance.">
-<title>DDIA Ch.11 — Stream Processing | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-11/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-11/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-11/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-11/">
+<meta name="description" content="Stream processing: event streams, message brokers, log-based vs traditional queues, change data capture, event sourcing, time and windows, and stream joins.">
+<title>DDIA Ch.11 — Stream Processing | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-11/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-11/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-11/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-11/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.11 — Stream Processing">
-<meta property="og:description" content="Event streams, message brokers, log vs queue, change data capture, event sourcing, time and windows, and stream joins.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-11/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Stream processing: event streams, message brokers, log-based vs traditional queues, change data capture, event sourcing, time and windows, and stream joins.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-11/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.11 — Stream Processing">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.11 — Stream Processing">
 <meta name="twitter:description" content="Processing unbounded event streams: brokers, CDC, event sourcing, windows, and joins.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.11 — Stream Processing","description":"Event streams, message brokers, log vs queue, change data capture, event sourcing, time and windows, and stream joins.","datePublished":"2023-04-10","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-11/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.11 — Stream Processing","description":"Stream processing: event streams, message brokers, log-based vs traditional queues, change data capture, event sourcing, time and windows, and stream joins.","datePublished":"2023-04-10","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-11/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-10","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Log-based broker vs traditional queue?", "acceptedAnswer": {"@type": "Answer", "text": "A queue deletes messages once acked and load-balances; a log (Kafka) retains an append-only, ordered, replayable record that consumers read by offset."}}, {"@type": "Question", "name": "CDC vs event sourcing?", "acceptedAnswer": {"@type": "Answer", "text": "Both treat a change log as primary; CDC captures low-level row changes from the DB log, event sourcing records application-level events as the source of truth and derives state by replay."}}, {"@type": "Question", "name": "Event time vs processing time?", "acceptedAnswer": {"@type": "Answer", "text": "Event time = when it happened; processing time = when it was handled. They diverge with delays, so windowed aggregates must handle late \"straggler\" events and the \"is the window complete?\" problem."}}, {"@type": "Question", "name": "How do streams achieve exactly-once?", "acceptedAnswer": {"@type": "Answer", "text": "Checkpointing/microbatching plus idempotence and atomic commit of output-and-offset, so retries don't double-count."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.11 — Stream Processing","item":"https://sdeoffer.com/ddia/chapter-11/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-11/" class="active">EN</a><a href="/zh/ddia/chapter-11/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-11/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-11/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-11</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.11</span>
     <h1 class="article-title">Stream Processing</h1>
     <div class="article-meta">
@@ -199,7 +217,7 @@
   </div>
 
   <div class="article-body">
-    <p>Chapter 10 assumed the input was a known, finite dataset. But in reality data arrives <strong>continuously and never ends</strong>: user clicks, sensor readings, payments, log lines. Waiting to accumulate a day's worth before processing introduces a day of latency. <strong>Stream processing</strong> takes the immutable-events ideas of batch processing and applies them to <em>unbounded</em>, incrementally-arriving data, processing each event soon after it happens. This chapter covers how event streams are transmitted (message brokers and logs), how databases and streams relate (CDC and event sourcing), and how to actually compute over streams (time, windows, joins, and fault tolerance).</p>
+    <p>Chapter 10 assumed the input was a known, finite dataset. But in reality data arrives <strong>continuously and never ends</strong>: user clicks, sensor readings, payments, log lines. Waiting to accumulate a day's worth before processing introduces a day of latency. <strong>Stream processing</strong> takes the immutable-events ideas of <a href="/ddia/chapter-10/">batch processing</a> and applies them to <em>unbounded</em>, incrementally-arriving data, processing each event soon after it happens. This chapter covers how event streams are transmitted (message brokers and logs), how databases and streams relate (CDC and event sourcing), and how to actually compute over streams (time, windows, joins, and fault tolerance).</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -222,7 +240,7 @@
     <p>In stream processing, the equivalent of a "record" is an <strong>event</strong>: a small, self-contained, <em>immutable</em> object recording something that happened, usually with a timestamp. An event is generated once by a <strong>producer</strong> (publisher) and potentially processed by multiple <strong>consumers</strong> (subscribers); related events are grouped into a <strong>topic</strong> or stream. You could poll a datastore for new events, but polling frequently is expensive, so it's better for consumers to be <em>notified</em> when new events appear — which is what messaging systems provide.</p>
 
     <h3>Message Brokers: Queues vs Logs</h3>
-    <p>You can send events directly from producer to consumer (e.g. UDP multicast, or brokerless libraries like ZeroMQ), but most systems use a <strong>message broker</strong> as a durable intermediary that buffers events. There are two fundamentally different broker designs:</p>
+    <p>You can send events directly from producer to consumer (e.g. UDP multicast, or brokerless libraries like ZeroMQ), but most systems use a <strong><a href="/tech-stacks/message-queue/">message broker</a></strong> as a durable intermediary that buffers events. There are two fundamentally different broker designs:</p>
 
     <table class="compare-table">
       <thead>
@@ -237,10 +255,10 @@
       </tbody>
     </table>
 
-    <p><strong>Traditional message queues</strong> assign each message to a consumer and delete it once acknowledged; multiple consumers share the load, but order isn't preserved across redeliveries. They suit job queues where each message triggers some (possibly slow) work. <strong>Log-based brokers</strong> like Kafka store messages in a partitioned, append-only log on disk; a consumer simply records its <strong>offset</strong> (position in the log), and messages are retained even after being read. This lets you <strong>replay</strong> old events, gives high throughput and ordering within a partition, and makes the broker behave a lot like a database's replication log — a connection the rest of the chapter exploits.</p>
+    <p><strong>Traditional message queues</strong> assign each message to a consumer and delete it once acknowledged; multiple consumers share the load, but order isn't preserved across redeliveries. They suit job queues where each message triggers some (possibly slow) work. <strong>Log-based brokers</strong> like <a href="/tech-stacks/kafka/">Kafka</a> store messages in a partitioned, append-only log on disk; a consumer simply records its <strong>offset</strong> (position in the log), and messages are retained even after being read. This lets you <strong>replay</strong> old events, gives high throughput and ordering within a partition, and makes the broker behave a lot like a database's replication log — a connection the rest of the chapter exploits.</p>
 
     <h2>Databases and Streams</h2>
-    <p>The deep insight of the chapter: a <strong>replication log is a stream of events</strong>, and that equivalence lets us keep many systems in sync. Applications often need to write the same data to several places (a database, a search index, a cache, a warehouse). Doing this with <strong>dual writes</strong> from the application is error-prone — concurrent writes race and a partial failure leaves systems inconsistent. Streams offer a cleaner way.</p>
+    <p>The deep insight of the chapter: a <strong>replication log is a stream of events</strong>, and that equivalence lets us keep many systems in sync. Applications often need to write the same data to several places (a database, a <a href="/tech-stacks/elasticsearch/">search index</a>, a cache, a warehouse). Doing this with <strong>dual writes</strong> from the application is error-prone — concurrent writes race and a partial failure leaves systems inconsistent. Streams offer a cleaner way.</p>
 
     <h3>Change Data Capture (CDC)</h3>
     <p><strong>Change data capture</strong> observes all the writes to a database — typically by tailing its replication log — and makes them available as a stream of change events. Downstream systems (search index, cache, data warehouse) consume that stream and apply the same changes in order. The original database is effectively the <strong>leader</strong> and the derived systems are <strong>followers</strong>, so they end up consistent (eventually). Tools like Debezium implement CDC against common databases. Because consumers may need to bootstrap, the stream can be combined with an initial snapshot, and <strong>log compaction</strong> (Kafka keeps only the latest event per key) lets a consumer rebuild full state from the log alone.</p>
@@ -316,9 +334,10 @@ offset 1003  {<span class="str">"op"</span>:<span class="str">"delete"</span>, <
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -326,7 +345,7 @@ offset 1003  {<span class="str">"op"</span>:<span class="str">"delete"</span>, <
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

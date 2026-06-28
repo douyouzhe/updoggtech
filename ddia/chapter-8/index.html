@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Ch.8 of DDIA: the trouble with distributed systems — partial failure, unreliable networks and timeouts, unreliable clocks and process pauses, fencing tokens, Byzantine faults, and system models.">
-<title>DDIA Ch.8 — The Trouble with Distributed Systems | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ddia/chapter-8/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-8/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-8/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-8/">
+<meta name="description" content="The trouble with distributed systems: partial failure, unreliable networks and clocks, process pauses, fencing tokens, Byzantine faults, and system models.">
+<title>DDIA Ch.8 — The Trouble with Distributed Systems | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ddia/chapter-8/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-8/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-8/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-8/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="DDIA Ch.8 — The Trouble with Distributed Systems">
-<meta property="og:description" content="Partial failure, unreliable networks and clocks, process pauses, fencing tokens, Byzantine faults, and system models.">
-<meta property="og:url" content="https://updoggtech.com/ddia/chapter-8/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="The trouble with distributed systems: partial failure, unreliable networks and clocks, process pauses, fencing tokens, Byzantine faults, and system models.">
+<meta property="og:url" content="https://sdeoffer.com/ddia/chapter-8/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA Ch.8 — The Trouble with Distributed Systems">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="DDIA Ch.8 — The Trouble with Distributed Systems">
 <meta name="twitter:description" content="Why distributed systems fail in strange ways: unreliable networks, clocks, and pauses.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.8 — The Trouble with Distributed Systems","description":"Partial failure, unreliable networks and clocks, process pauses, fencing tokens, Byzantine faults, and system models.","datePublished":"2023-04-07","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ddia/chapter-8/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA Ch.8 — The Trouble with Distributed Systems","description":"The trouble with distributed systems: partial failure, unreliable networks and clocks, process pauses, fencing tokens, Byzantine faults, and system models.","datePublished":"2023-04-07","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ddia/chapter-8/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-07","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Why can't you tell a dead node from a slow one?", "acceptedAnswer": {"@type": "Answer", "text": "A shared-nothing node only observes \"no reply,\" which could be a lost request, a crashed peer, or a slow response — so timeouts are the only (imperfect) detector."}}, {"@type": "Question", "name": "Why is LWW with wall-clock timestamps unsafe?", "acceptedAnswer": {"@type": "Answer", "text": "Clock skew between nodes means a genuinely later write can carry an \"older\" timestamp and be silently dropped — data loss from causality violation."}}, {"@type": "Question", "name": "What problem do fencing tokens solve?", "acceptedAnswer": {"@type": "Answer", "text": "A paused leader waking after its lease expired; a monotonically increasing token lets the storage reject the stale writer."}}, {"@type": "Question", "name": "Safety vs liveness?", "acceptedAnswer": {"@type": "Answer", "text": "Safety = \"nothing bad happens\" and must always hold; liveness = \"something good eventually happens\" and may be qualified by \"eventually.\""}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA Ch.8 — The Trouble with Distributed Systems","item":"https://sdeoffer.com/ddia/chapter-8/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,13 +175,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -175,18 +192,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ddia/chapter-8/" class="active">EN</a><a href="/zh/ddia/chapter-8/">中</a></div>
+      <div class="lang-switch"><a href="/ddia/chapter-8/" class="active" hreflang="en">EN</a><a href="/zh/ddia/chapter-8/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-8</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · Ch.8</span>
     <h1 class="article-title">The Trouble with Distributed Systems</h1>
     <div class="article-meta">
@@ -199,7 +217,7 @@
   </div>
 
   <div class="article-body">
-    <p>Chapter 8 is the pessimist's chapter. After several chapters that assumed things mostly work, Kleppmann turns to everything that can go wrong in a distributed system — and the list is long and humbling. The defining feature is <strong>partial failure</strong>: some parts of the system work while others are broken, in nondeterministic ways you often can't even detect. A single computer is deterministic (it works or it crashes cleanly); a distributed system can be in a maddening in-between state. The chapter's goal is to build an accurate mental model of these faults — unreliable networks, unreliable clocks, and process pauses — so that the consensus tools of Chapter 9 make sense.</p>
+    <p>Chapter 8 is the pessimist's chapter. After several chapters that assumed things mostly work, Kleppmann turns to everything that can go wrong in a distributed system — and the list is long and humbling. The defining feature is <strong>partial failure</strong>: some parts of the system work while others are broken, in nondeterministic ways you often can't even detect. A single computer is deterministic (it works or it crashes cleanly); a distributed system can be in a maddening in-between state. The chapter's goal is to build an accurate mental model of these faults — unreliable networks, unreliable clocks, and process pauses — so that the consensus tools of <a href="/ddia/chapter-9/">Chapter 9</a> make sense.</p>
 
     <div class="takeaways">
       <div class="takeaways-head">⚡ Quick Takeaways</div>
@@ -219,7 +237,7 @@
     </div>
 
     <h2>Faults and Partial Failures</h2>
-    <p>On a single computer, operations are deterministic: either the whole machine works, or it crashes. We deliberately prefer a computer to crash entirely rather than return a wrong result. Distributed systems abandon this comfort. With many machines connected by a network, there will be <strong>partial failures</strong>: parts work while others are broken, and crucially the failure is <em>nondeterministic</em> — an operation involving the network may unpredictably succeed, fail, or hang, and you may not even know which. This nondeterminism, not any single fault, is what makes distributed systems hard. The cloud-computing approach (commodity machines, expect failure, build fault tolerance in software) differs from the supercomputing approach (treat the whole cluster like one machine, restart on failure). For internet services we want continuous availability, so we must <strong>build a reliable system from unreliable components</strong>.</p>
+    <p>On a single computer, operations are deterministic: either the whole machine works, or it crashes. We deliberately prefer a computer to crash entirely rather than return a wrong result. Distributed systems abandon this comfort. With many machines connected by a network, there will be <strong>partial failures</strong>: parts work while others are broken, and crucially the failure is <em>nondeterministic</em> — an operation involving the network may unpredictably succeed, fail, or hang, and you may not even know which. This nondeterminism, not any single fault, is what makes distributed systems hard. The cloud-computing approach (commodity machines, expect failure, build fault tolerance in software) differs from the supercomputing approach (treat the whole cluster like one machine, restart on failure). For internet services we want continuous availability, so we must <strong><a href="/ddia/chapter-1/">build a reliable system from unreliable components</a></strong>.</p>
 
     <h2>Unreliable Networks</h2>
     <p>The distributed systems in this book are <strong>shared-nothing</strong>: machines communicate only by passing messages over an asynchronous packet network. When you send a request and don't get a response, you cannot tell what happened. Many possibilities collapse into the same observation:</p>
@@ -251,7 +269,7 @@
     </table>
 
     <h3>The Danger of Trusting Synchronized Clocks</h3>
-    <p>Clock synchronization is much less reliable than people assume: NTP is limited by network round-trip delay, nodes drift, and leap seconds and misconfigurations cause clocks to jump. The most dangerous consequence is using wall-clock timestamps to <strong>order events across nodes</strong> — for example, <strong>last-write-wins (LWW)</strong> conflict resolution. If node A's clock is even slightly ahead of node B's, a write from B that genuinely happened later can be silently discarded because its timestamp looks older. Clock skew thus causes data loss and causality violations that are nearly impossible to debug. If you must use clocks for ordering, you need <strong>confidence intervals</strong>: a timestamp is really a range, not a point. Google's Spanner uses <strong>TrueTime</strong> (GPS and atomic clocks) to bound the uncertainty, and deliberately <em>waits out</em> the uncertainty interval before committing, so the ordering is guaranteed.</p>
+    <p>Clock synchronization is much less reliable than people assume: NTP is limited by network round-trip delay, nodes drift, and leap seconds and misconfigurations cause clocks to jump. The most dangerous consequence is using wall-clock timestamps to <strong>order events across nodes</strong> — for example, <strong><a href="/ddia/chapter-5/">last-write-wins (LWW)</a></strong> conflict resolution. If node A's clock is even slightly ahead of node B's, a write from B that genuinely happened later can be silently discarded because its timestamp looks older. Clock skew thus causes data loss and causality violations that are nearly impossible to debug. If you must use clocks for ordering, you need <strong>confidence intervals</strong>: a timestamp is really a range, not a point. Google's Spanner uses <strong>TrueTime</strong> (GPS and atomic clocks) to bound the uncertainty, and deliberately <em>waits out</em> the uncertainty interval before committing, so the ordering is guaranteed.</p>
 
     <h3>Process Pauses</h3>
     <p>Even setting clocks aside, you cannot assume code runs in a timely way. A thread can be paused at any point for an arbitrarily long time: a <strong>garbage collection</strong> stop-the-world pause, a virtual machine being <strong>suspended and migrated</strong>, the OS preempting the thread, the laptop lid closing, or even slow disk I/O. The classic failure: a node holds a lease saying "I am the leader until time T," does some work, but pauses (say a 15-second GC pause) right before acting. By the time it resumes, the lease has expired, another leader has taken over — yet the paused node doesn't know and proceeds as if it's still in charge, corrupting shared state.</p>
@@ -314,9 +332,10 @@ client A wakes, writes(token=33) → storage sees 33 &lt; 34 → REJECTED
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -324,7 +343,7 @@ client A wakes, writes(token=33) → storage sees 33 &lt; 34 → REJECTED
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

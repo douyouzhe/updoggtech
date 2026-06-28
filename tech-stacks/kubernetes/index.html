@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
-<title>Kubernetes (k8s) — Pods, Services & Cluster Architecture | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/kubernetes/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/kubernetes/">
+<meta name="description" content="Kubernetes core concepts: pods, services and ingress, deployments and StatefulSets, the master/worker cluster architecture, namespaces, and packaging with Helm.">
+<title>Kubernetes — Pods, Services & Architecture | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/kubernetes/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/kubernetes/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Kubernetes (k8s) — Pods, Services & Cluster Architecture">
-<meta property="og:description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/kubernetes/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/kubernetes-1.jpg">
+<meta property="og:description" content="Kubernetes core concepts: pods, services and ingress, deployments and StatefulSets, the master/worker cluster architecture, namespaces, and packaging with Helm.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/kubernetes/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/kubernetes-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="538">
+<meta property="og:image:alt" content="Kubernetes (k8s) — Pods, Services & Cluster Architecture">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/kubernetes-1.jpg">
 <meta name="twitter:title" content="Kubernetes (k8s) — Pods, Services & Cluster Architecture">
 <meta name="twitter:description" content="A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s) — Pods, Services & Cluster Architecture","description":"A deep dive into Kubernetes — pods, services, ingress, deployments, StatefulSets, master/worker architecture, namespaces, and Helm.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/kubernetes/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Kubernetes (k8s) — Pods, Services & Cluster Architecture","description":"Kubernetes core concepts: pods, services and ingress, deployments and StatefulSets, the master/worker cluster architecture, namespaces, and packaging with Helm.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/kubernetes/"},"image":"https://sdeoffer.com/assets/img/kubernetes-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What happens when a Pod crashes?", "acceptedAnswer": {"@type": "Answer", "text": "The Controller Manager detects divergence from the desired replica count and instructs the Scheduler to place a new Pod — the Service's IP stays unchanged throughout."}}, {"@type": "Question", "name": "Deployment vs StatefulSet vs DaemonSet?", "acceptedAnswer": {"@type": "Answer", "text": "Deployments for stateless apps (interchangeable Pods); StatefulSets for databases (stable ordered Pod identity, per-Pod PVC); DaemonSets for node-local infrastructure agents (one Pod per node)."}}, {"@type": "Question", "name": "Why is etcd critical?", "acceptedAnswer": {"@type": "Answer", "text": "It is the single source of truth for all cluster state; losing etcd without a backup means losing the entire cluster configuration."}}, {"@type": "Question", "name": "HPA vs VPA vs Cluster Autoscaler?", "acceptedAnswer": {"@type": "Answer", "text": "HPA scales replica count; VPA adjusts per-Pod resource requests; Cluster Autoscaler adds/removes nodes. Use all three together: HPA on custom metrics, VPA in recommendation mode, CA to provision capacity."}}, {"@type": "Question", "name": "What is a liveness vs readiness probe?", "acceptedAnswer": {"@type": "Answer", "text": "Liveness failure kills and restarts the container; readiness failure removes it from the Service endpoint without restarting — use readiness for warmup and temporary overload."}}, {"@type": "Question", "name": "What is the Operator pattern?", "acceptedAnswer": {"@type": "Answer", "text": "A custom controller that encodes operational runbooks as code, using CRDs to extend the Kubernetes API with domain-specific resource types like KafkaCluster or PostgresCluster."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"Kubernetes (k8s) — Pods, Services & Cluster Architecture","item":"https://sdeoffer.com/tech-stacks/kubernetes/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/kubernetes/" class="active">EN</a><a href="/zh/tech-stacks/kubernetes/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/kubernetes/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/kubernetes/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">kubernetes</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">Kubernetes (k8s)</h1>
     <div class="article-meta">
@@ -218,17 +235,17 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes cluster architecture overview" loading="lazy">
+        <img src="/assets/img/kubernetes-1.jpg" alt="Kubernetes cluster architecture overview" width="1024" height="538" fetchpriority="high">
         <figcaption>Kubernetes cluster architecture overview</figcaption>
       </figure>
 
     <h2>Core Primitives</h2>
 
     <h3>Pod</h3>
-    <p>The fundamental unit in Kubernetes. A Pod is an <strong>abstraction layer over one or more containers</strong>, making Kubernetes independent of the underlying container runtime (Docker, containerd, CRI-O). Each Pod receives a virtual IP address for intra-cluster communication, but this IP changes whenever the Pod is replaced — which is why Pods need a stable addressing mechanism on top.</p>
+    <p>The fundamental unit in Kubernetes. A Pod is an <strong>abstraction layer over one or more containers</strong>, making Kubernetes independent of the underlying container runtime (<a href="/tech-stacks/docker/">Docker</a>, containerd, CRI-O). Each Pod receives a virtual IP address for intra-cluster communication, but this IP changes whenever the Pod is replaced — which is why Pods need a stable addressing mechanism on top.</p>
 
     <h3>Service</h3>
-    <p>A Service provides a <strong>static IP address</strong> that persists independently of Pod lifecycles. When a Pod dies and a new one starts, the Service's IP stays fixed and continues routing traffic to healthy Pods. Services also act as an internal load balancer, distributing requests across multiple replicas of the same application.</p>
+    <p>A Service provides a <strong>static IP address</strong> that persists independently of Pod lifecycles. When a Pod dies and a new one starts, the Service's IP stays fixed and continues routing traffic to healthy Pods. Services also act as an internal <a href="/tech-stacks/load-balancing/">load balancer</a>, distributing requests across multiple replicas of the same application.</p>
 
     <h3>Ingress</h3>
     <p>Ingress sits at the cluster boundary and behaves like a <strong>reverse proxy</strong>. It translates an external domain name (e.g. <code>api.example.com</code>) into the correct internal Service IP and port based on routing rules, so you expose one entry point rather than a NodePort per service.</p>
@@ -263,10 +280,10 @@
 
     <h3>Master Node Components</h3>
     <ul>
-      <li><strong>API Server</strong> — The single cluster gateway. All communication (kubectl, internal components, CI/CD pipelines) goes through the API Server, which handles authentication and request validation.</li>
+      <li><strong>API Server</strong> — The single cluster gateway. All communication (kubectl, internal components, <a href="/tech-stacks/ci-cd/">CI/CD</a> pipelines) goes through the API Server, which handles authentication and request validation.</li>
       <li><strong>Scheduler</strong> — Watches for newly created Pods with no assigned node, then selects the best worker based on available CPU and RAM.</li>
       <li><strong>Controller Manager</strong> — Runs reconciliation loops. When it detects that the desired state (e.g., 3 replicas) diverges from actual state (2 healthy pods), it triggers corrective actions like rescheduling.</li>
-      <li><strong>etcd</strong> — The cluster's distributed key-value store — the "brain" of Kubernetes. All cluster state (nodes, pods, configs, secrets) lives in etcd. Losing etcd without a backup means losing the entire cluster state.</li>
+      <li><strong>etcd</strong> — The cluster's <a href="/system-design/key-value-store/">distributed key-value store</a> — the "brain" of Kubernetes. All cluster state (nodes, pods, configs, secrets) lives in etcd. Losing etcd without a backup means losing the entire cluster state.</li>
     </ul>
 
     <h2>Configuration (YAML)</h2>
@@ -778,16 +795,17 @@ kubectl taint nodes gpu-node-1 <span class="str">accelerator=gpu:NoSchedule</spa
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

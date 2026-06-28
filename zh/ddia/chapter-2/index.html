@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="DDIA 第 2 章:关系、文档、图三大数据模型的取舍,阻抗失配与 N+1,读时/写时 schema,声明式 vs 命令式查询(SQL/MapReduce/Cypher/SPARQL)。">
-<title>DDIA 第2章 — 数据模型与查询语言 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ddia/chapter-2/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ddia/chapter-2/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ddia/chapter-2/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ddia/chapter-2/">
+<meta name="description" content="关系、文档、图数据模型如何取舍——DDIA 第 2 章讲阻抗失配、读时/写时 schema 与声明式 vs 命令式查询(SQL/Cypher/SPARQL)。">
+<title>DDIA 第2章 — 数据模型与查询语言 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ddia/chapter-2/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ddia/chapter-2/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ddia/chapter-2/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ddia/chapter-2/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="数据模型与查询语言">
-<meta property="og:description" content="DDIA 第 2 章:关系 vs 文档 vs 图、阻抗失配、规范化、读时/写时 schema、SQL/Cypher。">
-<meta property="og:url" content="https://updoggtech.com/zh/ddia/chapter-2/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="关系、文档、图数据模型如何取舍——DDIA 第 2 章讲阻抗失配、读时/写时 schema 与声明式 vs 命令式查询(SQL/Cypher/SPARQL)。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ddia/chapter-2/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DDIA 第2章 — 数据模型与查询语言">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="数据模型与查询语言">
 <meta name="twitter:description" content="DDIA 第 2 章:数据模型选型、N+1、schema-on-read、SQL vs MapReduce、图与 Cypher。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "DDIA 第 2 章 — 数据模型与查询语言", "description": "DDIA 第 2 章:关系、文档、图三大数据模型的取舍,阻抗失配与 N+1,读时/写时 schema,声明式 vs 命令式查询(SQL/MapReduce/Cypher/SPARQL)。", "datePublished": "2023-04-01", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ddia/chapter-2/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"DDIA 第 2 章 — 数据模型与查询语言","description":"关系、文档、图数据模型如何取舍——DDIA 第 2 章讲阻抗失配、读时/写时 schema 与声明式 vs 命令式查询(SQL/Cypher/SPARQL)。","datePublished":"2023-04-01","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ddia/chapter-2/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-01"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "什么时候选文档 DB 而非关系 DB?", "acceptedAnswer": {"@type": "Answer", "text": "当数据真正是自包含层级记录(带嵌入职位的用户资料、带嵌入变体的商品)、你很少需要跨文档 join,且 schema 字段演化频繁到 ALTER TABLE 迁移运维上痛苦时。别只为\"扩展\"选文档——关系数据库用读副本和分区扩展得很好。"}}, {"@type": "Question", "name": "什么是阻抗失配?", "acceptedAnswer": {"@type": "Answer", "text": "内存对象(应用代码里的类/struct)与扁平关系行/表之间的翻译鸿沟,由 ORM 桥接。N+1 查询问题是最常见的性能后果:取 N 个父触发 N 个独立子查询而非一个 JOIN。"}}, {"@type": "Question", "name": "读时 schema vs 写时 schema——哪个更好?", "acceptedAnswer": {"@type": "Answer", "text": "都非普遍。写时 schema(关系)早抓数据质量问题并让数据库保证完整性。读时 schema(文档)允许异构文档和更快 schema 演化。类比是静态 vs 动态类型检查——不同语境不同取舍。"}}, {"@type": "Question", "name": "SQL 为什么是声明式、为什么重要?", "acceptedAnswer": {"@type": "Answer", "text": "你描述你要什么数据;查询优化器决定如何取——哪个索引、哪种 join 算法、是否并行。这意味着改进优化器的数据库版本升级透明地改进所有查询,而无任何应用代码变更。"}}, {"@type": "Question", "name": "什么时候用图数据库?", "acceptedAnswer": {"@type": "Answer", "text": "当关系遍历是主导查询模式、关系深度可变或无界时——社交网络好友的好友查询、推荐引擎、欺诈检测(识别连接账号)、知识图谱。关系能建模图但递归 SQL 冗长且常慢;图数据库使遍历查询自然且快。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"DDIA","item":"https://sdeoffer.com/zh/ddia/"},{"@type":"ListItem","position":3,"name":"DDIA 第2章 — 数据模型与查询语言","item":"https://sdeoffer.com/zh/ddia/chapter-2/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,13 +171,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -176,21 +193,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ddia/chapter-2/">EN</a>
-        <a href="/zh/ddia/chapter-2/" class="active">中</a>
+        <a href="/ddia/chapter-2/" hreflang="en">EN</a>
+        <a href="/zh/ddia/chapter-2/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ddia/">ddia</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ddia/">ddia</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chapter-2</span>
-    </div>
+    </nav>
     <span class="article-tag">DDIA · 第 2 章</span>
     <h1 class="article-title">数据模型与查询语言</h1>
     <div class="article-meta">
@@ -225,13 +243,13 @@
     <h2>原始笔记</h2>
     <p>本章总结所基于的手写学习笔记:</p>
     <figure class="article-figure">
-      <img src="/assets/img/chapter-2-1.jpg" alt="DDIA 第 2 章手写笔记" loading="lazy">
+      <img src="/assets/img/chapter-2-1.jpg" alt="DDIA 第 2 章手写笔记" width="1200" height="1164" fetchpriority="high">
       <figcaption>原始手写笔记——DDIA 第 2 章</figcaption>
     </figure>
 
     <h2>关系模型 vs 文档模型</h2>
-    <p>Edgar Codd 在 1970 年提出关系模型:数据组织成<strong>关系(relation,表)</strong>,每个是<strong>元组(tuple,行)</strong>的集合。关系模型的关键洞见是应用代码不需要知道物理存储布局——数据库引擎处理它,暴露一个干净的声明式查询接口。数十年里它主导每个严肃的数据系统,SQL 至今仍是数据工程的通用语。</p>
-    <p>NoSQL 在 2010 年代显著兴起,由几个不同动机驱动:需要比单个 SQL 数据库能提供的更大写可扩展性;快速演进的初创公司里快速变化数据模型的 schema 灵活性;某些在表里难表达的数据结构的更好阻抗匹配;以及对地理分布、高可用系统的渴望,那里严格关系一致性是瓶颈。"NoSQL"是覆盖文档存储、键值存储、宽列存储和图数据库的宽泛伞——它们只共享不用关系模型这一属性,彼此的取舍差异巨大。</p>
+    <p>Edgar Codd 在 1970 年提出关系模型:数据组织成<strong>关系(relation,表)</strong>,每个是<strong>元组(tuple,行)</strong>的集合。关系模型的关键洞见是应用代码不需要知道<a href="/zh/ddia/chapter-3/">物理存储布局</a>——数据库引擎处理它,暴露一个干净的声明式查询接口。数十年里它主导每个严肃的数据系统,SQL 至今仍是数据工程的通用语。</p>
+    <p><a href="/zh/tech-stacks/nosql/">NoSQL</a> 在 2010 年代显著兴起,由几个不同动机驱动:需要比单个 SQL 数据库能提供的更大写可扩展性;快速演进的初创公司里快速变化数据模型的 schema 灵活性;某些在表里难表达的数据结构的更好阻抗匹配;以及对地理分布、高可用系统的渴望,那里严格关系一致性是瓶颈。"NoSQL"是覆盖文档存储、<a href="/zh/system-design/key-value-store/">键值存储</a>、宽列存储和图数据库的宽泛伞——它们只共享不用关系模型这一属性,彼此的取舍差异巨大。</p>
 
     <h3>简历例子:为什么文档感觉自然</h3>
     <p>Kleppmann 用一个 LinkedIn 风格的简历(用户资料)作贯穿例子,值得细拆,因为它干净地说明每个模型何时胜出。简历有层级结构:一个用户身份,但可能有许多职位(各带公司、头衔、起止日期)、许多教育条目、许多技能、许多联系方式。这是一个从单根实体辐射出的经典<strong>一对多</strong>结构。</p>
@@ -424,9 +442,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -434,7 +453,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

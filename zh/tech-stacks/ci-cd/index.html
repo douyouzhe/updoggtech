@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="深入讲解 CI/CD——持续集成 vs 持续交付 vs 持续部署、流水线各阶段、一次构建的不可变制品、部署策略(滚动、蓝绿、金丝雀)、回滚与质量门禁。">
-<title>CI/CD — 持续集成与交付 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/tech-stacks/ci-cd/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/ci-cd/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/ci-cd/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/ci-cd/">
+<meta name="description" content="CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。">
+<title>CI/CD — 持续集成与交付 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/ci-cd/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/ci-cd/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="CI/CD — 持续集成与交付">
 <meta property="og:description" content="CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。">
-<meta property="og:url" content="https://updoggtech.com/zh/tech-stacks/ci-cd/">
-<meta name="twitter:card" content="summary">
+<meta property="og:url" content="https://sdeoffer.com/zh/tech-stacks/ci-cd/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CI/CD — 持续集成与交付">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="CI/CD — 持续集成与交付">
 <meta name="twitter:description" content="CI/CD 怎么工作:流水线阶段、不可变制品与部署策略。">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"CI/CD — 持续集成与交付","description":"CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。","datePublished":"2023-09-24","inLanguage":"zh","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/zh/tech-stacks/ci-cd/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"CI/CD — 持续集成与交付","description":"CI vs 交付 vs 部署、流水线阶段、不可变制品、部署策略(滚动、蓝绿、金丝雀)与回滚。","datePublished":"2023-09-24","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/tech-stacks/ci-cd/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-24"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "CI 对比 CD?", "acceptedAnswer": {"@type": "Answer", "text": "CI = 每次提交自动构建+测试以尽早发现破坏;CD = 持续交付(始终可部署、人工发布)或持续部署(每个绿色构建自动上线)。"}}, {"@type": "Question", "name": "为什么只构建一次制品?", "acceptedAnswer": {"@type": "Answer", "text": "把同一个不可变制品推过各环境,意味着你发的正是你测的;按环境重新构建有漂移风险。"}}, {"@type": "Question", "name": "滚动 vs 蓝绿 vs 金丝雀?", "acceptedAnswer": {"@type": "Answer", "text": "滚动逐步替换(无额外容量);蓝绿在两套完整环境间切换(瞬时回滚、双倍基础设施);金丝雀先放一小部分并看指标(爆炸半径最小)。"}}, {"@type": "Question", "name": "怎么快速回滚?", "acceptedAnswer": {"@type": "Answer", "text": "重新部署上一个不可变制品/标签(或切流量)。让数据库迁移向后兼容,使各版本代码能共存。"}}, {"@type": "Question", "name": "部署 vs 发布?", "acceptedAnswer": {"@type": "Answer", "text": "特性开关把两者解耦——把代码暗着部署,再打开特性,无需再次部署。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"技术栈","item":"https://sdeoffer.com/zh/tech-stacks/"},{"@type":"ListItem","position":3,"name":"CI/CD — 持续集成与交付","item":"https://sdeoffer.com/zh/tech-stacks/ci-cd/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -138,13 +152,16 @@
   .article-figure { margin: 28px 0; }
   .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
   .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -157,21 +174,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/tech-stacks/ci-cd/">EN</a>
-        <a href="/zh/tech-stacks/ci-cd/" class="active">中</a>
+        <a href="/tech-stacks/ci-cd/" hreflang="en">EN</a>
+        <a href="/zh/tech-stacks/ci-cd/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ci-cd</span>
-    </div>
+    </nav>
     <span class="article-tag">技术栈</span>
     <h1 class="article-title">CI/CD</h1>
     <div class="article-meta">
@@ -331,9 +349,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -341,7 +360,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

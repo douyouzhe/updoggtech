@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A system design deep dive into building a chat app at scale — WebSocket connection management, Snowflake IDs, offline delivery, and group messaging architecture.">
-<title>Design a Chat App (WhatsApp) — System Design | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/system-design/chat-app/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/chat-app/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/chat-app/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/chat-app/">
+<meta name="description" content="Chat app system design (WhatsApp) — manage millions of WebSocket connections, order messages with Snowflake IDs, deliver offline, and fan out group sends.">
+<title>Design a Chat App (WhatsApp) — System Design | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/system-design/chat-app/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/chat-app/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/chat-app/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/chat-app/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="Design a Chat App (WhatsApp) — System Design">
-<meta property="og:description" content="A system design deep dive into building a chat app at scale — WebSocket connection management, Snowflake IDs, offline delivery, and group messaging architecture.">
-<meta property="og:url" content="https://updoggtech.com/system-design/chat-app/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/chat-app-1.jpg">
+<meta property="og:description" content="Chat app system design (WhatsApp) — manage millions of WebSocket connections, order messages with Snowflake IDs, deliver offline, and fan out group sends.">
+<meta property="og:url" content="https://sdeoffer.com/system-design/chat-app/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/chat-app-1.jpg">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="859">
+<meta property="og:image:alt" content="Design a Chat App (WhatsApp) — System Design">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/chat-app-1.jpg">
 <meta name="twitter:title" content="Design a Chat App (WhatsApp) — System Design">
 <meta name="twitter:description" content="A system design deep dive into building a chat app at scale — WebSocket connection management, Snowflake IDs, offline delivery, and group messaging architecture.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Chat App (WhatsApp)","description":"A system design deep dive into building a chat app at scale — WebSocket connection management, Snowflake IDs, offline delivery, and group messaging architecture.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/system-design/chat-app/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"Design a Chat App (WhatsApp)","description":"Chat app system design (WhatsApp) — manage millions of WebSocket connections, order messages with Snowflake IDs, deliver offline, and fan out group sends.","datePublished":"2023-04-01","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/system-design/chat-app/"},"image":"https://sdeoffer.com/assets/img/chat-app-1.jpg","dateModified":"2023-04-01","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "How do you route a message to the correct server when millions of WebSocket connections are spread across many servers?", "acceptedAnswer": {"@type": "Answer", "text": "A WebSocket Manager (backed by Redis) stores user_id → server:port; any service can look up the target server in O(1) and forward the message via internal RPC."}}, {"@type": "Question", "name": "Why cap group chat size?", "acceptedAnswer": {"@type": "Answer", "text": "A group message fans out to every member — a 1,000-person group means 1,000 individual deliveries. Capping size bounds worst-case fan-out latency and prevents a single message from saturating the delivery pipeline."}}, {"@type": "Question", "name": "What happens if a message is sent to an offline user?", "acceptedAnswer": {"@type": "Answer", "text": "The message is stored with status Pending; a push notification (APNs/FCM) wakes the recipient's device; on reconnect the client sends its last-seen ID, the server delivers all missed messages, and status is updated to Delivered."}}, {"@type": "Question", "name": "Write fanout vs. read fanout — when do you use each?", "acceptedAnswer": {"@type": "Answer", "text": "Write fanout copies to each inbox at send time (fast reads, O(N) writes) — use for DMs and small groups. Read fanout stores once in a shared log (O(1) write, O(members) reads) — use for large groups where write amplification would be prohibitive."}}, {"@type": "Question", "name": "How do you prevent duplicate messages on retry?", "acceptedAnswer": {"@type": "Answer", "text": "Client-generated idempotency keys (UUID) stored in Redis with a 24-hour TTL. The Message Service checks the key before writing; if it already exists, returns the existing message ID without creating a duplicate."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"System Design","item":"https://sdeoffer.com/system-design/"},{"@type":"ListItem","position":3,"name":"Design a Chat App (WhatsApp) — System Design","item":"https://sdeoffer.com/system-design/chat-app/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -161,31 +174,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/system-design/chat-app/" class="active">EN</a><a href="/zh/system-design/chat-app/">中</a></div>
+      <div class="lang-switch"><a href="/system-design/chat-app/" class="active" hreflang="en">EN</a><a href="/zh/system-design/chat-app/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">chat-app</span>
-    </div>
+    </nav>
     <span class="article-tag">System Design</span>
     <h1 class="article-title">Design a Chat App</h1>
     <div class="article-meta">
@@ -219,7 +236,7 @@
     </div>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-1.jpg" alt="High-level chat app architecture" loading="lazy">
+      <img src="/assets/img/chat-app-1.jpg" alt="High-level chat app architecture" width="1024" height="859" fetchpriority="high">
       <figcaption>High-level chat app architecture</figcaption>
     </figure>
 
@@ -330,7 +347,7 @@
       </tbody>
     </table>
 
-    <p>WebSockets win because they maintain a single persistent connection per client, enabling the server to push messages the instant they arrive with no polling lag and no connection re-establishment overhead. The connection stays open for the lifetime of the user's session; a heartbeat ping/pong every 30 seconds detects dead connections without requiring the client to poll.</p>
+    <p><a href="/tech-stacks/websockets/">WebSockets</a> win because they maintain a single persistent connection per client, enabling the server to push messages the instant they arrive with no polling lag and no connection re-establishment overhead. The connection stays open for the lifetime of the user's session; a heartbeat ping/pong every 30 seconds detects dead connections without requiring the client to poll.</p>
 
     <h2>Step 5 — Core Services</h2>
     <ul>
@@ -345,7 +362,7 @@
     </ul>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket connection management and message routing" loading="lazy">
+      <img src="/assets/img/chat-app-2.jpg" alt="WebSocket connection management and message routing" loading="lazy" width="1024" height="587">
       <figcaption>WebSocket connection management and message routing</figcaption>
     </figure>
 
@@ -406,7 +423,7 @@
     <p>The messages table is partitioned by <code>conversation_id</code> so the most common query — "load the last 50 messages in this conversation" — is a single-partition scan. The clustering key <code>message_id</code> (a Snowflake ID) keeps messages ordered by time within the partition. Cassandra is the right storage here because the write pattern (high throughput, append-only) and read pattern (range scan within a partition, by time) map perfectly to Cassandra's strengths.</p>
 
     <figure class="article-figure">
-      <img src="/assets/img/chat-app-3.jpg" alt="Message object schema" loading="lazy">
+      <img src="/assets/img/chat-app-3.jpg" alt="Message object schema" loading="lazy" width="1024" height="617">
       <figcaption>Message object schema</figcaption>
     </figure>
 
@@ -549,7 +566,7 @@ No coordination: each node generates independently</code></pre>
     </ul>
 
     <h2>Step 13 — Media Storage</h2>
-    <p>Images, audio, and video are not stored inline in message objects. Instead, the message record holds a CDN URL, and the actual binary content lives in object storage. The upload flow:</p>
+    <p>Images, audio, and video are not stored inline in message objects. Instead, the message record holds a CDN URL, and the actual binary content lives in <a href="/tech-stacks/object-storage/">object storage</a>. The upload flow:</p>
     <ol>
       <li>Client calls <code>POST /api/media/upload</code>.</li>
       <li>Media Service generates a pre-signed S3 upload URL and returns it along with a <code>media_id</code>.</li>
@@ -572,12 +589,12 @@ No coordination: each node generates independently</code></pre>
 
     <h3>Cassandra Sharding for Messages</h3>
     <ul>
-      <li>Messages are partitioned by <code>conversation_id</code>. Cassandra distributes partitions across nodes using consistent hashing, so adding nodes redistributes load without a full reshard.</li>
+      <li>Messages are partitioned by <code>conversation_id</code>. Cassandra distributes partitions across nodes using <a href="/tech-stacks/sharding/">consistent hashing</a>, so adding nodes redistributes load without a full reshard.</li>
       <li>Hot conversations (a massive group chat) can cause a single partition to become a hot spot. Mitigation: bucket time within the partition key — <code>conversation_id + month</code> as a composite partition key, so message history is distributed across time-based buckets.</li>
     </ul>
 
     <h3>Message Queue and Replay</h3>
-    <p>The Message Service publishes every incoming message to Kafka before persisting to Cassandra. This serves two purposes: it decouples the write path from downstream consumers (notification service, analytics, search indexer), and it enables replay — if a consumer falls behind or crashes, it can replay from its last committed Kafka offset without losing messages.</p>
+    <p>The Message Service publishes every incoming message to <a href="/tech-stacks/kafka/">Kafka</a> before persisting to Cassandra. This serves two purposes: it decouples the write path from downstream consumers (notification service, analytics, search indexer), and it enables replay — if a consumer falls behind or crashes, it can replay from its last committed Kafka offset without losing messages.</p>
 
     <h2>Key Tradeoffs</h2>
     <table class="compare-table">
@@ -621,16 +638,17 @@ No coordination: each node generates independently</code></pre>
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

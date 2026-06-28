@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AI 编程:面向代码生成与 agentic 任务的 prompt engineering——为什么 prompt 决定输出质量、给足上下文、用验收标准规约需求、先要计划、few-shot 示例、规约语言/风格/边界、精确迭代追问、测试驱动 prompting、分解大改动,以及常见反模式。">
-<title>面向代码的提示工程 — AI 编程 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/prompt-engineering-for-code/">
+<meta name="description" content="面向代码生成与 agentic 任务的 prompt engineering:给足上下文、用验收标准规约需求、先要计划、few-shot 示例、测试驱动 prompting、分解大改动,以及常见反模式。">
+<title>面向代码的提示工程 — AI 编程 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/prompt-engineering-for-code/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="面向代码的提示工程">
-<meta property="og:description" content="面向代码的 prompt engineering:上下文、验收标准、先规划、few-shot、测试驱动、分解、反模式。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="面向代码生成与 agentic 任务的 prompt engineering:给足上下文、用验收标准规约需求、先要计划、few-shot 示例、测试驱动 prompting、分解大改动,以及常见反模式。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="面向代码的提示工程 — AI 编程">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="面向代码的提示工程">
 <meta name="twitter:description" content="代码 prompt engineering:对的上下文 + 清晰规格 + 验收标准 + 先规划 + few-shot 示例。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "面向代码的提示工程", "description": "AI 编程:面向代码生成与 agentic 任务的 prompt engineering——为什么 prompt 决定输出质量、给足上下文、用验收标准规约需求、先要计划、few-shot 示例、规约语言/风格/边界、精确迭代追问、测试驱动 prompting、分解大改动,以及常见反模式。", "datePublished": "2026-05-12", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/prompt-engineering-for-code/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"面向代码的提示工程","description":"面向代码生成与 agentic 任务的 prompt engineering:给足上下文、用验收标准规约需求、先要计划、few-shot 示例、测试驱动 prompting、分解大改动,以及常见反模式。","datePublished":"2026-05-12","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-12"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么在 AI 编码工具里上下文比模型大小更重要?", "acceptedAnswer": {"@type": "Answer", "text": "上下文窗口有限;模型只能对窗口里的东西做推理。给它对的文件和报错,胜过一个用含糊散文工作的更大模型。"}}, {"@type": "Question", "name": "什么是先规划 prompting,为什么有帮助?", "acceptedAnswer": {"@type": "Answer", "text": "让模型在写码前勾勒做法,在可能最便宜的时刻浮现设计错误——在它们被嵌进实现之前——并迫使模型推理而非模式匹配。"}}, {"@type": "Question", "name": "最危险的 AI 编码反模式是什么?", "acceptedAnswer": {"@type": "Answer", "text": "不加审查就接受第一个输出。即便模型已微妙地违反你的约束,它也会产出看似合理的代码,而“貌似合理却错误”比明显的错误更难抓。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"面向代码的提示工程 — AI 编程","item":"https://sdeoffer.com/zh/ai-coding/prompt-engineering-for-code/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -140,13 +154,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -159,21 +176,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ai-coding/prompt-engineering-for-code/">EN</a>
-        <a href="/zh/ai-coding/prompt-engineering-for-code/" class="active">中</a>
+        <a href="/ai-coding/prompt-engineering-for-code/" hreflang="en">EN</a>
+        <a href="/zh/ai-coding/prompt-engineering-for-code/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">prompt-engineering-for-code</span>
-    </div>
+    </nav>
     <span class="article-tag">AI 编程</span>
     <h1 class="article-title">面向代码的提示工程</h1>
     <div class="article-meta">
@@ -296,7 +314,7 @@ Fix the prefix stripping and make sure an expired token always 401s.</code></pre
         </tr>
         <tr>
           <td>让它更快</td>
-          <td><code>listProducts</code> 查询在 1 万行时 p99 必须 &lt;50 ms;若缺失则在 <code>(category_id, created_at DESC)</code> 上加索引</td>
+          <td><code>listProducts</code> 查询在 1 万行时 p99 必须 &lt;50 ms;若缺失则在 <code>(category_id, created_at DESC)</code> 上加<a href="/zh/tech-stacks/database-indexing/">索引</a></td>
         </tr>
         <tr>
           <td>更好地处理错误</td>
@@ -304,7 +322,7 @@ Fix the prefix stripping and make sure an expired token always 401s.</code></pre
         </tr>
         <tr>
           <td>加缓存</td>
-          <td>把 GET /products/:id 缓存到 Redis,TTL 300 s;用 key <code>product:&lt;id&gt;</code>;缓存未命中时从 DB 取并回填;DB 返回 404 时不缓存</td>
+          <td>把 GET /products/:id 缓存到 <a href="/zh/tech-stacks/redis/">Redis</a>,TTL 300 s;用 key <code>product:&lt;id&gt;</code>;缓存未命中时从 DB 取并回填;DB 返回 404 时不缓存</td>
         </tr>
       </tbody>
     </table>
@@ -472,7 +490,7 @@ Constraints:
 <span class="cm">// in duration.go so all cases above pass. Do not add dependencies.</span></code></pre>
     </div>
 
-    <p>用 Claude Code 这类 agentic 工具时,你可以更进一步:“实现后跑测试并迭代,直到全部通过。”agent 自动闭合反馈回路,你只在测试变绿时审查最终 diff。</p>
+    <p>用 Claude Code 这类 <a href="/zh/ai-coding/how-ai-coding-agents-work/">agentic 工具</a>时,你可以更进一步:“实现后跑测试并迭代,直到全部通过。”agent 自动闭合反馈回路,你只在测试变绿时审查最终 diff。</p>
 
     <h2>为模型分解大改动</h2>
     <p>上下文窗口有限,且注意力在长而复杂的任务上退化。一个触及十五个文件、重组数据模型、更新三个 API 面的改动不是一个 prompt——它是五六个。把大改动拆成聚焦、可独立审查的步骤,产出更好,也让每步更易验证。</p>
@@ -538,7 +556,7 @@ Add cursor-based pagination:
       <li><strong>记 prompt 日志</strong>——记下出奇地好或坏的 prompt,以及是什么造成差别。你会开始看到导致失败的模式。</li>
       <li><strong>仔细读你的 diff</strong>——每次你在 AI 输出里抓到一个隐蔽错误,回溯到 prompt 缺了什么。那次回溯就是一堂 prompting 课。</li>
       <li><strong>在安全地带实验</strong>——用测试文件或一次性分支去试新 prompting 策略,再用到生产关键改动上。</li>
-      <li><strong>把好 prompt 分享给团队</strong>——一个为常见任务(写迁移脚本、生成 gRPC handler、更新 OpenAPI spec)而设的高质量 prompt 共享库,抬高的是团队下限,而不只是个人上限。</li>
+      <li><strong>把好 prompt 分享给团队</strong>——一个为常见任务(写迁移脚本、生成 <a href="/zh/tech-stacks/grpc/">gRPC</a> handler、更新 OpenAPI spec)而设的高质量 prompt 共享库,抬高的是团队下限,而不只是个人上限。</li>
     </ul>
     <p>prompt engineering 最好的心智模型:你在写一份将由一位极有能力但完全天真的承包商执行的规格。他们会严格照你说的做,以最常见的方式解读歧义,且从不要求澄清。据此写规格——无歧义、完整、并对“不要做什么”有明确约束。</p>
 
@@ -568,9 +586,10 @@ Add cursor-based pagination:
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -578,7 +597,7 @@ Add cursor-based pagination:
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

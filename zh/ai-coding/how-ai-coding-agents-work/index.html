@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AI 编程:AI coding agent 的内部机制——agentic loop(plan/act/observe/repeat)、tool use 原语、ReAct 推理、上下文窗口管理与压缩、任务规划与 sub-agent、自我验证闭环,以及失败模式与护栏。">
-<title>AI coding agent 是如何工作的 — AI 编程 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
+<meta name="description" content="AI coding agent 的内部机制:agentic loop(plan/act/observe)、tool use 原语、ReAct 推理、上下文管理与压缩、任务规划与 sub-agent、自我验证、失败模式与护栏。">
+<title>AI coding agent 是如何工作的 — AI 编程 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="AI coding agent 是如何工作的">
-<meta property="og:description" content="AI coding agent 的内部机制:agentic loop、tool use、ReAct、上下文管理、自我验证、护栏。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/how-ai-coding-agents-work/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="AI coding agent 的内部机制:agentic loop(plan/act/observe)、tool use 原语、ReAct 推理、上下文管理与压缩、任务规划与 sub-agent、自我验证、失败模式与护栏。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="AI coding agent 是如何工作的 — AI 编程">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="AI coding agent 是如何工作的">
 <meta name="twitter:description" content="深入 AI coding agent:agentic loop、tool use、ReAct、上下文压缩、sub-agent、自我验证。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI coding agent 是如何工作的", "description": "AI 编程:AI coding agent 的内部机制——agentic loop(plan/act/observe/repeat)、tool use 原语、ReAct 推理、上下文窗口管理与压缩、任务规划与 sub-agent、自我验证闭环,以及失败模式与护栏。", "datePublished": "2026-05-16", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/how-ai-coding-agents-work/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"AI coding agent 是如何工作的","description":"AI coding agent 的内部机制:agentic loop(plan/act/observe)、tool use 原语、ReAct 推理、上下文管理与压缩、任务规划与 sub-agent、自我验证、失败模式与护栏。","datePublished":"2026-05-16","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-16"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "coding agent 与行内自动补全的本质区别是什么?", "acceptedAnswer": {"@type": "Answer", "text": "agentic loop:agent 能收集起始时没有的信息(经由工具)、修改状态并重新观察、对失败迭代——这些一次性补全一个都做不到。"}}, {"@type": "Question", "name": "为什么 tool use 是 agent 设计里最重要的原语?", "acceptedAnswer": {"@type": "Answer", "text": "没有 tool use,模型只能产出文本——它会幻想本该去查的事实。tool use 让它把每个主张锚定在真实产物上(真实文件内容、真实测试输出),这是首要的抗幻觉机制。"}}, {"@type": "Question", "name": "当今 coding agent 最大的可靠性瓶颈是什么?", "acceptedAnswer": {"@type": "Answer", "text": "上下文窗口管理。任务一变大,历史就变大,朴素的 agent 会丢失关键的早期上下文。摘要、选择性检索、结构化草稿板,是生产级 agent 应对它的方式——这是工程问题,不是模型能力问题。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"AI coding agent 是如何工作的 — AI 编程","item":"https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -140,13 +154,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -159,21 +176,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ai-coding/how-ai-coding-agents-work/">EN</a>
-        <a href="/zh/ai-coding/how-ai-coding-agents-work/" class="active">中</a>
+        <a href="/ai-coding/how-ai-coding-agents-work/" hreflang="en">EN</a>
+        <a href="/zh/ai-coding/how-ai-coding-agents-work/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">how-ai-coding-agents-work</span>
-    </div>
+    </nav>
     <span class="article-tag">AI 编程</span>
     <h1 class="article-title">AI coding agent 是如何工作的</h1>
     <div class="article-meta">
@@ -204,7 +222,7 @@
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>AI coding agent 就是一个被循环包裹的 LLM:它用工具读取和修改世界,观察结果,反复迭代直到任务完成。模型本身没变——变的是它外面那层 harness。tool use、上下文管理、自我验证,是决定这层 harness 有多强、多可靠的三个杠杆。</p>
+      <p>AI coding agent 就是一个被循环包裹的 LLM:它用工具读取和修改世界,观察结果,反复迭代直到任务完成。模型本身没变——变的是它外面那层 <a href="/zh/ai-coding/harness-engineering/">harness</a>。tool use、上下文管理、自我验证,是决定这层 harness 有多强、多可靠的三个杠杆。</p>
     </div>
 
     <h2>从一次性补全到 agentic loop</h2>
@@ -269,7 +287,7 @@
     <h2>Tool Use:让 agent 成真的原语</h2>
     <p>没有工具的模型是个文本变换器:它只能产出更多文本。tool use 让它能<em>行动</em>——读真实文件、跑真实命令、拿真实输出——而不是去幻想这些东西可能会说什么。没有 tool use,agent 只是对 agent 的巧妙模仿;有了它,agent 才是真正在干活。</p>
 
-    <p>工具以 JSON schema 定义(更多细节见 Tool Use & MCP 深入篇)。模型看到 schema——名称、描述、参数类型——并决定何时、如何调用每个工具。controller 反序列化模型的输出、校验参数、运行真正的函数、返回结果。模型从不直接执行代码;它请求执行并观察输出。</p>
+    <p>工具以 JSON schema 定义(更多细节见 <a href="/zh/ai-coding/tool-use-function-calling-mcp/">Tool Use & MCP 深入篇</a>)。模型看到 schema——名称、描述、参数类型——并决定何时、如何调用每个工具。controller 反序列化模型的输出、校验参数、运行真正的函数、返回结果。模型从不直接执行代码;它请求执行并观察输出。</p>
 
     <h3>coding agent 的核心工具箱</h3>
     <table class="compare-table">
@@ -323,7 +341,7 @@
       <li><strong>摘要。</strong>完成一个子任务后(如“排查了 auth bug,根因在 session 处理”),agent 把这段经历摘要成一小段,丢弃原始工具输出。摘要保住要点,原始数据则丢掉。</li>
       <li><strong>滑动窗口 / 滚动截断。</strong>保留最近 N 个 token 的对话。简单但有损——早期上下文可能至关重要。</li>
       <li><strong>结构化记忆。</strong>agent 维护一个独立的数据结构(如一个 JSON 对象),跨迭代读取与更新:一块记录已发现事实、已编辑文件、已做决策的草稿板。它比原始对话更密集,且能在上下文截断后存活。</li>
-      <li><strong>RAG(检索增强生成)。</strong>不加载整个代码库,而是把它 embed,在每一步检索语义上最相关的片段。agent 问“给我看与 session 处理相关的代码”,拿回 top-3 相关文件。</li>
+      <li><strong><a href="/zh/system-design/rag-system/">RAG(检索增强生成)</a>。</strong>不加载整个代码库,而是把它 <a href="/zh/tech-stacks/vector-databases/">embed</a>,在每一步检索语义上最相关的片段。agent 问“给我看与 session 处理相关的代码”,拿回 top-3 相关文件。</li>
     </ul>
 
     <table class="compare-table">
@@ -528,9 +546,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -538,7 +557,7 @@
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

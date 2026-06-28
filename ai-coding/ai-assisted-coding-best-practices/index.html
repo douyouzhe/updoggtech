@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.">
-<title>AI-Assisted Coding: Best Practices &amp; Pitfalls | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta name="description" content="Use AI coding tools without losing control of your codebase: review every diff, keep real understanding, manage secrets, and avoid technical debt.">
+<title>AI-Assisted Coding: Best Practices &amp; Pitfalls | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="AI-Assisted Coding: Best Practices &amp; Pitfalls">
-<meta property="og:description" content="How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.">
-<meta property="og:url" content="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Use AI coding tools without losing control of your codebase: review every diff, keep real understanding, manage secrets, and avoid technical debt.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="AI-Assisted Coding: Best Practices &amp; Pitfalls">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="AI-Assisted Coding: Best Practices &amp; Pitfalls">
 <meta name="twitter:description" content="The real discipline of AI-assisted coding — what to do, what to avoid, and how to stay in control of your codebase.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"AI-Assisted Coding: Best Practices & Pitfalls","description":"How to use AI coding tools without losing control of your codebase — reviewing every diff, maintaining understanding, managing secrets and compliance, avoiding technical debt, and measuring real productivity.","datePublished":"2026-05-14","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"AI-Assisted Coding: Best Practices & Pitfalls","description":"Use AI coding tools without losing control of your codebase: review every diff, keep real understanding, manage secrets, and avoid technical debt.","datePublished":"2026-05-14","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-14","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is the biggest risk of aggressive AI coding adoption?", "acceptedAnswer": {"@type": "Answer", "text": "Understanding atrophy and invisible technical debt — code that looks clean, passes review, and slowly accumulates design problems that only surface under operational pressure."}}, {"@type": "Question", "name": "How should teams measure AI coding productivity?", "acceptedAnswer": {"@type": "Answer", "text": "Defect escape rate and cycle time to merged PR, not lines of code or tickets closed — the latter metrics are trivially gamed and don't reflect code quality."}}, {"@type": "Question", "name": "Why is \"it looks right\" an insufficient review standard for AI code?", "acceptedAnswer": {"@type": "Answer", "text": "AI output is stylistically clean by default; the failure modes are logical errors, violated constraints, and subtle security issues that do not surface from a surface read but require understanding what the code actually does."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"AI-Assisted Coding: Best Practices &amp; Pitfalls","item":"https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -144,13 +158,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -158,18 +175,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ai-coding/ai-assisted-coding-best-practices/" class="active">EN</a><a href="/zh/ai-coding/ai-assisted-coding-best-practices/">中</a></div>
+      <div class="lang-switch"><a href="/ai-coding/ai-assisted-coding-best-practices/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/ai-assisted-coding-best-practices/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ai-assisted-coding-best-practices</span>
-    </div>
+    </nav>
     <span class="article-tag">AI Coding</span>
     <h1 class="article-title">AI-Assisted Coding: Best Practices &amp; Pitfalls</h1>
     <div class="article-meta">
@@ -235,7 +253,7 @@
     <p>There is an important calibration here: "understand" does not mean "could rewrite from scratch." It means "can explain what it does, why the major design choices were made, and what would need to change if the requirements changed." That bar is achievable for every function you merge.</p>
 
     <h2>Use AI to Write Tests and Self-Verify</h2>
-    <p>One of the most powerful workflows in AI-assisted development is closing the loop automatically: generate code, generate tests, run tests, iterate. This is especially effective with agentic tools that can execute commands, because the model can catch its own mistakes without you doing anything.</p>
+    <p>One of the most powerful workflows in AI-assisted development is closing the loop automatically: generate code, generate tests, run tests, iterate. This is especially effective with <a href="/ai-coding/how-ai-coding-agents-work/">agentic tools</a> that can execute commands, because the model can catch its own mistakes without you doing anything.</p>
     <h3>The self-verify workflow</h3>
     <ol>
       <li>Describe the function or feature you want, including the acceptance criteria as concrete testable behaviors.</li>
@@ -328,7 +346,7 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
     <h3>Novel or poorly-documented domains</h3>
     <p>Models are trained on existing code. If you're writing code for a new protocol, an internal proprietary system, or an API that changed significantly after the model's knowledge cutoff, the model will extrapolate from what it knows and may be confidently wrong about specifics. In these cases, always verify against the primary documentation, not just the model's output.</p>
     <h3>Architecture decisions</h3>
-    <p>AI tools are good at implementing within an architecture, not at choosing the architecture. Asking a model "should we use a message queue or direct HTTP calls for this integration?" will get you a plausible answer, but that answer is based on generic patterns, not your specific constraints — team size, failure tolerance, operational budget, existing infrastructure. Use the model to explore tradeoffs if useful, but own the decision yourself.</p>
+    <p>AI tools are good at implementing within an architecture, not at choosing the architecture. Asking a model "should we use a <a href="/tech-stacks/message-queue/">message queue</a> or direct HTTP calls for this integration?" will get you a plausible answer, but that answer is based on generic patterns, not your specific constraints — team size, failure tolerance, operational budget, existing infrastructure. Use the model to explore tradeoffs if useful, but own the decision yourself.</p>
     <h3>When you need to deeply understand something new</h3>
     <p>If you're learning a new language, framework, or concept, letting AI write all the code for you is counterproductive. The struggle of writing code manually, making mistakes, and debugging them is how understanding forms. Using AI as a supplement (explaining concepts, checking your work) is valuable; using it as a replacement (generating all the code) leaves you with a working program and a shallow understanding.</p>
 
@@ -393,9 +411,9 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
     <ul>
       <li><strong>Review standard.</strong> AI-generated code is held to the same review bar as human-written code, without exception. Reviewers are not more lenient because "the AI wrote it."</li>
       <li><strong>Attribution.</strong> Some teams add a convention like a commit tag or comment noting that a section was AI-assisted, so reviewers can apply appropriate scrutiny. Others prefer not to distinguish at all. Either is fine; pick one consistently.</li>
-      <li><strong>Shared prompt library.</strong> For common tasks (writing migration scripts, scaffolding new service handlers, generating test fixtures), maintain a shared library of high-quality prompts. This raises the floor across the team and prevents everyone from independently learning the same lessons about which prompts work.</li>
+      <li><strong>Shared prompt library.</strong> For common tasks (writing migration scripts, scaffolding new service handlers, generating test fixtures), maintain a shared library of <a href="/ai-coding/prompt-engineering-for-code/">high-quality prompts</a>. This raises the floor across the team and prevents everyone from independently learning the same lessons about which prompts work.</li>
       <li><strong>Domain-specific guardrails.</strong> Identify the areas of the codebase where AI assistance requires extra review — security-critical code, payment logic, infrastructure config — and explicitly call this out in contribution guidelines or PR templates.</li>
-      <li><strong>CI enforcement.</strong> Run linters, static analysis, and security scanners in CI for all code regardless of origin. Tools like Semgrep, Snyk, or go vet catch categories of mistakes that human review can miss, and they are especially valuable as a backstop for AI output.</li>
+      <li><strong>CI enforcement.</strong> Run linters, static analysis, and security scanners in <a href="/tech-stacks/ci-cd/">CI</a> for all code regardless of origin. Tools like Semgrep, Snyk, or go vet catch categories of mistakes that human review can miss, and they are especially valuable as a backstop for AI output.</li>
     </ul>
 
     <div class="code-block">
@@ -488,9 +506,10 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -498,7 +517,7 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<title>GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/graphql-rest-comparison/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
+<meta name="description" content="GraphQL vs REST compared for API design: resource modeling and resolvers, the typed schema, request and response tradeoffs, and when to choose each approach.">
+<title>GraphQL vs REST — Schema, Resolvers & When to Use | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/graphql-rest-comparison/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each">
-<meta property="og:description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/graphql-rest-comparison/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="GraphQL vs REST compared for API design: resource modeling and resolvers, the typed schema, request and response tradeoffs, and when to choose each approach.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/graphql-rest-comparison/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each">
 <meta name="twitter:description" content="A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each","description":"A deep technical comparison between GraphQL and REST — resources, API design, resolvers, and when to use each.","datePublished":"2023-09-08","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/graphql-rest-comparison/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each","description":"GraphQL vs REST compared for API design: resource modeling and resolvers, the typed schema, request and response tradeoffs, and when to choose each approach.","datePublished":"2023-09-08","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/graphql-rest-comparison/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-09-08","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "GraphQL vs REST — when would you pick GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "When clients have complex, varied data needs (e.g., a mobile app and web app needing different fields from the same data) — GraphQL eliminates over-fetching and multiple round trips with a single typed query."}}, {"@type": "Question", "name": "What is the N+1 problem in GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "A query for a list of items where each item triggers a separate resolver call — fetching 100 movies each fires a separate DB query for the director. The fix is DataLoader: it batches all .load(id) calls within a single event-loop tick into one batch function, then memoizes results for the request's lifetime, collapsing N queries into 1."}}, {"@type": "Question", "name": "REST advantage over GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "HTTP caching is straightforward with REST (GET requests cache by URL); GraphQL uses POST by default, making HTTP-level caching harder. REST is also simpler for public APIs with stable, predictable consumers."}}, {"@type": "Question", "name": "How do you handle caching in GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "Three layers: DataLoader for per-request memoization; Redis in resolvers for cross-request caching; Automatic Persisted Queries (APQ) to convert POST to GET so CDNs can cache public queries. Annotate types with @cacheControl to set max-age per field."}}, {"@type": "Question", "name": "How do you prevent a malicious client from sending a query that DoS's your GraphQL server?", "acceptedAnswer": {"@type": "Answer", "text": "Depth limiting (reject queries deeper than N levels), complexity analysis (assign a numeric cost per field, reject over budget), rate limiting per user at the gateway, and in production: persisted query allowlisting so only known query hashes are executed."}}, {"@type": "Question", "name": "When would you use gRPC instead of GraphQL?", "acceptedAnswer": {"@type": "Answer", "text": "Internal microservice communication where binary encoding, bidirectional streaming, and strict proto contracts matter more than developer ergonomics or browser compatibility."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"GraphQL vs REST Comparison — Schema, Resolvers & When to Use Each","item":"https://sdeoffer.com/tech-stacks/graphql-rest-comparison/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -157,31 +171,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/graphql-rest-comparison/" class="active">EN</a><a href="/zh/tech-stacks/graphql-rest-comparison/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/graphql-rest-comparison/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/graphql-rest-comparison/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">graphql-rest-comparison</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">GraphQL & REST Comparison</h1>
     <div class="article-meta">
@@ -464,7 +482,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <p>REST inherits decades of HTTP caching infrastructure for free. A <code>GET /movies/123</code> response can be cached by browsers, proxies, and CDNs keyed on the URL; <code>Cache-Control</code>, <code>ETag</code>, and <code>Last-Modified</code> headers wire everything up automatically. GraphQL throws this out because almost all GraphQL requests go over <code>POST</code> to a single endpoint — HTTP caches treat all POSTs as uncacheable by default. This is not a trivial problem; CDN caching alone can absorb 90%+ of read traffic on a well-designed REST API.</p>
 
     <h3>Layer 1 — Application-Level Caching</h3>
-    <p>The most portable solution is to cache at the data layer, not the HTTP layer. DataLoader already provides per-request memoization (described above). For cross-request caching, resolvers can check Redis before hitting the database. This is the same cache-aside pattern used in REST, just shifted into the resolver rather than the controller.</p>
+    <p>The most portable solution is to cache at the data layer, not the HTTP layer. DataLoader already provides per-request memoization (described above). For cross-request caching, resolvers can check <a href="/tech-stacks/redis/">Redis</a> before hitting the database. This is the same cache-aside pattern used in REST, just shifted into the resolver rather than the controller.</p>
     <p>A more GraphQL-native approach is <strong>response field-level caching</strong> using cache hints. Apollo Server's <code>@cacheControl</code> directive lets you annotate individual types or fields with a max-age and scope (<code>PUBLIC</code> or <code>PRIVATE</code>). The server computes the minimum cache hint across all resolved fields and emits a <code>Cache-Control</code> header accordingly — allowing shared caches to cache the response if all fields are public and have a non-zero max-age.</p>
 
     <div class="code-block">
@@ -523,7 +541,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
 
     <div class="callout">
       <div class="callout-label">CDN strategy</div>
-      <p>With APQ + <code>@cacheControl</code> hints, fully public queries (no user-specific data) can be served from a CDN edge node just like REST. The catch: a single query mixing public movie data with the viewer's watchlist gets the worst cache hint (maxAge 0, PRIVATE) and bypasses the CDN entirely. Design queries to separate public from private data, or split them into two requests.</p>
+      <p>With APQ + <code>@cacheControl</code> hints, fully public queries (no user-specific data) can be served from a <a href="/tech-stacks/cdn/">CDN</a> edge node just like REST. The catch: a single query mixing public movie data with the viewer's watchlist gets the worst cache hint (maxAge 0, PRIVATE) and bypasses the CDN entirely. Design queries to separate public from private data, or split them into two requests.</p>
     </div>
 
     <h2>Schema Design Best Practices</h2>
@@ -796,7 +814,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     </div>
 
     <h3>Rate Limiting and Persisted Query Allowlisting</h3>
-    <p>Beyond per-query analysis, apply rate limiting at the API gateway level — per-IP and per-authenticated-user token buckets are the standard approach. In production APIs where you control all clients (a first-party mobile app or SPA), <strong>persisted query allowlisting</strong> is the strongest security posture: the server only executes queries whose hash is in an approved registry; arbitrary query strings are rejected entirely. This effectively turns GraphQL into a typed REST API during production while retaining full flexibility during development.</p>
+    <p>Beyond per-query analysis, apply rate limiting at the <a href="/tech-stacks/api-gateway/">API gateway</a> level — per-IP and per-authenticated-user token buckets are the standard approach. In production APIs where you control all clients (a first-party mobile app or SPA), <strong>persisted query allowlisting</strong> is the strongest security posture: the server only executes queries whose hash is in an approved registry; arbitrary query strings are rejected entirely. This effectively turns GraphQL into a typed REST API during production while retaining full flexibility during development.</p>
 
     <div class="callout">
       <div class="callout-label">security checklist</div>
@@ -903,7 +921,7 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
     <ul>
       <li><strong>Use GraphQL</strong> when you have multiple client types (web, iOS, Android, partner integrations) with meaningfully different data needs, or when a product page requires data from many resources in a single low-latency request. The canonical use case is a BFF (Backend for Frontend) layer that aggregates multiple microservices into a client-optimized graph.</li>
       <li><strong>Use REST</strong> for public APIs where consumers are unknown and HTTP caching is valuable; for simple CRUD services with predictable access patterns; for file uploads or responses where content negotiation matters; and for teams who want the least operational overhead and the widest ecosystem of middleware.</li>
-      <li><strong>Use gRPC</strong> for internal service-to-service communication where performance is critical, payload size matters, you need bidirectional streaming, or you want strict contract enforcement enforced at compile time. gRPC is rarely exposed directly to browsers — a translation layer (gRPC-Gateway, gRPC-web, or a REST/GraphQL facade) sits in front.</li>
+      <li><strong>Use <a href="/tech-stacks/grpc/">gRPC</a></strong> for internal service-to-service communication where performance is critical, payload size matters, you need bidirectional streaming, or you want strict contract enforcement enforced at compile time. gRPC is rarely exposed directly to browsers — a translation layer (gRPC-Gateway, gRPC-web, or a REST/GraphQL facade) sits in front.</li>
       <li><strong>Hybrid architectures are normal</strong>: a GraphQL API gateway facing clients, gRPC between internal microservices, and REST for third-party webhooks and public integrations is a common and sensible combination. Pick the protocol whose tradeoffs fit the specific communication channel, not the one that fits the whole system.</li>
     </ul>
 
@@ -935,16 +953,17 @@ app.<span class="fn">get</span>(<span class="str">'/hello'</span>, <span class="
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

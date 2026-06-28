@@ -3,25 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
-<title>OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/tech-stacks/oauth/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/tech-stacks/oauth/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/tech-stacks/oauth/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/tech-stacks/oauth/">
+<meta name="description" content="OAuth 2.0 grant types and protocol flow: the roles, access tokens, the authorization handshake, and why OAuth handles authorization, not authentication.">
+<title>OAuth 2.0 — Authorization Code & Grant Types | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/tech-stacks/oauth/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/tech-stacks/oauth/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/tech-stacks/oauth/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/tech-stacks/oauth/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained">
-<meta property="og:description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
-<meta property="og:url" content="https://updoggtech.com/tech-stacks/oauth/">
-<meta property="og:image" content="https://updoggtech.com/assets/img/oauth-1.png">
+<meta property="og:description" content="OAuth 2.0 grant types and protocol flow: the roles, access tokens, the authorization handshake, and why OAuth handles authorization, not authentication.">
+<meta property="og:url" content="https://sdeoffer.com/tech-stacks/oauth/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/oauth-1.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="576">
+<meta property="og:image:alt" content="OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/oauth-1.png">
 <meta name="twitter:title" content="OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained">
 <meta name="twitter:description" content="A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained","description":"A practical guide to OAuth 2.0 — authorization grant types, roles, protocol flow, access tokens, and how OAuth differs from authentication.","datePublished":"2023-06-17","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/tech-stacks/oauth/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained","description":"OAuth 2.0 grant types and protocol flow: the roles, access tokens, the authorization handshake, and why OAuth handles authorization, not authentication.","datePublished":"2023-06-17","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/tech-stacks/oauth/"},"image":"https://sdeoffer.com/assets/img/oauth-1.png","dateModified":"2023-06-17","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "OAuth vs OpenID Connect — what's the difference?", "acceptedAnswer": {"@type": "Answer", "text": "OAuth 2.0 is authorization (can this app access your calendar?). OIDC adds authentication on top — it issues an ID token (JWT) with identity claims like name and email. \"Login with Google\" uses OIDC over OAuth. The ID token answers \"who is this?\"; the access token answers \"what can this client do?\""}}, {"@type": "Question", "name": "Why is the Implicit grant deprecated?", "acceptedAnswer": {"@type": "Answer", "text": "Tokens are returned in the URL fragment, exposing them to browser history, referrer headers, and any JavaScript on the page including third-party scripts. Authorization Code + PKCE achieves the same goal for SPAs without this exposure — PKCE replaces the need for a client secret in public clients."}}, {"@type": "Question", "name": "What does PKCE protect against?", "acceptedAnswer": {"@type": "Answer", "text": "Authorization code interception attacks. The code_challenge proves the token exchange came from the same party that initiated the auth request, even without a client secret. OAuth 2.1 mandates it for all Authorization Code flows."}}, {"@type": "Question", "name": "Where should SPAs store tokens?", "acceptedAnswer": {"@type": "Answer", "text": "Access token in memory only (not localStorage — XSS can read it). Refresh token in an HttpOnly, Secure, SameSite=Strict cookie (JavaScript cannot read it, so XSS cannot steal it). Serve the refresh endpoint only from the same origin."}}, {"@type": "Question", "name": "How do you validate a JWT access token?", "acceptedAnswer": {"@type": "Answer", "text": "Verify the RS256 signature against the auth server's public key from the JWKS endpoint, then check exp (not expired), iss (expected issuer), aud (this service's identifier), and scope (required permission for this endpoint). Never trust the header's alg field — pin it server-side."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"Tech Stacks","item":"https://sdeoffer.com/tech-stacks/"},{"@type":"ListItem","position":3,"name":"OAuth 2.0 — Authorization Code, PKCE & Grant Types Explained","item":"https://sdeoffer.com/tech-stacks/oauth/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -139,31 +152,35 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/tech-stacks/oauth/" class="active">EN</a><a href="/zh/tech-stacks/oauth/">中</a></div>
+      <div class="lang-switch"><a href="/tech-stacks/oauth/" class="active" hreflang="en">EN</a><a href="/zh/tech-stacks/oauth/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/tech-stacks/">tech-stacks</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/tech-stacks/">tech-stacks</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">oauth</span>
-    </div>
+    </nav>
     <span class="article-tag">Tech Stacks</span>
     <h1 class="article-title">OAuth 2.0</h1>
     <div class="article-meta">
@@ -196,7 +213,7 @@
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-1.png" alt="Third-party login with OAuth 2.0 example" loading="lazy">
+        <img src="/assets/img/oauth-1.png" alt="Third-party login with OAuth 2.0 example" width="1024" height="576" fetchpriority="high">
         <figcaption>Third-party login with OAuth 2.0 example</figcaption>
       </figure>
 
@@ -232,7 +249,7 @@
     </table>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 authorization flow overview" loading="lazy">
+        <img src="/assets/img/oauth-2.png" alt="OAuth 2.0 authorization flow overview" loading="lazy" width="573" height="265">
         <figcaption>OAuth 2.0 authorization flow overview</figcaption>
       </figure>
 
@@ -291,12 +308,12 @@ grant_type=<span class="str">authorization_code</span>
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 Authorization Code grant flow diagram" loading="lazy">
+        <img src="/assets/img/oauth-3.png" alt="OAuth 2.0 Authorization Code grant flow diagram" loading="lazy" width="737" height="475">
         <figcaption>OAuth 2.0 Authorization Code grant flow diagram</figcaption>
       </figure>
 
     <h3>2. Client Credentials — Machine-to-Machine Authorization</h3>
-    <p>Used when there is no human user involved — a backend service authenticating directly as itself to call another service's API. The client sends its <code>client_id</code> and <code>client_secret</code> directly to the token endpoint and receives an access token. No redirect, no user consent screen, no authorization code. Common for: microservice-to-microservice calls, cron jobs, CI/CD pipelines accessing APIs, IoT device backends calling a fleet management API.</p>
+    <p>Used when there is no human user involved — a backend service authenticating directly as itself to call another service's API. The client sends its <code>client_id</code> and <code>client_secret</code> directly to the token endpoint and receives an access token. No redirect, no user consent screen, no authorization code. Common for: microservice-to-microservice calls, cron jobs, <a href="/tech-stacks/ci-cd/">CI/CD</a> pipelines accessing APIs, IoT device backends calling a fleet management API.</p>
     <p>The key security consideration: the <code>client_secret</code> must be stored in a secrets manager (AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager) — never in source code or environment variables checked into version control. Rotate it regularly. A leaked client secret in a machine-to-machine flow gives the attacker unrestricted service-level access with no user to notice anomalous behavior.</p>
 
     <div class="code-block">
@@ -327,7 +344,7 @@ grant_type=<span class="str">client_credentials</span>
     </div>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 Client Credentials grant flow diagram" loading="lazy">
+        <img src="/assets/img/oauth-6.png" alt="OAuth 2.0 Client Credentials grant flow diagram" loading="lazy" width="573" height="376">
         <figcaption>OAuth 2.0 Client Credentials grant flow diagram</figcaption>
       </figure>
 
@@ -373,12 +390,12 @@ grant_type=<span class="str">urn:ietf:params:oauth:grant-type:device_code</span>
     <p>The <strong>Resource Owner Password Credentials grant</strong> (ROPC) has the client collect the user's username and password directly and forward them to the authorization server. This completely defeats the purpose of OAuth — the user must trust the client with their raw credentials. It is only appropriate for highly trusted first-party clients during a legacy migration away from direct credential handling. The OAuth 2.1 draft removes this grant as well.</p>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 Implicit grant flow diagram" loading="lazy">
+        <img src="/assets/img/oauth-4.png" alt="OAuth 2.0 Implicit grant flow diagram" loading="lazy" width="738" height="431">
         <figcaption>OAuth 2.0 Implicit grant flow diagram (deprecated — replaced by Auth Code + PKCE)</figcaption>
       </figure>
 
       <figure class="article-figure">
-        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 Resource Owner Password Credentials flow diagram" loading="lazy">
+        <img src="/assets/img/oauth-5.png" alt="OAuth 2.0 Resource Owner Password Credentials flow diagram" loading="lazy" width="746" height="413">
         <figcaption>OAuth 2.0 Resource Owner Password Credentials flow (avoid for new systems)</figcaption>
       </figure>
 
@@ -568,7 +585,7 @@ app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class
       <li><strong>Third-party app integration</strong> — "Connect your Google Calendar" — the app gets read access to calendar data without ever seeing your Google password. The user can revoke access at any time from Google's account settings without changing their password.</li>
       <li><strong>Single Sign-On (SSO)</strong> — authenticate once with an identity provider (Okta, Auth0, Google Workspace) and access multiple internal applications. The IdP issues short-lived access tokens and ID tokens; each application validates them locally without calling back to the IdP on every request.</li>
       <li><strong>API authorization for third-party developers</strong> — issue scoped tokens to API consumers. A read-only integration partner gets <code>scope=read:products</code>; a logistics partner gets <code>scope=read:orders write:shipments</code>. A leaked partner token compromises only their scope, not the entire API.</li>
-      <li><strong>Microservice-to-microservice</strong> — the Order Service uses Client Credentials to obtain a token scoped to <code>internal:inventory.read</code> before calling the Inventory Service. Each service validates the token's <code>aud</code> and <code>scope</code> claims, so a compromised Order Service cannot call the Payment Service.</li>
+      <li><strong><a href="/tech-stacks/api-gateway/">Microservice-to-microservice</a></strong> — the Order Service uses Client Credentials to obtain a token scoped to <code>internal:inventory.read</code> before calling the Inventory Service. Each service validates the token's <code>aud</code> and <code>scope</code> claims, so a compromised Order Service cannot call the Payment Service.</li>
       <li><strong>CLI tools and developer workflows</strong> — the Device Authorization grant allows a CLI tool (<code>kubectl</code>, <code>gh</code>, Terraform Cloud) to get a user to authorize via their browser while the CLI polls for the token. No password is ever entered in the terminal.</li>
     </ul>
 
@@ -599,16 +616,17 @@ app.<span class="fn">post</span>(<span class="str">'/orders'</span>, <span class
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li><li><a href="/ai-coding/">AI Coding</a></li>
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

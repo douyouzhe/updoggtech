@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="限流器系统设计：token bucket vs leaky bucket vs 滑动窗口、Redis 分布式计数器、Lua 原子性、429 响应、限流器放在 API 网关。算法、原子性与取舍。">
+<title>设计一个限流器 (Rate Limiter) — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/rate-limiter/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/rate-limiter/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/rate-limiter/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/rate-limiter/">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="sdeoffer">
+<meta property="og:title" content="设计一个限流器 (Rate Limiter)">
+<meta property="og:description" content="限流器系统设计：token bucket vs leaky bucket vs 滑动窗口、Redis 分布式计数器、Lua 原子性、429 响应、限流器放在 API 网关。算法、原子性与取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/rate-limiter/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计一个限流器 (Rate Limiter) — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta name="twitter:title" content="设计一个限流器 (Rate Limiter)">
+<meta name="twitter:description" content="限流器系统设计深入：token bucket、leaky bucket、滑动窗口、Redis 计数器、Lua 原子性与 429 处理。">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计一个限流器 (Rate Limiter)","description":"限流器系统设计：token bucket vs leaky bucket vs 滑动窗口、Redis 分布式计数器、Lua 原子性、429 响应、限流器放在 API 网关。算法、原子性与取舍。","datePublished":"2026-06-28","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/rate-limiter/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-06-28"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "token bucket 还是 leaky bucket——什么时候用哪个?", "acceptedAnswer": {"@type": "Answer", "text": "token bucket 允许短时突发到桶容量上限,然后被限到补充速率——适合能容忍突发流量的 API。leaky bucket 通过 FIFO 队列强制恒定的流出速率,把突发平滑成稳定的流——适合下游系统需要稳定、可预测请求速率的场景。"}}, {"@type": "Question", "name": "为什么 fixed window 在边界处允许两倍上限,滑动窗口怎么修?", "acceptedAnswer": {"@type": "Answer", "text": "fixed window 在每个区间边界重置计数,所以客户端能在一个窗口的最后一秒发满上限,又在下一个窗口的第一秒再发满——短时间内最多到 2 倍上限。sliding window log 保存精确时间戳(准确但占内存);sliding window counter 按重叠比例给上一个窗口的计数加权,用 O(1) 内存和近乎精确的准确度修掉边界突发。"}}, {"@type": "Question", "name": "为什么 Redis 限流器需要 Lua 脚本?", "acceptedAnswer": {"@type": "Answer", "text": "先检查再自增是一个 read-modify-write 竞态:两个并发请求都读到 count=99,都判断自己在上限 100 之内,都自增到 101——超额放行。Lua 脚本在 Redis 内部作为单个操作原子执行,所以读取、上限检查和自增之间没有交错。"}}, {"@type": "Question", "name": "Redis 挂了时限流器应该 fail-open 还是 fail-closed?", "acceptedAnswer": {"@type": "Answer", "text": "大多数生产系统 fail-open——如果限流存储不可达,放行请求而不是拒绝所有流量,因为限流器故障不该变成整体故障。登录、支付这类关键端点可能 fail-closed,或回退到一个保守的本地内存限流。明确说出选择;这是可用性 vs 滥用的取舍。"}}, {"@type": "Question", "name": "限流器应该放在哪里?", "acceptedAnswer": {"@type": "Answer", "text": "把它集中放在 API 网关或服务前的专用中间件,这样每个服务都继承保护、规则集中在一处。客户端限流只是建议性的,因为客户端能绕过它。对超低延迟热路径,把一个本地进程内 token bucket 作为第一道防线,和一个共享 Redis 计数器(全局真相)结合。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计一个限流器 (Rate Limiter) — 系统设计","item":"https://sdeoffer.com/zh/system-design/rate-limiter/"}]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e1117; --bg2: #161b25; --bg3: #1e2535;
+    --border: #2a3347; --text: #e2e8f0; --muted: #7a8aa0;
+    --accent: #4ade80; --accent2: #38bdf8; --accent3: #f472b6;
+    --mono: 'JetBrains Mono', monospace; --sans: 'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; min-height: 100vh; }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.15; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+  .article-container { max-width: 720px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(14,17,23,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 32px; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .logo { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--accent); text-decoration: none; }
+  .logo-bracket { color: var(--muted); }
+  .nav-links { display: flex; gap: 4px; list-style: none; }
+  .nav-links a { font-family: var(--mono); font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  .nav-links a:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta { font-family: var(--mono); font-size: 12px; background: var(--accent); color: #0a1a0a; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-weight: 700; }
+
+  /* ARTICLE HEADER */
+  .article-header { padding: 56px 0 40px; }
+  .breadcrumb { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+  .breadcrumb a { color: var(--muted); text-decoration: none; transition: color 0.2s; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .article-tag { font-family: var(--mono); font-size: 11px; color: var(--accent); background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.2); padding: 3px 10px; border-radius: 4px; display: inline-block; margin-bottom: 20px; }
+  .article-title { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.15; margin-bottom: 20px; }
+  .article-meta { display: flex; align-items: center; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .article-meta .separator { color: var(--border); }
+
+  /* ARTICLE BODY */
+  .article-body { padding: 40px 0 80px; }
+  .article-body p { font-size: 16px; line-height: 1.8; color: #c8d3e0; margin-bottom: 24px; }
+  .article-body h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; margin: 48px 0 16px; padding-top: 48px; border-top: 1px solid var(--border); color: var(--text); }
+  .article-body h3 { font-size: 18px; font-weight: 700; margin: 32px 0 12px; color: var(--text); }
+  .article-body ul, .article-body ol { padding-left: 24px; margin-bottom: 24px; }
+  .article-body li { font-size: 15px; line-height: 1.8; color: #c8d3e0; margin-bottom: 8px; }
+  .article-body strong { color: var(--text); font-weight: 700; }
+
+  /* CODE BLOCKS */
+  .code-block {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    margin: 28px 0; overflow: hidden;
+  }
+  .code-block-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .code-block-header-left { display: flex; align-items: center; gap: 10px; }
+  .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .code-lang { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .code-copy { font-family: var(--mono); font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
+  .code-copy:hover { color: var(--text); background: var(--border); }
+  pre { padding: 20px; overflow-x: auto; }
+  code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e2e8f0; }
+  .kw { color: #c084fc; } .fn { color: #60a5fa; } .str { color: #86efac; }
+  .cm { color: #4b5563; font-style: italic; } .ty { color: #fcd34d; } .num { color: #fb923c; }
+
+  /* INLINE CODE */
+  .article-body code { background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 13px; color: var(--accent2); }
+  .code-block code { background: none; border: none; padding: 0; color: #e2e8f0; }
+
+  /* CALLOUT */
+  .callout {
+    background: rgba(74,222,128,0.05); border: 1px solid rgba(74,222,128,0.2);
+    border-left: 3px solid var(--accent); border-radius: 8px;
+    padding: 16px 20px; margin: 28px 0;
+  }
+  .callout p { margin-bottom: 0; color: #c8d3e0; font-size: 15px; }
+  .callout-label { font-family: var(--mono); font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+
+  /* COMPARISON TABLE */
+  .compare-table { width: 100%; border-collapse: collapse; margin: 28px 0; font-family: var(--mono); font-size: 13px; }
+  .compare-table th { background: var(--bg3); color: var(--muted); font-weight: 500; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .compare-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: #c8d3e0; vertical-align: top; line-height: 1.6; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--bg2); }
+  .compare-table .col-a { color: var(--accent2); }
+  .compare-table .col-b { color: var(--accent3); }
+
+  /* ARTICLE NAV */
+  .article-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-top: 48px; border-top: 1px solid var(--border); margin-bottom: 80px; }
+  .article-nav-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-decoration: none; color: var(--text); transition: border-color 0.2s, transform 0.2s; }
+  .article-nav-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .article-nav-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .article-nav-title { font-size: 15px; font-weight: 700; }
+  .article-nav-card.next { text-align: right; }
+
+  footer { border-top: 1px solid var(--border); padding: 40px 0; position: relative; z-index: 1; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .footer-logo { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .footer-links { display: flex; gap: 24px; list-style: none; }
+  .footer-links a { font-family: var(--mono); font-size: 12px; color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--text); }
+  .footer-copy { font-family: var(--mono); font-size: 11px; color: #3a4560; }
+
+  /* QUICK TAKEAWAYS CARD */
+  .takeaways { background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(74,222,128,0.04)); border: 1px solid rgba(56,189,248,0.25); border-radius: 12px; padding: 20px 24px; margin: 0 0 36px; }
+  .takeaways-head { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+  .takeaways ul { margin: 0; padding-left: 20px; }
+  .takeaways li { font-size: 14px; line-height: 1.65; color: #c8d3e0; margin-bottom: 9px; }
+  .takeaways li:last-child { margin-bottom: 0; }
+  .takeaways li strong { color: var(--text); }
+
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .article-nav { grid-template-columns: 1fr; }
+  }
+  .article-figure { margin: 28px 0; }
+  .article-figure img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 10px; display: block; background: var(--bg2); }
+  .article-figure figcaption { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
+  .nav-search { position: relative; }
+  .nav-search input { font-family: var(--mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 6px; width: 150px; outline: none; transition: border-color 0.2s, width 0.2s; }
+  .nav-search input::placeholder { color: var(--muted); }
+  .nav-search input:focus { border-color: var(--accent); width: 190px; }
+  .search-results { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 80vw; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: none; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .search-results.open { display: block; }
+  .sr-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; text-decoration: none; border-bottom: 1px solid var(--border); }
+  .sr-item:last-child { border-bottom: none; }
+  .sr-item:hover { background: var(--bg3); }
+  .sr-title { font-size: 13px; color: var(--text); }
+  .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
+  .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lang-switch { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
+  .lang-switch a.active { background: var(--bg3); color: var(--text); }
+  .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">跳到主内容</a>
+
+<nav aria-label="Primary">
+  <div class="nav-inner">
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
+    <ul class="nav-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+    </ul>
+    <div class="nav-right">
+      <div class="nav-search">
+        <input type="text" id="site-search" placeholder="搜索…" autocomplete="off" aria-label="搜索文章">
+        <div class="search-results" id="search-results"></div>
+      </div>
+      <div class="lang-switch">
+        <a href="/system-design/rate-limiter/" hreflang="en">EN</a>
+        <a href="/zh/system-design/rate-limiter/" class="active" hreflang="zh" lang="zh">中</a>
+      </div>
+      <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
+    </div>
+  </div>
+</nav>
+<main id="main">
+
+<div class="article-container">
+  <div class="article-header">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
+      <span style="color:var(--text)">rate-limiter</span>
+    </nav>
+    <span class="article-tag">系统设计</span>
+    <h1 class="article-title">设计一个限流器 (Rate Limiter)</h1>
+    <div class="article-meta">
+      <span>2026年6月28日</span>
+      <span class="separator">·</span>
+      <span>28 分钟阅读</span>
+      <span class="separator">·</span>
+      <span style="color:var(--accent)">系统设计</span>
+    </div>
+  </div>
+
+  <div class="article-body">
+    <p>限流器(rate limiter)限制一个客户端在给定窗口内能发多少请求,保护你的服务免受滥用、意外的流量风暴,以及当某个租户耗尽共享资源后随之而来的级联故障。它听起来就是一个计数器加一条 <code>if</code> 语句,但设计很快变难:计数器必须在一队无状态服务器之间共享且一致,检查必须几乎不给热路径加延迟,算法要公平地处理突发和窗口边界,而且当它自己的后端存储出问题时整套东西还得继续工作——是 fail-open 还是 fail-closed,要经过深思熟虑地选择。本文走一遍各种算法(token bucket、leaky bucket、fixed 与 sliding window)、在 Redis 上的分布式实现、让并发计数正确的原子性保证,以及客户端依赖的 HTTP 语义(429、<code>Retry-After</code>、<code>X-RateLimit-*</code>)。</p>
+
+    <div class="takeaways">
+      <div class="takeaways-head">⚡ 速览要点</div>
+      <ul>
+        <li><strong>token bucket 是默认选择</strong>——允许突发到桶容量上限,然后被限到稳定的补充速率;Stripe、AWS 和大多数公开 API 都在用。</li>
+        <li><strong>leaky bucket 平滑输出</strong>——一个以恒定速率排空的 FIFO 队列;当下游需要稳定、可预测的请求速率时选它。</li>
+        <li><strong>fixed window 最简单但在边界漏</strong>——客户端能在相邻两个窗口跨界发到 2 倍上限。</li>
+        <li><strong>sliding window counter 修掉边界</strong>——按重叠比例给上一个窗口的计数加权;O(1) 内存、近乎精确。</li>
+        <li><strong>分布式计数器放 Redis</strong>——每个 <code>(client, window)</code> key 用 <code>INCR</code> + <code>EXPIRE</code>;所有网关节点共享同一份真相。</li>
+        <li><strong>Lua 让检查原子化</strong>——读取、比较、自增作为一个不可分割的 Redis 操作运行,消除先查后增的竞态。</li>
+        <li><strong>放在 API 网关</strong>——一个收口处保护所有服务;客户端限流只是建议性的。</li>
+        <li><strong>用 429 + 头部拒绝</strong>——返回 <code>Retry-After</code> 和 <code>X-RateLimit-Limit/Remaining/Reset</code>,让规矩的客户端退避。</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">tldr</div>
+      <p>把限流器放在 <a href="/zh/tech-stacks/api-gateway/">API 网关</a>,这样在一处就保护了每个服务。token bucket 是首选算法——对突发友好、补充平滑;leaky bucket 用在需要恒定输出时;sliding window counter 用在想要 fixed-window 的简单又不要边界突发时。把计数器放在 <a href="/zh/tech-stacks/redis/">Redis</a>,用 Lua 脚本让"检查 + 自增"原子化。用 <code>429 Too Many Requests</code> 加 <code>Retry-After</code> 和 <code>X-RateLimit-*</code> 头部拒绝超额流量。为 Redis 不可达时决定 fail-open 还是 fail-closed。</p>
+    </div>
+
+    <h2>Step 1 — 厘清需求</h2>
+    <p>限流器是一个看似简单实则很深的面试题,因为"限制请求"背后藏着十几个决策。画框图前先定范围。</p>
+
+    <h3>功能需求</h3>
+    <ul>
+      <li>按某个 key 限流:按 API key、按 user ID、按 IP,或按 <code>(user, endpoint)</code> 元组。</li>
+      <li>支持多条规则——例如对同一客户端既限 10 req/s 突发<em>又</em>限 1,000 req/小时 持续。</li>
+      <li>被限流时给客户端一个清晰信号:带 <code>Retry-After</code> 提示的 <code>429</code>。</li>
+      <li>规则可配置、可热加载,无需重新部署服务。</li>
+      <li>对不同档位(免费 vs 付费)和不同端点(便宜的读 vs 昂贵的写)用不同上限。</li>
+    </ul>
+
+    <h3>非功能需求</h3>
+    <ul>
+      <li><strong>低额外延迟</strong>——检查在每个请求上;目标 &lt;1–2 ms p99 的开销。</li>
+      <li><strong>并发下的准确性</strong>——当同一 key 的成千上万请求同时打到不同节点时,计数必须正确。</li>
+      <li><strong>高可用</strong>——限流器不能成为单点故障;为它的后端存储宕机时的行为做决定。</li>
+      <li><strong>分布式正确性</strong>——上限是在 <a href="/zh/tech-stacks/load-balancing/">负载均衡</a> 后水平扩展的无状态服务器队上全局生效,而非每节点单独生效。</li>
+      <li><strong>可扩展性</strong>——以余量处理平台的全部请求量(每秒数十万次检查)。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>值得问的第一个澄清问题:"上限是所有服务器全局共享,还是每服务器单独?"每服务器很简单(一个内存计数器)但对大多数真实系统是错的——在负载均衡后,一个客户端的请求会扇出到多个节点,所以每节点上限 N、M 个节点实际就放行了 N×M。早早点明这个区别,表明你理解真正的问题是<em>分布式</em>计数。</p>
+    </div>
+
+    <h2>Step 2 — 容量估算</h2>
+    <p>按它要守护的流量来给限流器定容。假设一个 API 平台峰值服务 <strong>50 万 请求/秒</strong>。</p>
+
+    <h3>吞吐</h3>
+    <ul>
+      <li>每个请求触发一次限流检查 → <strong>50 万 检查/秒</strong>。每次检查是一次 Redis 往返(或一次 Lua eval)。</li>
+      <li>单个 Redis 实例约能处理 10 万–20 万 简单 ops/秒。在 50 万/秒下你需要一个 <strong>分片 Redis 集群</strong>(计数器按 client key 分区),或用本地+全局的混合来削减 Redis 流量。</li>
+      <li>给网络留预算:同机房的 Redis 每次检查加约 0.2–0.5 ms。让 Redis 和网关在同一 AZ,避免热路径上跨 AZ 延迟。</li>
+    </ul>
+
+    <h3>内存</h3>
+    <ul>
+      <li>每个活跃计数 key 都很小:<code>rl:{client}:{window}</code> → 一个整数加 TTL,算上 Redis 开销 ≈ <strong>~100 字节</strong>。</li>
+      <li>一个窗口内 1000 万 个不同活跃客户端 → 1000 万 × 100 B ≈ <strong>~1 GB</strong>。轻松放进内存;TTL 自动驱逐过期窗口,内存不会无界增长。</li>
+      <li>token-bucket 状态每客户端需两个字段(token 数 + 上次补充时间戳)——仍然很小,存为 Redis hash。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">注意</div>
+      <p>数据很小;难点在吞吐和正确性,不在存储。限流器是受延迟和一致性约束的系统,而非受存储约束的系统——这正是为什么设计讨论围绕算法、原子性和检查放在哪里,而不是分片 TB 级数据。</p>
+    </div>
+
+    <h2>Step 3 — 限流器放在哪里</h2>
+    <p>放置位置是一等的设计决策。同一个算法因位置不同表现差别很大。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>位置</th><th>优点</th><th>缺点</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-b">客户端</td><td>零服务端成本;即时反馈</td><td>只是建议性——恶意客户端直接无视它。永远不是安全边界。</td></tr>
+        <tr><td class="col-a">API 网关 / 反向代理</td><td>一个收口处保护所有服务;规则集中;在请求到达应用服务器前就拒绝超额</td><td>网关需要访问共享计数状态;若不扩展会成瓶颈</td></tr>
+        <tr><td class="col-a">每个服务里的中间件</td><td>细粒度的每服务规则;无额外跳数</td><td>逻辑在各服务间重复;更难保持一致</td></tr>
+        <tr><td class="col-a">专用 sidecar(service mesh)</td><td>与应用代码解耦;通过 mesh 控制面统一策略</td><td>mesh 的运维复杂度;每 pod 状态协调</td></tr>
+      </tbody>
+    </table>
+
+    <p>标准答案是 <strong><a href="/zh/tech-stacks/api-gateway/">API 网关</a></strong>:它是天然的单一入口,能在超额流量消耗下游资源前就拒绝它,且把规则集中在一处。网关自身无状态,查询一个共享存储(Redis)拿计数,所以网关水平扩展不会割裂上限。客户端限流仍值得作为一层<em>礼貌</em>(它减少浪费的往返),但绝不用于执行(enforcement)。</p>
+
+    <h2>Step 4 — 规则与配置</h2>
+    <p>上限是数据,不是代码。规则引擎让产品按档位和端点定义上限,并能不部署就重载。一种紧凑表示:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">YAML</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 限流规则,从配置服务热加载</span>
+<span class="kw">rules</span>:
+  - <span class="kw">match</span>: { tier: <span class="str">free</span>,  endpoint: <span class="str">"POST /api/*"</span> }
+    <span class="kw">limit</span>:  { requests: <span class="num">10</span>,   window: <span class="str">1s</span>,  algorithm: <span class="str">token_bucket</span>, burst: <span class="num">20</span> }
+  - <span class="kw">match</span>: { tier: <span class="str">free</span>,  endpoint: <span class="str">"*"</span> }
+    <span class="kw">limit</span>:  { requests: <span class="num">1000</span>, window: <span class="str">1h</span>,  algorithm: <span class="str">sliding_window</span> }
+  - <span class="kw">match</span>: { tier: <span class="str">paid</span>,  endpoint: <span class="str">"*"</span> }
+    <span class="kw">limit</span>:  { requests: <span class="num">100</span>,  window: <span class="str">1s</span>,  algorithm: <span class="str">token_bucket</span>, burst: <span class="num">200</span> }
+<span class="kw">key_by</span>:   <span class="str">api_key</span>        <span class="cm"># 或 user_id、ip、"user_id:endpoint"</span>
+<span class="kw">on_fail</span>:  <span class="str">allow</span>          <span class="cm"># 计数存储不可达时 fail-open</span></code></pre>
+    </div>
+
+    <p>一个请求可能命中多条规则——一个免费用户打 <code>POST /api/x</code> 同时受 10/s 突发规则和 1,000/小时 持续规则约束。限流器<strong>评估所有命中的规则,任一超额就拒绝</strong>(最严格者胜)。把规则从最具体到最不具体排序,在第一个拒绝处短路以省 Redis 调用。</p>
+
+    <h2>Step 5 — 算法全景</h2>
+    <p>五种算法主导讨论。每种在准确性、内存和突发行为上权衡不同。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>算法</th><th>突发处理</th><th>内存</th><th>准确性</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="col-a">token bucket</td><td>允许突发到桶大小,然后稳定补充</td><td>O(1)——每 key 2 字段</td><td>精确</td></tr>
+        <tr><td class="col-a">leaky bucket</td><td>把突发平滑成恒定流出(队列)</td><td>O(队列大小)</td><td>速率精确,但加延迟</td></tr>
+        <tr><td class="col-b">fixed window</td><td>窗口边界处允许到 2 倍</td><td>O(1)——每 key 1 计数</td><td>近似(边界泄漏)</td></tr>
+        <tr><td class="col-b">sliding window log</td><td>无边界泄漏;精确</td><td>O(N)——每请求一个时间戳</td><td>精确</td></tr>
+        <tr><td class="col-a">sliding window counter</td><td>近乎精确;加权近似</td><td>O(1)——每 key 2 计数</td><td>近似(非常接近)</td></tr>
+      </tbody>
+    </table>
+
+    <p>面试里,把 token bucket 说成默认,把 sliding window counter 说成当 fixed-window 边界泄漏要紧时的改进。只有当下游确实需要平滑、恒定的输出速率时(例如喂一个固定吞吐的 worker 池),leaky bucket 才是对的选择。接下来几步逐个深入。</p>
+
+    <h2>Step 6 — Token Bucket</h2>
+    <p>一个桶最多装 <code>capacity</code> 个 token,以每秒 <code>refill_rate</code> 个 token 的速度补充。每个请求拿走一个 token;桶空了请求就被拒。因为一个满桶能在一次突发里被抽干,token bucket <strong>容忍最大到容量的突发</strong>,同时把长期平均限到补充速率——这正是大多数公开 API 想要的行为。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">def</span> <span class="fn">allow</span>(bucket, capacity, refill_rate, now):
+    <span class="cm"># 按流逝时间惰性补充——无需后台定时器</span>
+    elapsed = now - bucket.last_refill
+    bucket.tokens = <span class="fn">min</span>(capacity, bucket.tokens + elapsed * refill_rate)
+    bucket.last_refill = now
+
+    <span class="kw">if</span> bucket.tokens >= <span class="num">1</span>:
+        bucket.tokens -= <span class="num">1</span>
+        <span class="kw">return</span> <span class="kw">True</span>          <span class="cm"># 放行</span>
+    <span class="kw">return</span> <span class="kw">False</span>             <span class="cm"># 拒绝 → 429</span></code></pre>
+    </div>
+
+    <p>关键技巧是<strong>惰性补充(lazy refill)</strong>:不用后台定时器加 token,而是从流逝时间算出自上次请求以来<em>本应</em>累积多少 token。这让每次检查 O(1),且两次调用之间除两个存储字段(<code>tokens</code>、<code>last_refill</code>)外无状态。在分布式场景里,这两个字段存在每客户端 key 的一个 Redis hash 里,整个 read-modify-write 必须原子(Step 10)。</p>
+
+    <div class="callout">
+      <div class="callout-label">为什么是默认</div>
+      <p>token bucket 干净地分离两个关注点:<code>capacity</code> 控制你容忍多大的突发,<code>refill_rate</code> 控制持续速率。你可以让一个空闲后的客户端瞬时突发到 200 个请求,却把它平均限到 100/s——对真实的突发客户端(页面加载、重试)友好,又不允许持续滥用。这种可调性正是 Stripe、GitHub 和 AWS 公布 token-bucket 式上限的原因。</p>
+    </div>
+
+    <h2>Step 7 — Leaky Bucket</h2>
+    <p>leaky bucket 把请求建模为倒进一个有洞的桶里的水:请求进入一个 FIFO 队列,以固定速率被处理(漏出)。队列满了,新请求溢出被拒。其定义性质是<strong>恒定的流出速率</strong>,无论输入多突发。</p>
+
+    <table class="compare-table">
+      <thead>
+        <tr><th>性质</th><th>token bucket</th><th>leaky bucket</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>输出速率</td><td class="col-a">突发(可瞬时到容量)</td><td class="col-b">恒定(平滑)</td></tr>
+        <tr><td>额外延迟</td><td class="col-a">无——立刻放行或拒绝</td><td class="col-b">排队的请求要等</td></tr>
+        <tr><td>最适合</td><td class="col-a">能容忍突发的面向用户 API</td><td class="col-b">保护固定吞吐的下游</td></tr>
+        <tr><td>内存</td><td class="col-a">O(1)</td><td class="col-b">O(队列长度)</td></tr>
+      </tbody>
+    </table>
+
+    <p>代价是延迟:leaky bucket 可以<em>延迟</em>一个请求(它待在队列里)而非拒绝它,这平滑了尖峰但增加尾延迟并需要队列内存。当你保护的东西——支付处理器、遗留系统、固定容量的 worker 池——需要稳定的滴流、且宁愿让调用方等也不愿看到尖峰时,用它。对大多数限流(拒绝而非延迟),token bucket 更合适。</p>
+
+    <h2>Step 8 — Fixed Window 与 Sliding Window</h2>
+    <p>窗口计数家族最容易在 Redis 之上实现,但在窗口边界藏着一个微妙的公平性 bug。</p>
+
+    <h3>Fixed window</h3>
+    <p>把时间切成固定区间(例如每个自然分钟)。每个 <code>(client, minute)</code> 保一个计数;每请求自增;超上限就拒;窗口结束让 key 过期。极简——一个 <code>INCR</code>——但它允许<strong>边界突发</strong>:客户端能在一个窗口的最后一刻发满上限,又在下一个窗口的第一刻再发满,在一个短于一个窗口的跨度里放行到 <strong>2 倍上限</strong>。</p>
+
+    <h3>Sliding window log</h3>
+    <p>在每客户端的一个有序集合里给每个请求存一个时间戳。每次请求时,丢掉早于 <code>now - window</code> 的时间戳,数剩下的;低于上限就放行。这是<strong>精确</strong>的且无边界泄漏——但它每请求存一条,所以一个做 10K req/s 的客户端每窗口要花 10K 个时间戳的内存。准确但昂贵。</p>
+
+    <h3>Sliding window counter</h3>
+    <p>务实的折中:为当前和上一个固定窗口各保一个计数,通过按上一个窗口与滑动窗口仍重叠的比例给它加权,来估计滚动计数。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Python</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># 对滚动窗口内请求数的加权估计</span>
+elapsed = now - current_window_start          <span class="cm"># 进入当前窗口的秒数</span>
+weight  = (window_size - elapsed) / window_size  <span class="cm"># 与上一个窗口的重叠</span>
+
+estimated = current_count + previous_count * weight
+<span class="kw">if</span> estimated &lt; limit:
+    current_count += <span class="num">1</span>
+    <span class="kw">return</span> <span class="kw">True</span>     <span class="cm"># 放行</span>
+<span class="kw">return</span> <span class="kw">False</span>        <span class="cm"># 拒绝 → 429</span></code></pre>
+    </div>
+
+    <p>如果你进入当前分钟 25%,上一分钟仍贡献其计数的 75% 到滚动估计。这杀掉了边界突发,只花<strong>每 key 两个计数</strong>(O(1) 内存),实践中准确到不到一个百分点。这正是 Cloudflare 因这个原因推广的算法——fixed-window 的成本配 sliding-window 的公平。</p>
+
+    <div class="callout">
+      <div class="callout-label">面试提示</div>
+      <p>如果被问"fixed 还是 sliding window?",先抛边界突发问题并画出来:相邻两个窗口,一个的末尾和下一个的开头各发满上限。然后给出 sliding window counter 作为 O(1) 的修法。只有当面试官要求精确且愿意付每请求内存时,才上 sliding window <em>log</em>。</p>
+    </div>
+
+    <h2>Step 9 — Redis 里的分布式计数器</h2>
+    <p>在负载均衡后限流器是无状态的,计数必须共享,所以计数器放在 <a href="/zh/tech-stacks/redis/">Redis</a>——单线程(无内部数据竞争)、内存(亚毫秒)、且自带原子 <code>INCR</code> 和每 key TTL。一个 fixed-window 限流器就是两条命令:</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Redis</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm"># key = rl:{client}:{window_id},如 rl:api_key_42:1719600000</span>
+<span class="kw">INCR</span> rl:api_key_42:1719600000        <span class="cm"># 返回新计数</span>
+<span class="kw">EXPIRE</span> rl:api_key_42:1719600000 <span class="num">60</span>   <span class="cm"># TTL = 窗口大小;自动清理</span>
+
+<span class="cm"># 应用逻辑:</span>
+<span class="cm">#   count = INCR(key); if count == 1: EXPIRE(key, 60)</span>
+<span class="cm">#   if count &gt; limit: 拒绝 (429)</span></code></pre>
+    </div>
+
+    <p>window id 由时间戳推出(<code>floor(now / window_size)</code>),所以 key 自动轮转、旧窗口经 TTL 过期——无需清扫任务。在 50 万 检查/秒下单个 Redis 节点超预算,所以把计数器跨一个<strong>分片集群</strong>分区:把 client key 哈希到一个分片。因为每个计数器都限定到一个 client key,按 client 分片让每个客户端的计数器留在单个节点上——无跨分片协调、无分布式事务。</p>
+
+    <div class="callout">
+      <div class="callout-label">可扩展性注意</div>
+      <p>按 client key 分片意味着单个非常热的客户端仍集中在一个分片上(热 key 问题)。可以在 Redis 前为该客户端加一个本地进程内限流(Step 11)来缓解,或把一个热客户端的计数器拆成 N 个子 key 再求和——以精确性换分散。对大多数负载,client-key 分片均匀分摊负载,因为没有单个客户端占主导。</p>
+    </div>
+
+    <h2>Step 10 — 用 Lua 脚本保证原子性</h2>
+    <p>朴素流程——读计数、比上限、再自增——是经典的 <strong>read-modify-write 竞态</strong>。同一 key 的两个请求同时到两个网关节点;都 <code>GET</code> 到 count=99,都判定自己在上限 100 之内,都 <code>INCR</code> 到 101。上限被突破。<code>INCR</code> 本身原子,但 token-bucket 和 sliding-window 的运算涉及读状态、计算、写回——多步骤不能交错。</p>
+
+    <p>Redis 用<strong>原子运行 Lua 脚本</strong>解决:整个脚本在 Redis 的单线程上作为一个不可分割的单元执行——中间不跑别的命令。读、上限检查、写要么一起发生、要么都不发生。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">Lua</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="cm">-- token bucket,经 EVAL 原子执行</span>
+<span class="cm">-- KEYS[1]=bucket key  ARGV: capacity, refill_rate, now, requested</span>
+<span class="kw">local</span> b = redis.<span class="fn">call</span>(<span class="str">'HMGET'</span>, KEYS[<span class="num">1</span>], <span class="str">'tokens'</span>, <span class="str">'ts'</span>)
+<span class="kw">local</span> tokens = <span class="fn">tonumber</span>(b[<span class="num">1</span>]) <span class="kw">or</span> <span class="fn">tonumber</span>(ARGV[<span class="num">1</span>])   <span class="cm">-- 起始满桶</span>
+<span class="kw">local</span> ts     = <span class="fn">tonumber</span>(b[<span class="num">2</span>]) <span class="kw">or</span> <span class="fn">tonumber</span>(ARGV[<span class="num">3</span>])
+<span class="kw">local</span> cap, rate, now, need = <span class="fn">tonumber</span>(ARGV[<span class="num">1</span>]), <span class="fn">tonumber</span>(ARGV[<span class="num">2</span>]), <span class="fn">tonumber</span>(ARGV[<span class="num">3</span>]), <span class="fn">tonumber</span>(ARGV[<span class="num">4</span>])
+
+tokens = math.<span class="fn">min</span>(cap, tokens + (now - ts) * rate)   <span class="cm">-- 惰性补充</span>
+<span class="kw">local</span> allowed = tokens >= need
+<span class="kw">if</span> allowed <span class="kw">then</span> tokens = tokens - need <span class="kw">end</span>
+
+redis.<span class="fn">call</span>(<span class="str">'HMSET'</span>, KEYS[<span class="num">1</span>], <span class="str">'tokens'</span>, tokens, <span class="str">'ts'</span>, now)
+redis.<span class="fn">call</span>(<span class="str">'EXPIRE'</span>, KEYS[<span class="num">1</span>], <span class="num">3600</span>)
+<span class="kw">return</span> allowed <span class="kw">and</span> <span class="num">1</span> <span class="kw">or</span> <span class="num">0</span></code></pre>
+    </div>
+
+    <p>脚本在一个原子步骤里做完补充、检查、扣减和持久化,返回单个放行/拒绝。用 <code>SCRIPT LOAD</code> 上传一次,经 <code>EVALSHA</code> 按 SHA 调用,避免每次重发脚本体。替代方案——<code>WATCH</code>/<code>MULTI</code> 乐观事务——也行但在争用时要重试;对重并发下的一个热 key,Lua 方案更简单更快,因为它从不中止。</p>
+
+    <h2>Step 11 — 同步 vs 异步与本地+全局</h2>
+    <p>每个请求都查 Redis 是<strong>同步</strong>模型:完全准确,但把一次网络往返放在热路径上,并让 Redis 成为吞吐瓶颈和故障依赖。两个改进放松这点。</p>
+
+    <h3>本地+全局(两层)</h3>
+    <p>每个网关节点保一个小的进程内 token bucket,大小为全局上限中它<em>该分到的份额</em>,只周期性地与 Redis 对账。大多数请求在纳秒级本地放行或拒绝;Redis 被用来重分配余量,而非每次调用。这大幅削减 Redis 流量并能扛住短暂的 Redis 抖动,代价是<strong>轻微超额放行</strong>——节点本地的桶在一个同步间隔内可能合起来超过全局上限。对 10 个节点上 1,000/s 的上限,你可能短暂放行 1,050。通常可接受;调同步间隔以在准确性和 Redis 负载间权衡。</p>
+
+    <h3>异步回写(write-behind)</h3>
+    <p>基于本地读放行,然后把自增异步推给 Redis。最低延迟,最弱准确性——计数滞后、超额放行增大。把它留给软上限(approximate 即可,如分析限流),而非硬安全上限。</p>
+
+    <div class="callout">
+      <div class="callout-label">取舍</div>
+      <p>同步 Redis = 精确但每请求一次往返加一个硬依赖。本地+全局 = 近乎精确,Redis 流量小得多且能优雅降级,代价是有界的超额放行。正确选择取决于这个上限是<em>硬安全边界</em>(同步、fail-closed)还是<em>公平/成本控制</em>(本地+全局、fail-open)。先说清上限的目的,再选。</p>
+    </div>
+
+    <h2>Step 12 — 429 响应与头部</h2>
+    <p>当请求被限流时,返回 <strong><code>429 Too Many Requests</code></strong> 并告诉客户端怎么做。好的头部把盲目重试风暴变成礼貌退避。</p>
+
+    <div class="code-block">
+      <div class="code-block-header">
+        <div class="code-block-header-left">
+          <div class="code-dot" style="background:#ff5f57"></div>
+          <div class="code-dot" style="background:#febc2e"></div>
+          <div class="code-dot" style="background:#28c840"></div>
+          <span class="code-lang">HTTP</span>
+        </div>
+        <button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').innerText)">copy</button>
+      </div>
+      <pre><code><span class="kw">HTTP</span>/<span class="num">1.1</span> <span class="num">429</span> Too Many Requests
+<span class="str">Retry-After</span>: <span class="num">2</span>                  <span class="cm"># 客户端可重试前等待的秒数</span>
+<span class="str">X-RateLimit-Limit</span>: <span class="num">100</span>           <span class="cm"># 本窗口的上限</span>
+<span class="str">X-RateLimit-Remaining</span>: <span class="num">0</span>          <span class="cm"># 此刻剩余 token</span>
+<span class="str">X-RateLimit-Reset</span>: <span class="num">1719600062</span>     <span class="cm"># 窗口补满的 epoch 时间</span>
+<span class="str">Content-Type</span>: application/json
+
+{ <span class="str">"error"</span>: <span class="str">"rate_limited"</span>,
+  <span class="str">"message"</span>: <span class="str">"Too many requests. Retry after 2s."</span> }</code></pre>
+    </div>
+
+    <ul>
+      <li><strong><code>429</code></strong> 是正确状态码——与 <code>503</code>(服务器过载)区分,让客户端能对限流单独处理。</li>
+      <li><strong><code>Retry-After</code></strong> 是最有用的单个头部:它把客户端重试逻辑从猜测变成精确等待,防止把限流变成宕机的那种重试风暴。</li>
+      <li><strong><code>X-RateLimit-*</code></strong> 让规矩的客户端在撞墙<em>之前</em>就自我调速——在成功响应上也返回它们,客户端就能实时看到剩余预算。</li>
+      <li>服务端上限要配上客户端的<strong>指数退避 + 抖动(jitter)</strong>,这样一群同时撞上限的客户端不会同步成惊群一起重试。</li>
+    </ul>
+
+    <h2>Step 13 — 边界情形与失败模式</h2>
+    <p>面试深度都在这里——区分教科书答案和生产答案的那些情形。</p>
+    <ul>
+      <li><strong>计数存储宕机</strong>——决定 <strong>fail-open</strong>(放行;限流器宕机不该变成整体宕机——常见默认)还是 <strong>fail-closed</strong>(拒绝;用于保护脆弱或安全关键资源的上限)。健壮设计在 Redis 不可达时回退到一个保守的<em>本地</em>内存上限,既不放洪水也不全黑。</li>
+      <li><strong>时钟偏移</strong>——token-bucket 惰性补充和 window id 都依赖时间。在 Lua 脚本里用 Redis 服务端时间(<code>TIME</code> 命令)作为单一时钟,而非各网关的本地时钟,以避免跨节点偏移。</li>
+      <li><strong>窗口边界突发</strong>——fixed-window 的 2 倍泄漏(Step 8);用 sliding window counter 修。</li>
+      <li><strong>竞态</strong>——并发的先查后增超额放行;用 Lua 原子脚本修(Step 10)。</li>
+      <li><strong>分布式超额计数</strong>——本地+全局两层在同步期间超额放行有界;对软上限可接受,对硬上限不可。</li>
+      <li><strong>热 key</strong>——一个客户端猛打单个分片;用本地第一层桶或子 key 拆分缓解。</li>
+      <li><strong>按什么身份做 key</strong>——IP 可伪造且共享(NAT、企业代理会让同一 IP 下许多用户连坐);优先用已认证的 API key 或 user ID,仅对未认证流量回退到 IP。</li>
+      <li><strong>重试风暴</strong>——没有 <code>Retry-After</code> 和带抖动的退避,被限的客户端会齐步猛打;限流器必须塑造客户端行为,而非只拒绝。</li>
+    </ul>
+
+    <h2>Step 14 — 扩展与容错</h2>
+    <p>在平台规模下,限流器自身必须高可用且可水平扩展。</p>
+
+    <h3>扩展检查路径</h3>
+    <p>网关无状态——在负载均衡后水平扩展它们。共享状态是 Redis;通过按 client 把计数器跨 Redis Cluster 分片来扩展它。加上本地+全局层(Step 11)把每请求的 Redis 往返削减一个数量级,让 Redis 远在其 ops 上限之下。</p>
+
+    <h3>容错</h3>
+    <ul>
+      <li><strong>Redis 故障</strong>——让 Redis 带副本和自动故障转移(Sentinel 或 Cluster)。在故障转移窗口里,限流器遵循其 <code>on_fail</code> 策略:大多数端点 fail-open 配本地回退桶,安全关键端点 fail-closed。</li>
+      <li><strong>网关故障</strong>——无状态,所以负载均衡直接绕开宕掉的节点;计数状态不丢,因为它在 Redis 里。</li>
+      <li><strong>区域故障</strong>——每区域跑一个 Redis 集群并按区域限流。真正跨区域的全局上限需要跨区域复制并接受最终一致;大多数设计按区域限流,因为跨区域同步计数会给热路径加不可接受的延迟。</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">可扩展性注意</div>
+      <p>跨区域的全局精确性与物理规律冲突:一个同步的全局计数器意味着每个请求都要等一次跨区域往返。标准折中是给每个区域分配全局预算的一片(例如 60% 给流量最大的区域、40% 给另一个)并本地限流——全局近似、本地精确、请求路径上零跨区域延迟。</p>
+    </div>
+
+    <h2>Step 15 — 关键取舍</h2>
+    <table class="compare-table">
+      <thead>
+        <tr><th>决策</th><th>选择</th><th>接受的取舍</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>算法</td><td class="col-a">token bucket</td><td>允许突发到容量;调容量 vs 补充来塑形</td></tr>
+        <tr><td>窗口公平</td><td class="col-a">sliding window counter</td><td>用微小近似误差换 O(1) 内存和无边界泄漏</td></tr>
+        <tr><td>状态存储</td><td class="col-b">分片 Redis</td><td>热路径上的依赖;用本地回退和 fail-open 缓解</td></tr>
+        <tr><td>原子性</td><td class="col-a">Lua 脚本 (EVALSHA)</td><td>逻辑跑在 Redis 内;比应用代码难调试,但无竞态</td></tr>
+        <tr><td>一致性模型</td><td class="col-a">本地+全局</td><td>同步窗口内有界超额放行,换 Redis 流量大降</td></tr>
+        <tr><td>失败行为</td><td class="col-b">fail-open(默认)</td><td>Redis 宕机时短暂超额放行,胜过拒绝所有流量</td></tr>
+        <tr><td>放置</td><td class="col-a">API 网关</td><td>一个收口处;网关须可扩展并能访问共享状态</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="callout-label">要点</div>
+      <p>限流器是一小撮状态外加一大堆细致推理的守护。token bucket 因其对突发友好的可调性成为默认;sliding window counter 以 O(1) 成本修掉 fixed-window 的边界泄漏;Redis 持有共享计数器,Lua 脚本让"检查 + 自增"原子;API 网关是它的栖身处;一个深思熟虑的 fail-open vs fail-closed 选择让限流器宕机不至于变成服务宕机。深度在边界情形里——时钟偏移、热 key、分布式超额计数、重试风暴——所以点名它们并说出你的取舍。</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-label">🎯 面试速答</div>
+      <p><strong>token bucket 还是 leaky bucket——什么时候用哪个?</strong>token bucket 允许短时突发到桶容量上限,然后被限到补充速率——适合能容忍突发流量的 API。leaky bucket 通过 FIFO 队列强制恒定的流出速率,把突发平滑成稳定的流——适合下游系统需要稳定、可预测请求速率的场景。<br>
+      <strong>为什么 fixed window 在边界处允许两倍上限,滑动窗口怎么修?</strong>fixed window 在每个区间边界重置计数,所以客户端能在一个窗口的最后一秒发满上限,又在下一个窗口的第一秒再发满——短时间内最多到 2 倍上限。sliding window log 保存精确时间戳(准确但占内存);sliding window counter 按重叠比例给上一个窗口的计数加权,用 O(1) 内存和近乎精确的准确度修掉边界突发。<br>
+      <strong>为什么 Redis 限流器需要 Lua 脚本?</strong>先检查再自增是一个 read-modify-write 竞态:两个并发请求都读到 count=99,都判断自己在上限 100 之内,都自增到 101——超额放行。Lua 脚本在 Redis 内部作为单个操作原子执行,所以读取、上限检查和自增之间没有交错。<br>
+      <strong>Redis 挂了时限流器应该 fail-open 还是 fail-closed?</strong>大多数生产系统 fail-open——如果限流存储不可达,放行请求而不是拒绝所有流量,因为限流器故障不该变成整体故障。登录、支付这类关键端点可能 fail-closed,或回退到一个保守的本地内存限流。明确说出选择;这是可用性 vs 滥用的取舍。<br>
+      <strong>限流器应该放在哪里?</strong>把它集中放在 API 网关或服务前的专用中间件,这样每个服务都继承保护、规则集中在一处。客户端限流只是建议性的,因为客户端能绕过它。对超低延迟热路径,把一个本地进程内 token bucket 作为第一道防线,和一个共享 Redis 计数器(全局真相)结合。</p>
+    </div>
+
+    <div class="article-nav">
+      <a href="/zh/system-design/web-crawler/" class="article-nav-card">
+        <div class="article-nav-label">← 上一篇</div>
+        <div class="article-nav-title">设计网络爬虫</div>
+      </a>
+      <a href="/zh/system-design/notification-system/" class="article-nav-card next">
+        <div class="article-nav-label">下一篇 →</div>
+        <div class="article-nav-title">设计通知系统</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+</main>
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
+    <ul class="footer-links">
+      <li><a href="/zh/system-design/">系统设计</a></li>
+      <li><a href="/zh/tech-stacks/">技术栈</a></li>
+      <li><a href="/zh/ai-coding/">AI 编程</a></li>
+      <li><a href="/zh/ddia/">DDIA</a></li>
+      <li><a href="/zh/contact/">联系</a></li>
+    </ul>
+    <div class="footer-copy">© 2024 sdeoffer</div>
+  </div>
+</footer>
+<script src="/assets/search.js" defer></script>
+</body>
+</html>

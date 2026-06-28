@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AI 编程:AI 辅助编码的实践指南——审查每份 diff、维持理解、用 AI 写测试并自我验证、保持迭代小步、刻意的上下文管理、何时不该用 AI、secret/PII/合规、AI 技术债的“看起来对”陷阱、团队规范,以及诚实度量生产力。">
-<title>AI 辅助编程:最佳实践与陷阱 — AI 编程 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/ai-assisted-coding-best-practices/">
+<meta name="description" content="AI 辅助编码的最佳实践与陷阱:审查每份 diff、维持对代码的理解、用 AI 写测试并自我验证、上下文管理、secret/PII 合规、识别 AI 技术债,以及诚实度量生产力。">
+<title>AI 辅助编程:最佳实践与陷阱 — AI 编程 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/ai-assisted-coding-best-practices/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="AI 辅助编程:最佳实践与陷阱">
-<meta property="og:description" content="AI 辅助编码最佳实践:审查每份 diff、维持理解、自我验证、小步迭代、合规、诚实度量生产力。">
-<meta property="og:url" content="https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="AI 辅助编码的最佳实践与陷阱:审查每份 diff、维持对代码的理解、用 AI 写测试并自我验证、上下文管理、secret/PII 合规、识别 AI 技术债,以及诚实度量生产力。">
+<meta property="og:url" content="https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="AI 辅助编程:最佳实践与陷阱 — AI 编程">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="AI 辅助编程:最佳实践与陷阱">
 <meta name="twitter:description" content="AI 辅助编码:审查 diff、维持理解、测试自我验证、上下文管理、安全合规、AI 技术债。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "AI 辅助编程:最佳实践与陷阱", "description": "AI 编程:AI 辅助编码的实践指南——审查每份 diff、维持理解、用 AI 写测试并自我验证、保持迭代小步、刻意的上下文管理、何时不该用 AI、secret/PII/合规、AI 技术债的“看起来对”陷阱、团队规范,以及诚实度量生产力。", "datePublished": "2026-05-14", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/ai-coding/ai-assisted-coding-best-practices/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"AI 辅助编程:最佳实践与陷阱","description":"AI 辅助编码的最佳实践与陷阱:审查每份 diff、维持对代码的理解、用 AI 写测试并自我验证、上下文管理、secret/PII 合规、识别 AI 技术债,以及诚实度量生产力。","datePublished":"2026-05-14","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-14"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "激进采用 AI 编码最大的风险是什么?", "acceptedAnswer": {"@type": "Answer", "text": "理解的萎缩与隐形技术债——看起来干净、能过评审、却慢慢积累设计问题的代码,只在运维压力下才浮现。"}}, {"@type": "Question", "name": "团队该如何度量 AI 编码生产力?", "acceptedAnswer": {"@type": "Answer", "text": "缺陷逃逸率与到 merge 的周期时间,而非代码行数或关闭的工单——后两者极易被刷,且不反映代码质量。"}}, {"@type": "Question", "name": "为什么“看起来对”不足以作为 AI 代码的审查标准?", "acceptedAnswer": {"@type": "Answer", "text": "AI 输出默认风格干净;它的失败模式是逻辑错误、被违反的约束、隐蔽的安全问题——这些都不会从表面阅读中浮现,而需要理解代码实际做了什么。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"AI 编程","item":"https://sdeoffer.com/zh/ai-coding/"},{"@type":"ListItem","position":3,"name":"AI 辅助编程:最佳实践与陷阱 — AI 编程","item":"https://sdeoffer.com/zh/ai-coding/ai-assisted-coding-best-practices/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -140,13 +154,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -159,21 +176,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/ai-coding/ai-assisted-coding-best-practices/">EN</a>
-        <a href="/zh/ai-coding/ai-assisted-coding-best-practices/" class="active">中</a>
+        <a href="/ai-coding/ai-assisted-coding-best-practices/" hreflang="en">EN</a>
+        <a href="/zh/ai-coding/ai-assisted-coding-best-practices/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">ai-assisted-coding-best-practices</span>
-    </div>
+    </nav>
     <span class="article-tag">AI 编程</span>
     <h1 class="article-title">AI 辅助编程:最佳实践与陷阱</h1>
     <div class="article-meta">
@@ -239,7 +257,7 @@
     <p>这里有个重要的标定:“理解”不等于“能从零重写”。它意味着“能解释它做什么、为什么做出那些主要设计选择、需求若变了什么得改”。这个门槛,对你 merge 的每个函数都是可达的。</p>
 
     <h2>用 AI 写测试并自我验证</h2>
-    <p>AI 辅助开发中最强大的工作流之一,是自动闭合循环:生成代码、生成测试、跑测试、迭代。这对能执行命令的 agentic 工具尤其有效,因为模型能在你什么都不做的情况下抓住自己的错误。</p>
+    <p>AI 辅助开发中最强大的工作流之一,是自动闭合循环:生成代码、生成测试、跑测试、迭代。这对能执行命令的 <a href="/zh/ai-coding/how-ai-coding-agents-work/">agentic 工具</a>尤其有效,因为模型能在你什么都不做的情况下抓住自己的错误。</p>
     <h3>自我验证工作流</h3>
     <ol>
       <li>描述你想要的函数或 feature,把验收标准写成具体的、可测试的行为。</li>
@@ -332,7 +350,7 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
     <h3>新颖或文档稀少的领域</h3>
     <p>模型在现有代码上训练。如果你为一个新协议、一个内部专有系统,或一个在模型知识截止后发生重大变化的 API 写代码,模型会从已知的东西外推,可能对具体细节自信地出错。这些情况下,永远对照一手文档验证,而不只是看模型的输出。</p>
     <h3>架构决策</h3>
-    <p>AI 工具擅长在架构内实现,而非选择架构。问模型“这个集成该用消息队列还是直接 HTTP 调用?”会得到一个合理的答案,但那答案基于通用模式,而非你的具体约束——团队规模、容错度、运维预算、现有基础设施。需要时用模型探索权衡,但决策你自己拿。</p>
+    <p>AI 工具擅长在架构内实现,而非选择架构。问模型“这个集成该用<a href="/zh/tech-stacks/message-queue/">消息队列</a>还是直接 HTTP 调用?”会得到一个合理的答案,但那答案基于通用模式,而非你的具体约束——团队规模、容错度、运维预算、现有基础设施。需要时用模型探索权衡,但决策你自己拿。</p>
     <h3>当你需要深入理解新东西时</h3>
     <p>如果你在学一门新语言、新框架或新概念,让 AI 替你写所有代码适得其反。手动写代码、犯错、调试的挣扎,正是理解形成的方式。把 AI 当补充(解释概念、检查你的工作)很有价值;把它当替代(生成所有代码)会让你得到一个能跑的程序和一份浅薄的理解。</p>
 
@@ -397,9 +415,9 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
     <ul>
       <li><strong>评审标准。</strong>AI 生成的代码与人写的代码持同一评审标准,无一例外。评审者不因“是 AI 写的”而更宽容。</li>
       <li><strong>署名。</strong>有些团队加个约定,如用 commit tag 或注释标注某段是 AI 辅助的,好让评审者施加适当审视。另一些则偏好完全不区分。两者都行;一致地选一个。</li>
-      <li><strong>共享 prompt 库。</strong>对常见任务(写迁移脚本、脚手架新服务 handler、生成测试 fixture),维护一个高质量 prompt 的共享库。这抬高全队的下限,避免每个人各自重复领悟同样的“哪些 prompt 有效”。</li>
+      <li><strong>共享 prompt 库。</strong>对常见任务(写迁移脚本、脚手架新服务 handler、生成测试 fixture),维护一个<a href="/zh/ai-coding/prompt-engineering-for-code/">高质量 prompt</a> 的共享库。这抬高全队的下限,避免每个人各自重复领悟同样的“哪些 prompt 有效”。</li>
       <li><strong>领域特定护栏。</strong>识别代码库中需要额外审查的区域——安全关键代码、支付逻辑、基础设施配置——并在贡献指南或 PR 模板里显式点名。</li>
-      <li><strong>CI 强制。</strong>不论来源,对所有代码在 CI 里跑 linter、静态分析、安全扫描。Semgrep、Snyk、go vet 这类工具能抓住人类评审会漏掉的错误类别,作为 AI 输出的兜底尤其有价值。</li>
+      <li><strong>CI 强制。</strong>不论来源,对所有代码在 <a href="/zh/tech-stacks/ci-cd/">CI</a> 里跑 linter、静态分析、安全扫描。Semgrep、Snyk、go vet 这类工具能抓住人类评审会漏掉的错误类别,作为 AI 输出的兜底尤其有价值。</li>
     </ul>
 
     <div class="code-block">
@@ -493,9 +511,10 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -503,7 +522,7 @@ is applied. Now implement jobs/reconcile.go with the reconcile logic...</code></
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

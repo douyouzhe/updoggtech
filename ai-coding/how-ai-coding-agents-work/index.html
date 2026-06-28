@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="A deep dive into how AI coding agents work — the agentic loop, tool use, ReAct pattern, context management, task planning, and self-verification.">
-<title>How AI Coding Agents Work | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/ai-coding/how-ai-coding-agents-work/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
+<meta name="description" content="How AI coding agents work: the agentic loop, tool use, the ReAct pattern, context management, task planning, and how agents self-verify their own output.">
+<title>How AI Coding Agents Work | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/ai-coding/how-ai-coding-agents-work/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="How AI Coding Agents Work">
-<meta property="og:description" content="A deep dive into how AI coding agents work — the agentic loop, tool use, ReAct pattern, context management, task planning, and self-verification.">
-<meta property="og:url" content="https://updoggtech.com/ai-coding/how-ai-coding-agents-work/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="How AI coding agents work: the agentic loop, tool use, the ReAct pattern, context management, task planning, and how agents self-verify their own output.">
+<meta property="og:url" content="https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="How AI Coding Agents Work">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="How AI Coding Agents Work">
 <meta name="twitter:description" content="Deep dive: agentic loop, tool use, ReAct, context compression, sub-agents, self-verification, and failure recovery in AI coding agents.">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"TechArticle","headline":"How AI Coding Agents Work","description":"A deep dive into how AI coding agents work — the agentic loop, tool use, ReAct pattern, context management, task planning, and self-verification.","datePublished":"2026-05-16","author":{"@type":"Organization","name":"updoggtech"},"publisher":{"@type":"Organization","name":"updoggtech"},"mainEntityOfPage":{"@type":"WebPage","@id":"https://updoggtech.com/ai-coding/how-ai-coding-agents-work/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"How AI Coding Agents Work","description":"How AI coding agents work: the agentic loop, tool use, the ReAct pattern, context management, task planning, and how agents self-verify their own output.","datePublished":"2026-05-16","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2026-05-16","inLanguage":"en"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What fundamentally separates a coding agent from inline autocomplete?", "acceptedAnswer": {"@type": "Answer", "text": "The agentic loop: the agent can gather information it didn't start with (via tools), modify state and re-observe it, and iterate on failures — none of which single-shot completion can do."}}, {"@type": "Question", "name": "Why is tool use the most important primitive in agent design?", "acceptedAnswer": {"@type": "Answer", "text": "Without tool use the model can only produce text — it hallucinates facts it should look up. Tool use lets it ground every claim in real artifacts (actual file contents, actual test output), which is the primary anti-hallucination mechanism."}}, {"@type": "Question", "name": "What is the biggest reliability bottleneck in coding agents today?", "acceptedAnswer": {"@type": "Answer", "text": "Context window management. As the task grows, the history grows, and naive agents lose critical early context. Summarization, selective retrieval, and structured scratchpads are how production agents address this — it is an engineering problem, not a model capability problem."}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/"},{"@type":"ListItem","position":2,"name":"AI Coding","item":"https://sdeoffer.com/ai-coding/"},{"@type":"ListItem","position":3,"name":"How AI Coding Agents Work","item":"https://sdeoffer.com/ai-coding/how-ai-coding-agents-work/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -144,13 +158,16 @@
   .lang-switch a { font-family: var(--mono); font-size: 12px; padding: 5px 10px; color: var(--muted); text-decoration: none; transition: color 0.2s, background 0.2s; }
   .lang-switch a.active { background: var(--bg3); color: var(--text); }
   .lang-switch a:hover { color: var(--text); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -158,18 +175,19 @@
       <li><a href="/ddia/">DDIA</a></li>
     </ul>
     <div class="nav-search"><input type="text" id="site-search" placeholder="Search…" autocomplete="off" aria-label="Search articles"><div class="search-results" id="search-results"></div></div>
-      <div class="lang-switch"><a href="/ai-coding/how-ai-coding-agents-work/" class="active">EN</a><a href="/zh/ai-coding/how-ai-coding-agents-work/">中</a></div>
+      <div class="lang-switch"><a href="/ai-coding/how-ai-coding-agents-work/" class="active" hreflang="en">EN</a><a href="/zh/ai-coding/how-ai-coding-agents-work/" hreflang="zh" lang="zh">中</a></div>
       <a href="/contact/" class="nav-cta">Mock Interview →</a>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/">home</a><span>/</span>
-      <a href="/ai-coding/">ai-coding</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">home</a><span aria-hidden="true">/</span>
+      <a href="/ai-coding/">ai-coding</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">how-ai-coding-agents-work</span>
-    </div>
+    </nav>
     <span class="article-tag">AI Coding</span>
     <h1 class="article-title">How AI Coding Agents Work</h1>
     <div class="article-meta">
@@ -200,7 +218,7 @@
 
     <div class="callout">
       <div class="callout-label">tldr</div>
-      <p>An AI coding agent is an LLM wrapped in a loop: it uses tools to read and modify the world, observes the results, and repeats until the task is done. The model itself has not changed — what changed is the harness around it. Tool use, context management, and self-verification are the three levers that determine how capable and reliable that harness is.</p>
+      <p>An AI coding agent is an LLM wrapped in a loop: it uses tools to read and modify the world, observes the results, and repeats until the task is done. The model itself has not changed — what changed is the <a href="/ai-coding/harness-engineering/">harness</a> around it. Tool use, context management, and self-verification are the three levers that determine how capable and reliable that harness is.</p>
     </div>
 
     <h2>From One-Shot Completions to Agentic Loops</h2>
@@ -265,7 +283,7 @@
     <h2>Tool Use: The Primitive That Makes Agents Real</h2>
     <p>A model without tools is a text transformer: it can only produce more text. Tool use is what lets it <em>act</em> — read real files, run real commands, get real outputs — instead of hallucinating what those things might say. Without tool use, an agent is a clever impersonation of an agent. With it, the agent is genuinely doing work.</p>
 
-    <p>Tools are defined as JSON schemas (more on this in the Tool Use & MCP deep dive). The model sees the schema — name, description, parameter types — and decides when and how to invoke each tool. The controller deserializes the model's output, validates the arguments, runs the actual function, and returns the result. The model never directly executes code; it requests execution and observes the output.</p>
+    <p>Tools are defined as JSON schemas (more on this in the <a href="/ai-coding/tool-use-function-calling-mcp/">Tool Use & MCP deep dive</a>). The model sees the schema — name, description, parameter types — and decides when and how to invoke each tool. The controller deserializes the model's output, validates the arguments, runs the actual function, and returns the result. The model never directly executes code; it requests execution and observes the output.</p>
 
     <h3>The Core Toolkit of a Coding Agent</h3>
     <table class="compare-table">
@@ -319,7 +337,7 @@
       <li><strong>Summarization.</strong> After completing a sub-task (e.g., "investigated the auth bug, found root cause in session handling"), the agent summarizes that episode into a short paragraph and discards the raw tool outputs. The summary preserves what matters; the raw data is gone.</li>
       <li><strong>Sliding window / rolling truncation.</strong> Keep the most recent N tokens of conversation. Simple but lossy — early context can be critical.</li>
       <li><strong>Structured memory.</strong> The agent maintains a separate data structure (e.g., a JSON object) it reads and updates across iterations: a scratchpad of discovered facts, files edited, decisions made. This is denser than the raw conversation and survives context truncation.</li>
-      <li><strong>Retrieval-Augmented Generation (RAG).</strong> Instead of loading the whole codebase, embed it and retrieve the most semantically relevant chunks at each step. The agent asks "show me code related to session handling" and gets back the top-3 relevant files.</li>
+      <li><strong><a href="/system-design/rag-system/">Retrieval-Augmented Generation (RAG)</a>.</strong> Instead of loading the whole codebase, <a href="/tech-stacks/vector-databases/">embed it</a> and retrieve the most semantically relevant chunks at each step. The agent asks "show me code related to session handling" and gets back the top-3 relevant files.</li>
     </ul>
 
     <table class="compare-table">
@@ -523,9 +541,10 @@
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/system-design/">System Design</a></li>
       <li><a href="/tech-stacks/">Tech Stacks</a></li>
@@ -533,7 +552,7 @@
       <li><a href="/ddia/">DDIA</a></li>
       <li><a href="/contact/">Contact</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>

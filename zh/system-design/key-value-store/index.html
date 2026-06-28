@@ -3,24 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="系统设计:Dynamo 风格分布式键值存储——一致性哈希与虚拟节点、N 路复制与 preference list、quorum 可调一致性(W+R>N)、向量时钟冲突解决、hinted handoff、Merkle 树反熵、gossip 成员关系,以及 AP 取舍。">
-<title>设计分布式键值存储 — 系统设计 | updoggtech</title>
-<link rel="canonical" href="https://updoggtech.com/zh/system-design/key-value-store/">
-<link rel="alternate" hreflang="en" href="https://updoggtech.com/system-design/key-value-store/">
-<link rel="alternate" hreflang="zh" href="https://updoggtech.com/zh/system-design/key-value-store/">
-<link rel="alternate" hreflang="x-default" href="https://updoggtech.com/system-design/key-value-store/">
+<meta name="description" content="Dynamo 式分布式键值存储系统设计：一致性哈希与虚拟节点、N 路复制、quorum 可调一致性(W+R>N)、向量时钟、Merkle 反熵、gossip 与 AP 取舍。">
+<title>设计分布式键值存储 — 系统设计 | sdeoffer</title>
+<link rel="canonical" href="https://sdeoffer.com/zh/system-design/key-value-store/">
+<link rel="alternate" hreflang="en" href="https://sdeoffer.com/system-design/key-value-store/">
+<link rel="alternate" hreflang="zh" href="https://sdeoffer.com/zh/system-design/key-value-store/">
+<link rel="alternate" hreflang="x-default" href="https://sdeoffer.com/system-design/key-value-store/">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="updoggtech">
+<meta property="og:site_name" content="sdeoffer">
 <meta property="og:title" content="设计分布式键值存储">
-<meta property="og:description" content="分布式 KV 存储系统设计:一致性哈希、quorum、向量时钟、hinted handoff、Merkle 反熵、gossip。">
-<meta property="og:url" content="https://updoggtech.com/zh/system-design/key-value-store/">
-<meta name="twitter:card" content="summary">
+<meta property="og:description" content="Dynamo 式分布式键值存储系统设计：一致性哈希与虚拟节点、N 路复制、quorum 可调一致性(W+R>N)、向量时钟、Merkle 反熵、gossip 与 AP 取舍。">
+<meta property="og:url" content="https://sdeoffer.com/zh/system-design/key-value-store/">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:image" content="https://sdeoffer.com/assets/img/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="设计分布式键值存储 — 系统设计">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdeoffer.com/assets/img/og-default.png">
 <meta name="twitter:title" content="设计分布式键值存储">
 <meta name="twitter:description" content="设计分布式 KV 存储:一致性哈希、W+R>N、向量时钟、hinted handoff、AP。">
 <script type="application/ld+json">
-{"@context": "https://schema.org", "@type": "TechArticle", "headline": "设计分布式键值存储", "description": "系统设计:Dynamo 风格分布式键值存储——一致性哈希与虚拟节点、N 路复制与 preference list、quorum 可调一致性(W+R>N)、向量时钟冲突解决、hinted handoff、Merkle 树反熵、gossip 成员关系,以及 AP 取舍。", "datePublished": "2023-04-08", "inLanguage": "zh", "author": {"@type": "Organization", "name": "updoggtech"}, "publisher": {"@type": "Organization", "name": "updoggtech"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://updoggtech.com/zh/system-design/key-value-store/"}}
+{"@context":"https://schema.org","@type":"TechArticle","headline":"设计分布式键值存储","description":"Dynamo 式分布式键值存储系统设计：一致性哈希与虚拟节点、N 路复制、quorum 可调一致性(W+R>N)、向量时钟、Merkle 反熵、gossip 与 AP 取舍。","datePublished":"2023-04-08","inLanguage":"zh","author":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"publisher":{"@type":"Organization","name":"sdeoffer","url":"https://sdeoffer.com/","logo":{"@type":"ImageObject","url":"https://sdeoffer.com/assets/img/og-default.png","width":1200,"height":630}},"mainEntityOfPage":{"@type":"WebPage","@id":"https://sdeoffer.com/zh/system-design/key-value-store/"},"image":"https://sdeoffer.com/assets/img/og-default.png","dateModified":"2023-04-08"}
+</script>
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "为什么一致性哈希而非 hash mod N?", "acceptedAnswer": {"@type": "Answer", "text": "增删节点只重映射一小片键而非几乎全部;虚拟节点保持分布均匀。"}}, {"@type": "Question", "name": "W + R > N 保证什么?", "acceptedAnswer": {"@type": "Answer", "text": "读 quorum 和写 quorum 至少重叠一个节点,所以一次读看到最新写——可调一致性旋钮。"}}, {"@type": "Question", "name": "无 leader 怎么处理并发写?", "acceptedAnswer": {"@type": "Answer", "text": "向量时钟检测版本是因果有序还是并发;并发 sibling 被保留并合并(应用逻辑或 LWW)。"}}, {"@type": "Question", "name": "临时 vs 永久故障恢复?", "acceptedAnswer": {"@type": "Answer", "text": "hinted handoff 覆盖瞬时宕机(写去一个带 hint 的替身);Merkle 树反熵通过只传输不同的键修复长期分歧。"}}, {"@type": "Question", "name": "是 CP 还是 AP?", "acceptedAnswer": {"@type": "Answer", "text": "AP——分区下保持可用且最终一致。"}}]}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://sdeoffer.com/zh/"},{"@type":"ListItem","position":2,"name":"系统设计","item":"https://sdeoffer.com/zh/system-design/"},{"@type":"ListItem","position":3,"name":"设计分布式键值存储 — 系统设计","item":"https://sdeoffer.com/zh/system-design/key-value-store/"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -156,13 +170,16 @@
   .sr-title { font-size: 13px; color: var(--text); }
   .sr-sec { font-family: var(--mono); font-size: 10px; color: var(--accent2); white-space: nowrap; }
   .sr-empty { padding: 12px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#0a1a0a;padding:10px 16px;border-radius:0 0 6px 0;font-family:var(--mono);font-size:13px;font-weight:700;text-decoration:none}.skip-link:focus{left:0}
+.article-body a:not([class]){color:var(--accent2);text-decoration:underline;text-underline-offset:2px;transition:color .2s}.article-body a:not([class]):hover{color:var(--accent)}
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav>
+<nav aria-label="Primary">
   <div class="nav-inner">
-    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>updoggtech<span class="logo-bracket">]</span></a>
+    <a href="/zh/" class="logo"><span class="logo-bracket">[</span>sdeoffer<span class="logo-bracket">]</span></a>
     <ul class="nav-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -175,21 +192,22 @@
         <div class="search-results" id="search-results"></div>
       </div>
       <div class="lang-switch">
-        <a href="/system-design/key-value-store/">EN</a>
-        <a href="/zh/system-design/key-value-store/" class="active">中</a>
+        <a href="/system-design/key-value-store/" hreflang="en">EN</a>
+        <a href="/zh/system-design/key-value-store/" class="active" hreflang="zh" lang="zh">中</a>
       </div>
       <a href="/zh/contact/" class="nav-cta">模拟面试 →</a>
     </div>
   </div>
 </nav>
+<main id="main">
 
 <div class="article-container">
   <div class="article-header">
-    <div class="breadcrumb">
-      <a href="/zh/">首页</a><span>/</span>
-      <a href="/zh/system-design/">system-design</a><span>/</span>
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/zh/">首页</a><span aria-hidden="true">/</span>
+      <a href="/zh/system-design/">system-design</a><span aria-hidden="true">/</span>
       <span style="color:var(--text)">key-value-store</span>
-    </div>
+    </nav>
     <span class="article-tag">系统设计</span>
     <h1 class="article-title">设计分布式键值存储</h1>
     <div class="article-meta">
@@ -388,9 +406,10 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
   </div>
 </div>
 
+</main>
 <footer>
   <div class="footer-inner">
-    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">updoggtech</span><span>]</span></div>
+    <div class="footer-logo"><span>[</span><span style="color:var(--accent)">sdeoffer</span><span>]</span></div>
     <ul class="footer-links">
       <li><a href="/zh/system-design/">系统设计</a></li>
       <li><a href="/zh/tech-stacks/">技术栈</a></li>
@@ -398,7 +417,7 @@ write on A:  v = [A:2]              <span class="cm"># A:2 派生自 A:1 → 覆
       <li><a href="/zh/ddia/">DDIA</a></li>
       <li><a href="/zh/contact/">联系</a></li>
     </ul>
-    <div class="footer-copy">© 2024 updoggtech</div>
+    <div class="footer-copy">© 2024 sdeoffer</div>
   </div>
 </footer>
 <script src="/assets/search.js" defer></script>
